@@ -9,6 +9,7 @@ public sealed class TrayAppContext : ApplicationContext
 {
     private readonly DbContextOptions<TallyDbContext> _dbOptions;
     private readonly TallySettings _settings;
+    private readonly string _reportsDirectory;
     private readonly NotifyIcon _trayIcon;
     private readonly ToolStripMenuItem _pauseItem;
     private readonly EventRecorder _recorder;
@@ -26,6 +27,7 @@ public sealed class TrayAppContext : ApplicationContext
         if (!File.Exists(TallyPaths.RulesPath))
             RulesFile.WriteDefault(TallyPaths.RulesPath);
         _settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
+        _reportsDirectory = _settings.ResolveReportsDirectory();
 
         _dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
         using (var db = new TallyDbContext(_dbOptions))
@@ -48,7 +50,7 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Generate today's report", null, (_, _) => GenerateReport(0)));
         menu.Items.Add(new ToolStripMenuItem("Generate yesterday's report", null, (_, _) => GenerateReport(-1)));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Open reports folder", null, (_, _) => OpenFolder(TallyPaths.ReportsDirectory)));
+        menu.Items.Add(new ToolStripMenuItem("Open reports folder", null, (_, _) => OpenFolder(_reportsDirectory)));
         menu.Items.Add(new ToolStripMenuItem("Open data folder", null, (_, _) => OpenFolder(TallyPaths.Root)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication()));
@@ -104,7 +106,7 @@ public sealed class TrayAppContext : ApplicationContext
                 return;
 
             _lastAutoReportDate = today;
-            var path = await ReportGenerator.GenerateAsync(_dbOptions, today);
+            var path = await ReportGenerator.GenerateAsync(_dbOptions, today, _reportsDirectory);
             Log.Info($"Automatic daily report generated: {path}");
             if (_settings.OpenReportOnAutoGenerate)
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
@@ -130,7 +132,7 @@ public sealed class TrayAppContext : ApplicationContext
         try
         {
             var date = DateOnly.FromDateTime(DateTime.Now.AddDays(dayOffset));
-            var path = await ReportGenerator.GenerateAsync(_dbOptions, date);
+            var path = await ReportGenerator.GenerateAsync(_dbOptions, date, _reportsDirectory);
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Exception ex)

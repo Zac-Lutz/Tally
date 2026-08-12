@@ -6,8 +6,13 @@ namespace Tally.App;
 
 public static class ReportGenerator
 {
-    /// <summary>Builds the markdown report for a local calendar day and writes it to the reports folder.</summary>
-    public static async Task<string> GenerateAsync(DbContextOptions<TallyDbContext> dbOptions, DateOnly date)
+    /// <summary>
+    /// Builds the markdown report for a local calendar day and writes it to
+    /// <paramref name="reportsDirectory"/>. Each run gets its own timestamped file
+    /// (yyyy-MM-dd_HHmmss.md, report date + run time), so successive runs never overwrite.
+    /// </summary>
+    public static async Task<string> GenerateAsync(
+        DbContextOptions<TallyDbContext> dbOptions, DateOnly date, string reportsDirectory)
     {
         var dayStart = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue));   // local midnight
         var dayEnd = dayStart.AddDays(1);
@@ -34,7 +39,8 @@ public static class ReportGenerator
             .ToList();
 
         var markdown = ReportWriter.BuildMarkdown(date, classified, sessions.Calls, sessions.InactivePeriods);
-        var path = Path.Combine(TallyPaths.ReportsDirectory, $"{date:yyyy-MM-dd}.md");
+        Directory.CreateDirectory(reportsDirectory);
+        var path = Path.Combine(reportsDirectory, $"{date:yyyy-MM-dd}_{DateTime.Now:HHmmss}.md");
         await File.WriteAllTextAsync(path, markdown);
         return path;
     }

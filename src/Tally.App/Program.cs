@@ -29,6 +29,7 @@ internal static class Program
             TallyPaths.EnsureCreated();
             if (!File.Exists(TallyPaths.RulesPath))
                 RulesFile.WriteDefault(TallyPaths.RulesPath);
+            var settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
 
             var date = dateArg.ToLowerInvariant() switch
             {
@@ -39,7 +40,7 @@ internal static class Program
 
             // Safe to block: no message pump or synchronization context exists yet.
             var path = ReportGenerator
-                .GenerateAsync(TallyDbContext.BuildOptions(TallyPaths.DatabasePath), date)
+                .GenerateAsync(TallyDbContext.BuildOptions(TallyPaths.DatabasePath), date, settings.ResolveReportsDirectory())
                 .GetAwaiter()
                 .GetResult();
             Log.Info($"Report generated via --report: {path}");

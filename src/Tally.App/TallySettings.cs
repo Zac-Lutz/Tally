@@ -14,13 +14,21 @@ public sealed record TallySettings
     };
 
     /// <summary>Local time (HH:mm) to auto-generate the daily report. Null disables the timer.</summary>
-    public string? AutoReportTime { get; init; } = "17:00";
+    public string? AutoReportTime { get; init; } = "17:30";
 
     /// <summary>Open the report file when the timed report generates (a tray balloon always shows).</summary>
     public bool OpenReportOnAutoGenerate { get; init; }
 
+    /// <summary>Directory reports are written to. Null uses %USERPROFILE%\.tally\reports.</summary>
+    public string? ReportsDirectory { get; init; }
+
     public TimeOnly? ParseAutoReportTime()
         => TimeOnly.TryParseExact(AutoReportTime, ["HH:mm", "H:mm"], out var time) ? time : null;
+
+    public string ResolveReportsDirectory()
+        => string.IsNullOrWhiteSpace(ReportsDirectory)
+            ? TallyPaths.ReportsDirectory
+            : Environment.ExpandEnvironmentVariables(ReportsDirectory);
 
     public static TallySettings LoadOrCreate(string path)
     {
@@ -47,9 +55,12 @@ public sealed record TallySettings
         {
           // Local time (HH:mm) to auto-generate the daily report; set to null to disable.
           // If tally starts after this time, it catches up once shortly after startup.
-          "autoReportTime": "17:00",
+          "autoReportTime": "17:30",
           // Open the report automatically when the timed report generates (a tray balloon always shows).
-          "openReportOnAutoGenerate": false
+          "openReportOnAutoGenerate": false,
+          // Where reports are written; environment variables (%USERPROFILE%) are expanded.
+          // null = %USERPROFILE%\.tally\reports
+          "reportsDirectory": null
         }
         """;
 }
