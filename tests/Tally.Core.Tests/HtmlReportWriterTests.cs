@@ -75,7 +75,9 @@ public class HtmlReportWriterTests
             CB(60, 90, "Browsing", "later block"),
         ], [], []);
 
-        Assert.True(md.IndexOf("later block") < md.IndexOf("earlier block"),
+        // Scope to the Timeline section — titles also appear in the (per-tab) rollup above it.
+        var timeline = md[md.IndexOf("<h2>Timeline</h2>", StringComparison.Ordinal)..];
+        Assert.True(timeline.IndexOf("later block") < timeline.IndexOf("earlier block"),
             "the later block should render above the earlier one");
     }
 

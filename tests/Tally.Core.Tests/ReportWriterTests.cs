@@ -97,14 +97,15 @@ public class ReportWriterTests
     [Fact]
     public void Timeline_ListsNewestBlockFirst()
     {
-        // Titles appear only in the timeline, so their order in the output is the row order.
         var md = ReportWriter.BuildMarkdown(Date,
         [
             CB(0, 30, "Development", "earlier block"),
             CB(60, 90, "Browsing", "later block"),
         ], [], []);
 
-        Assert.True(md.IndexOf("later block") < md.IndexOf("earlier block"),
+        // Scope to the Timeline section — titles also appear in the (per-tab) rollup above it.
+        var timeline = md[md.IndexOf("## Timeline", StringComparison.Ordinal)..];
+        Assert.True(timeline.IndexOf("later block") < timeline.IndexOf("earlier block"),
             "the later block should render above the earlier one");
     }
 

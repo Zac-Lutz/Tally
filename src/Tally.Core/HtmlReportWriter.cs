@@ -107,25 +107,17 @@ public static class HtmlReportWriter
 
     private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
     {
-        var groups = blocks
-            .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.Subject, b.Classification.TicketRef))
-            .Select(g => (g.Key.Category, g.Key.Client, g.Key.Subject, g.Key.TicketRef,
-                Total: TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks)),
-                Keys: g.Sum(x => x.Activity.Keystrokes),
-                Clicks: g.Sum(x => x.Activity.MouseClicks)))
-            .OrderByDescending(g => g.Total);
-
         sb.Append("<h2>Rollup</h2>\n<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Category</th><th>Client / Subject</th><th>Ticket</th><th class=\"num\">Time</th><th class=\"num\">Keys/Clk</th></tr>\n");
+        sb.Append("<tr><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th><th class=\"num\">Keys/Clk</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
-        foreach (var (category, client, subject, ticketRef, total, keys, clicks) in groups)
+        foreach (var row in RollupBuilder.Build(blocks))
         {
-            var ticket = ticketRef is { } t ? $"#{Esc(t)}" : string.Empty;
-            sb.Append("<tr><td>").Append(CategoryBadge(category)).Append("</td>")
-              .Append("<td>").Append(Esc(ReportFormat.Detail(client, subject))).Append("</td>")
+            var ticket = row.TicketRef is { } t ? $"#{Esc(t)}" : string.Empty;
+            sb.Append("<tr><td>").Append(CategoryBadge(row.Category)).Append("</td>")
+              .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
               .Append("<td>").Append(ticket).Append("</td>")
-              .Append("<td class=\"num\">").Append(ReportFormat.Duration(total)).Append("</td>")
-              .Append("<td class=\"num\">").Append(Activity(keys, clicks)).Append("</td></tr>\n");
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td>")
+              .Append("<td class=\"num\">").Append(Activity(row.Keystrokes, row.MouseClicks)).Append("</td></tr>\n");
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");

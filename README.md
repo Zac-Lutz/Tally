@@ -79,6 +79,13 @@ report's "Gaps to account for" section for unclassified blocks worth a new rule.
 chat/channel name out of `Chat | <name> | Microsoft Teams`, so the rollup lists each
 conversation separately instead of one lumped "Teams" row.
 
+The **Rollup** is per-activity, not per-category: each distinct browser tab, editor window,
+email, or Teams chat is its own row with time summed across the whole day (so several Halo
+ticket tabs open at once each track separately). Halo tickets group by ticket number; Teams
+chats by name; everything else by window title, after stripping volatile browser noise
+("and N more pages", the trailing browser name) so revisiting a tab rolls up instead of
+fragmenting.
+
 ## Activity intensity
 
 Each report block carries a **Keys/Clk** count (`412/88` = 412 keystrokes, 88 mouse clicks),

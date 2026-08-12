@@ -57,22 +57,14 @@ public static class ReportWriter
     {
         sb.AppendLine("## Rollup");
         sb.AppendLine();
-        sb.AppendLine("| Category | Client / Subject | Ticket | Time | Keys/Clk |");
+        sb.AppendLine("| Category | Detail | Ticket | Time | Keys/Clk |");
         sb.AppendLine("|---|---|---|---|---|");
 
-        var groups = blocks
-            .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.Subject, b.Classification.TicketRef))
-            .Select(g => (g.Key.Category, g.Key.Client, g.Key.Subject, g.Key.TicketRef,
-                Total: TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks)),
-                Keys: g.Sum(x => x.Activity.Keystrokes),
-                Clicks: g.Sum(x => x.Activity.MouseClicks)))
-            .OrderByDescending(g => g.Total);
-
-        foreach (var (category, client, subject, ticketRef, total, keys, clicks) in groups)
+        foreach (var row in RollupBuilder.Build(blocks))
         {
-            var ticket = ticketRef is { } t ? $"#{t}" : string.Empty;
+            var ticket = row.TicketRef is { } t ? $"#{t}" : string.Empty;
             sb.AppendLine(
-                $"| {Esc(category)} | {Esc(Detail(client, subject))} | {Esc(ticket)} | {Fmt(total)} | {ActivityCell(keys, clicks)} |");
+                $"| {Esc(row.Category)} | {Esc(Detail(row.Client, row.DetailName))} | {Esc(ticket)} | {Fmt(row.Time)} | {ActivityCell(row.Keystrokes, row.MouseClicks)} |");
         }
 
         sb.AppendLine();
