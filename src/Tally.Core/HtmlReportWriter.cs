@@ -12,18 +12,20 @@ public static class HtmlReportWriter
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
         string? embeddedJson = null,
-        TimeSpan? gapThreshold = null)
+        TimeSpan? gapThreshold = null,
+        IReadOnlyList<ManualTimer>? timers = null)
     {
         var threshold = gapThreshold ?? TimeSpan.FromMinutes(5);
-        var showExport = embeddedJson is not null && (blocks.Count > 0 || calls.Count > 0);
+        var timerList = timers ?? [];
+        var showExport = embeddedJson is not null && (blocks.Count > 0 || calls.Count > 0 || timerList.Count > 0);
         var sb = new StringBuilder();
 
         sb.Append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
         sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-        sb.Append($"<title>Tally — {date:yyyy-MM-dd}</title>\n");
+        sb.Append($"<title>Tally — {ReportFormat.DisplayDate(date)}</title>\n");
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
 
-        AppendMainInner(sb, date, blocks, calls, inactivePeriods, threshold, showExport);
+        AppendMainInner(sb, date, blocks, calls, inactivePeriods, timerList, threshold, showExport, includeHeader: true);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -40,19 +42,21 @@ public static class HtmlReportWriter
     }
 
     /// <summary>
-    /// The content that goes INSIDE &lt;main&gt; — the same sections BuildHtml renders, without the
-    /// page shell or export button. The live view swaps this into its window each refresh, so the
-    /// live dashboard and the file report always show identical information.
+    /// The content that goes INSIDE &lt;main&gt; — the sections BuildHtml renders, without the page
+    /// shell, export button, or the Tally/date header (the live window shows that in its own chrome).
+    /// The live view swaps this in each refresh, so live and the file report show identical data.
     /// </summary>
     public static string BuildMainInner(
         DateOnly date,
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
-        TimeSpan? gapThreshold = null)
+        TimeSpan? gapThreshold = null,
+        IReadOnlyList<ManualTimer>? timers = null)
     {
         var sb = new StringBuilder();
-        AppendMainInner(sb, date, blocks, calls, inactivePeriods, gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false);
+        AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
+            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false);
         return sb.ToString();
     }
 
@@ -81,16 +85,21 @@ public static class HtmlReportWriter
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
+        IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold,
-        bool showExport)
+        bool showExport,
+        bool includeHeader)
     {
-        sb.Append("<div class=\"head\">\n");
-        sb.Append($"<h1>Tally <span class=\"date\">{date:yyyy-MM-dd} · {date.DayOfWeek}</span></h1>\n");
-        if (showExport)
-            sb.Append($"<button id=\"export-json\" type=\"button\" data-filename=\"tally-{date:yyyy-MM-dd}.json\">Export JSON</button>\n");
-        sb.Append("</div>\n");
+        if (includeHeader)
+        {
+            sb.Append("<div class=\"head\">\n");
+            sb.Append($"<h1>Tally <span class=\"date\">{ReportFormat.DisplayDate(date)} · {date.DayOfWeek}</span></h1>\n");
+            if (showExport)
+                sb.Append($"<button id=\"export-json\" type=\"button\" data-filename=\"tally-{date:yyyy-MM-dd}.json\">Export JSON</button>\n");
+            sb.Append("</div>\n");
+        }
 
-        if (blocks.Count == 0 && calls.Count == 0)
+        if (blocks.Count == 0 && calls.Count == 0 && timers.Count == 0)
         {
             sb.Append("<p class=\"empty\">No activity recorded.</p>\n");
             return;
@@ -98,17 +107,19 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls);
+        AppendTabs(sb, blocks, calls, timers);
     }
 
-    // Rollup / Calls / Timeline as switchable tabs (Rollup active by default) instead of three
+    // Rollup / Calls / Timeline / Timers as switchable tabs (Rollup active by default) instead of
     // stacked sections. Tab switching + preserving the choice across live refreshes is TabScript.
-    private static void AppendTabs(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls)
+    private static void AppendTabs(
+        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls, IReadOnlyList<ManualTimer> timers)
     {
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timers\">Timers</button>");
         sb.Append("</div>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
@@ -120,6 +131,31 @@ public static class HtmlReportWriter
         sb.Append("<section class=\"panel\" data-panel=\"timeline\">\n");
         AppendTimeline(sb, blocks);
         sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"timers\">\n");
+        AppendTimers(sb, timers);
+        sb.Append("</section>\n");
+    }
+
+    private static void AppendTimers(StringBuilder sb, IReadOnlyList<ManualTimer> timers)
+    {
+        if (timers.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">No timers recorded today.</p>\n");
+            return;
+        }
+
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
+        sb.Append("<tr><th>Timer</th><th>Start</th><th>End</th><th class=\"num\">Duration</th></tr>\n");
+        sb.Append("</thead>\n<tbody>\n");
+        foreach (var t in timers.OrderByDescending(t => t.Start))
+        {
+            sb.Append("<tr><td>").Append(Esc(t.Name)).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(t.Start)).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(t.End)).Append("</td>")
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(t.Duration)).Append("</td></tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
     }
 
     private static void AppendSummary(
@@ -133,10 +169,14 @@ public static class HtmlReportWriter
         var inactiveTime = TimeSpan.FromTicks(inactive.Sum(p => p.Duration.Ticks));
         var keys = blocks.Sum(b => b.Activity.Keystrokes);
         var clicks = blocks.Sum(b => b.Activity.MouseClicks);
-        var first = blocks.Count > 0 ? blocks[0].Block.Start : calls[0].Start;
-        var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
 
-        sb.Append($"<p class=\"tracked\">Tracked {ReportFormat.Clock(first)}–{ReportFormat.Clock(last)}</p>\n");
+        if (blocks.Count > 0 || calls.Count > 0)
+        {
+            var first = blocks.Count > 0 ? blocks[0].Block.Start : calls[0].Start;
+            var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
+            sb.Append($"<p class=\"tracked\">Tracked {ReportFormat.Clock(first)}–{ReportFormat.Clock(last)}</p>\n");
+        }
+
         sb.Append("<div class=\"cards\">\n");
         Card(sb, "Active", ReportFormat.Duration(active));
         Card(sb, "Calls", ReportFormat.Duration(callTime));

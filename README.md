@@ -50,8 +50,9 @@ yourself (e.g. "Ticket #123 — phone call"):
   button. **Drag it** anywhere; **double-click** it to reopen the app; **right-click** it to
   rename the timer (inline) or stop it — without opening the full app.
 
-Completed timers are saved to the `manual_timers` table. (They're recorded now; surfacing them
-inside the report/export is a planned follow-up.)
+Completed timers are saved to the `manual_timers` table and listed in the report's **Timers
+tab** (name, start, end, duration). The running timer shows in the top bar / bubble; it joins
+the Timers tab once stopped. (Manual timers aren't in the JSON export yet.)
 
 ## Reports: on demand and automatic
 
@@ -69,8 +70,9 @@ is a valid picture of the morning. Three triggers:
   read at startup — restart tally (or rerun `Install-Tally.ps1`) after editing.
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
-opens in the browser: stat cards up top, then **Rollup / Calls / Timeline as tabs** — Rollup
-first — over color-coded tables). Set `reportFormat` in `settings.json` to `"markdown"` for
+opens in the browser: stat cards up top, then **Rollup / Calls / Timeline / Timers as tabs** —
+Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
+`settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
 is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
 so it's safe to keep or share as a single file. The live view uses the same tabs and keeps

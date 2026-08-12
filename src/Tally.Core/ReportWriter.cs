@@ -11,15 +11,17 @@ public static class ReportWriter
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
-        TimeSpan? gapThreshold = null)
+        TimeSpan? gapThreshold = null,
+        IReadOnlyList<ManualTimer>? timers = null)
     {
         var threshold = gapThreshold ?? TimeSpan.FromMinutes(5);
+        var timerList = timers ?? [];
         var sb = new StringBuilder();
 
-        sb.AppendLine($"# Tally — {date:yyyy-MM-dd} ({date.DayOfWeek})");
+        sb.AppendLine($"# Tally — {ReportFormat.DisplayDate(date)} ({date.DayOfWeek})");
         sb.AppendLine();
 
-        if (blocks.Count == 0 && calls.Count == 0)
+        if (blocks.Count == 0 && calls.Count == 0 && timerList.Count == 0)
         {
             sb.AppendLine("No activity recorded.");
             return sb.ToString();
@@ -29,9 +31,24 @@ public static class ReportWriter
         AppendRollup(sb, blocks);
         AppendCalls(sb, calls);
         AppendTimeline(sb, blocks);
+        AppendTimers(sb, timerList);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
 
         return sb.ToString();
+    }
+
+    private static void AppendTimers(StringBuilder sb, IReadOnlyList<ManualTimer> timers)
+    {
+        if (timers.Count == 0)
+            return;
+
+        sb.AppendLine("## Timers");
+        sb.AppendLine();
+        sb.AppendLine("| Timer | Start | End | Duration |");
+        sb.AppendLine("|---|---|---|---|");
+        foreach (var t in timers.OrderByDescending(t => t.Start))
+            sb.AppendLine($"| {Esc(t.Name)} | {Clock(t.Start)} | {Clock(t.End)} | {Fmt(t.Duration)} |");
+        sb.AppendLine();
     }
 
     private static void AppendSummary(
@@ -45,6 +62,8 @@ public static class ReportWriter
         var inactiveTime = TimeSpan.FromTicks(inactivePeriods.Sum(p => p.Duration.Ticks));
         var totalKeys = blocks.Sum(b => b.Activity.Keystrokes);
         var totalClicks = blocks.Sum(b => b.Activity.MouseClicks);
+        if (blocks.Count == 0 && calls.Count == 0)
+            return;   // timers-only day: no auto-tracked range to summarize
         var first = blocks.Count > 0 ? blocks[0].Block.Start : calls[0].Start;
         var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
 

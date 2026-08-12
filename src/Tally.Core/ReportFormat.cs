@@ -19,6 +19,9 @@ internal static class ReportFormat
     public static string Clock(DateTimeOffset t)
         => t.ToLocalTime().ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
 
+    /// <summary>Human-facing date (MM-dd-yyyy). The JSON export keeps ISO dates separately.</summary>
+    public static string DisplayDate(DateOnly d) => d.ToString("MM-dd-yyyy", CultureInfo.InvariantCulture);
+
     /// <summary>Merges a block's client and subject into one display cell.</summary>
     public static string Detail(string? client, string? subject) => (client, subject) switch
     {

@@ -35,10 +35,12 @@ public sealed class LiveWindow : Form
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = ChromeBg };
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
-    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Margin = new Padding(0, 10, 0, 0) };
-    private readonly TextBox _timerName = new() { Width = 220, BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(8, 6, 8, 0) };
-    private readonly Button _timerButton = new() { AutoSize = true, FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 4, 12, 0), Padding = new Padding(8, 3, 8, 3), Cursor = Cursors.Hand };
-    private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 7, 0, 0) };
+    private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Fg, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 0, 8, 0) };
+    private readonly Label _dateLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(0, 5, 12, 0) };
+    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 6, 0, 0) };
+    private readonly TextBox _timerName = new() { Width = 170, BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "Timer name", Margin = new Padding(0, 3, 8, 0) };
+    private readonly Button _timerButton = new() { AutoSize = true, FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 1, 10, 0), Padding = new Padding(8, 3, 8, 3), Cursor = Cursors.Hand };
+    private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 4, 14, 0) };
     private bool _ready;
     private bool _refreshing;
     private bool _syncingTimerUi;
@@ -76,53 +78,8 @@ public sealed class LiveWindow : Form
             // Non-fatal; the window just uses the default icon.
         }
 
-        var snapshot = new Button
-        {
-            Text = "Generate snapshot report",
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Accent,
-            ForeColor = AccentFg,
-            Padding = new Padding(8, 3, 8, 3),
-            Margin = new Padding(0, 0, 12, 0),
-            Cursor = Cursors.Hand,
-        };
-        snapshot.FlatAppearance.BorderSize = 0;
-        snapshot.Click += (_, _) => GenerateSnapshot();
-
-        var bar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 48,
-            BackColor = ChromeBg,
-            Padding = new Padding(10, 8, 10, 8),
-            WrapContents = false,
-            FlowDirection = FlowDirection.LeftToRight,
-        };
-        var hotkeysButton = new Button
-        {
-            Text = "Hotkeys…",
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = InputBg,
-            ForeColor = Fg,
-            Padding = new Padding(8, 3, 8, 3),
-            Margin = new Padding(0, 4, 12, 0),
-            Cursor = Cursors.Hand,
-        };
-        hotkeysButton.FlatAppearance.BorderSize = 0;
-        hotkeysButton.Click += (_, _) => HotkeySettingsDialog.Configure(this, _hotkeys);
-
-        bar.Controls.Add(snapshot);
-        bar.Controls.Add(hotkeysButton);
-        bar.Controls.Add(_statusLabel);
-
-        var timerBar = BuildTimerBar();
-
-        // Docked tops stack by add order: last-added claims the topmost edge.
-        Controls.Add(_webView);   // Fill
-        Controls.Add(bar);        // toolbar (below the timer bar)
-        Controls.Add(timerBar);   // timer bar on top
+        Controls.Add(_webView);        // Fill
+        Controls.Add(BuildTopBar());   // top bar claims the top edge
 
         _timer.Changed += SyncTimerUi;
         _timerTick.Tick += (_, _) => UpdateElapsed();
@@ -132,9 +89,10 @@ public sealed class LiveWindow : Form
         Load += (_, _) => InitializeWebViewAsync();
     }
 
-    private FlowLayoutPanel BuildTimerBar()
+    // One top bar: "Tally", the date, and the live-updated status on the LEFT; the timer controls,
+    // snapshot, and settings on the RIGHT.
+    private Panel BuildTopBar()
     {
-        _timerName.GotFocus += (_, _) => { };   // (kept simple; focus state read in SyncTimerUi)
         _timerName.TextChanged += (_, _) =>
         {
             if (!_syncingTimerUi)
@@ -148,29 +106,66 @@ public sealed class LiveWindow : Form
                 _timer.Start(_timerName.Text);
         };
 
-        var label = new Label
+        var snapshot = new Button
         {
-            Text = "TIMER",
+            Text = "Generate snapshot",
             AutoSize = true,
-            ForeColor = MutedFg,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            Margin = new Padding(0, 9, 8, 0),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Accent,
+            ForeColor = AccentFg,
+            Padding = new Padding(8, 3, 8, 3),
+            Margin = new Padding(0, 1, 8, 0),
+            Cursor = Cursors.Hand,
         };
+        snapshot.FlatAppearance.BorderSize = 0;
+        snapshot.Click += (_, _) => GenerateSnapshot();
 
-        var timerBar = new FlowLayoutPanel
+        var settings = new Button
         {
-            Dock = DockStyle.Top,
-            Height = 44,
-            BackColor = ChromeBg,
-            Padding = new Padding(10, 6, 10, 6),
+            Text = "Settings",
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = InputBg,
+            ForeColor = Fg,
+            Padding = new Padding(8, 3, 8, 3),
+            Margin = new Padding(0, 1, 0, 0),
+            Cursor = Cursors.Hand,
+        };
+        settings.FlatAppearance.BorderSize = 0;
+        settings.Click += (_, _) => HotkeySettingsDialog.Configure(this, _hotkeys);
+
+        var left = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Left,
+            AutoSize = true,
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
+            BackColor = ChromeBg,
+            Padding = new Padding(14, 15, 0, 0),
         };
-        timerBar.Controls.Add(label);
-        timerBar.Controls.Add(_timerName);
-        timerBar.Controls.Add(_timerButton);
-        timerBar.Controls.Add(_timerElapsed);
-        return timerBar;
+        left.Controls.Add(_titleLabel);
+        left.Controls.Add(_dateLabel);
+        left.Controls.Add(_statusLabel);
+
+        var right = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = ChromeBg,
+            Padding = new Padding(0, 10, 14, 0),
+        };
+        right.Controls.Add(_timerName);
+        right.Controls.Add(_timerButton);
+        right.Controls.Add(_timerElapsed);
+        right.Controls.Add(snapshot);
+        right.Controls.Add(settings);
+
+        var bar = new Panel { Dock = DockStyle.Top, Height = 54, BackColor = ChromeBg };
+        bar.Controls.Add(left);
+        bar.Controls.Add(right);
+        return bar;
     }
 
     private void SyncTimerUi()
@@ -264,8 +259,9 @@ public sealed class LiveWindow : Form
         try
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
-            var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive);
+            var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive, timers: data.Timers);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
+            _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             _statusLabel.Text = $"Live · updated {DateTime.Now:h:mm:ss tt}";
         }
         catch (Exception ex)

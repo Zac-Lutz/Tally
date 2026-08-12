@@ -26,7 +26,7 @@ public class HtmlReportWriterTests
         Assert.StartsWith("<!DOCTYPE html>", md);
         Assert.Contains("<style>", md);          // CSS is inlined — no external requests
         Assert.Contains("</html>", md);
-        Assert.Contains("2026-08-12", md);
+        Assert.Contains("08-12-2026", md);       // date shown MM-dd-yyyy
     }
 
     [Fact]
@@ -122,6 +122,32 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void TimersTab_ListsManualTimers()
+    {
+        var timers = new[]
+        {
+            new ManualTimer { Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) },
+            new ManualTimer { Name = "Standup", Start = T0.AddHours(1), End = T0.AddHours(1).AddMinutes(12) },
+        };
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], [], timers: timers);
+
+        Assert.Contains("data-tab=\"timers\"", md);
+        Assert.Contains("<section class=\"panel\" data-panel=\"timers\">", md);
+        Assert.Contains("Ticket #123 call", md);
+        Assert.Contains("Standup", md);
+        Assert.Contains("18m", md);
+    }
+
+    [Fact]
+    public void TimersTab_ShowsEmptyState_WhenNoTimers()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        Assert.Contains("data-tab=\"timers\"", md);
+        Assert.Contains("No timers recorded today.", md);
+    }
+
+    [Fact]
     public void CallsTab_ShowsEmptyState_WhenNoCalls()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
@@ -156,16 +182,16 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void MainInner_MatchesTheReportBody()
+    public void MainInner_OmitsTheHeader_ButKeepsTheTabbedSections()
     {
         var blocks = new[] { CB(0, 30, "Email", "Inbox - Outlook", keys: 3) };
         var full = HtmlReportWriter.BuildHtml(Date, blocks, [], []);
         var inner = HtmlReportWriter.BuildMainInner(Date, blocks, [], []);
 
-        // The live fragment is exactly what sits inside the report's <main>.
-        var body = full[(full.IndexOf("<main>", StringComparison.Ordinal) + "<main>".Length)..
-                        full.IndexOf("</main>", StringComparison.Ordinal)];
-        Assert.Equal(body.Trim(), inner.Trim());
+        Assert.Contains("<h1>Tally", full);              // the file report shows the Tally/date header
+        Assert.DoesNotContain("<h1>Tally", inner);       // the live fragment omits it (window chrome shows it)
+        Assert.Contains("data-tab=\"rollup\"", inner);   // ... but still has the same tabbed sections
+        Assert.Contains("Inbox - Outlook", inner);
     }
 
     [Fact]

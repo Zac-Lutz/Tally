@@ -9,7 +9,8 @@ public sealed record ReportData(
     DateOnly Date,
     IReadOnlyList<ClassifiedBlock> Blocks,
     IReadOnlyList<CallSpan> Calls,
-    IReadOnlyList<InactivePeriod> Inactive);
+    IReadOnlyList<InactivePeriod> Inactive,
+    IReadOnlyList<ManualTimer> Timers);
 
 public static class ReportGenerator
 {
@@ -25,6 +26,7 @@ public static class ReportGenerator
 
         List<TrackedEvent> events;
         List<ActivitySample> samples;
+        List<ManualTimer> timers;
         await using (var db = new TallyDbContext(dbOptions))
         {
             TallyDbContext.EnsureSchema(db);
@@ -34,6 +36,9 @@ public static class ReportGenerator
                 .ToListAsync();
             samples = await db.ActivitySamples.AsNoTracking()
                 .Where(s => s.Timestamp >= dayStart && s.Timestamp < dayEnd)
+                .ToListAsync();
+            timers = await db.ManualTimers.AsNoTracking()
+                .Where(t => t.Start >= dayStart && t.Start < dayEnd)
                 .ToListAsync();
         }
 
@@ -49,7 +54,7 @@ public static class ReportGenerator
                 b, classifier.Classify(b.ProcessName, b.Title), ActivityAttribution.For(b, samples)))
             .ToList();
 
-        return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods);
+        return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods, timers);
     }
 
     /// <summary>
@@ -66,11 +71,12 @@ public static class ReportGenerator
         var content = format switch
         {
             ReportFileFormat.Markdown =>
-                ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive),
+                ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive, timers: data.Timers),
             ReportFileFormat.Json =>
                 JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
             _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
-                embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext)),
+                embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
+                timers: data.Timers),
         };
 
         Directory.CreateDirectory(reportsDirectory);

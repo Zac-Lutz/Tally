@@ -66,7 +66,7 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Generate today's report", null, (_, _) => GenerateReport(0)));
         menu.Items.Add(new ToolStripMenuItem("Generate yesterday's report", null, (_, _) => GenerateReport(-1)));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Configure hotkeys…", null, (_, _) => HotkeySettingsDialog.Configure(null, _hotkeys)));
+        menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => HotkeySettingsDialog.Configure(null, _hotkeys)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Open reports folder", null, (_, _) => OpenFolder(_reportsDirectory)));
         menu.Items.Add(new ToolStripMenuItem("Open data folder", null, (_, _) => OpenFolder(TallyPaths.Root)));
