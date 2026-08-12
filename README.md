@@ -48,10 +48,12 @@ is a valid picture of the morning. Three triggers:
   read at startup — restart tally (or rerun `Install-Tally.ps1`) after editing.
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
-opens in the browser: stat cards, color-coded categories, sortable-looking tables). Set
-`reportFormat` in `settings.json` to `"markdown"` for `.md`, or `"json"` to emit the machine
-export directly. The page is fully self-contained (inline CSS, no external requests), so it's
-safe to keep or share as a single file.
+opens in the browser: stat cards up top, then **Rollup / Calls / Timeline as tabs** — Rollup
+first — over color-coded tables). Set `reportFormat` in `settings.json` to `"markdown"` for
+`.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
+is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
+so it's safe to keep or share as a single file. The live view uses the same tabs and keeps
+your selected tab across its refreshes.
 
 **JSON export** — the HTML report has an **Export JSON** button (top-right) that downloads a
 `tally-YYYY-MM-DD.json` file built entirely client-side (works offline, no server). The same

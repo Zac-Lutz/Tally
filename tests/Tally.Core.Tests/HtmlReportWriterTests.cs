@@ -36,7 +36,8 @@ public class HtmlReportWriterTests
             [CB(0, 30, "Development", "diff <script> & \"quotes\"", process: "code")], [], []);
 
         Assert.Contains("&lt;script&gt; &amp; &quot;quotes&quot;", md);
-        Assert.DoesNotContain("<script>", md);   // the raw tag must never survive into the page
+        // The title's raw markup must be neutralized (the page has its own legit <script> tags).
+        Assert.DoesNotContain("diff <script>", md);
     }
 
     [Fact]
@@ -75,8 +76,8 @@ public class HtmlReportWriterTests
             CB(60, 90, "Browsing", "later block"),
         ], [], []);
 
-        // Scope to the Timeline section — titles also appear in the (per-tab) rollup above it.
-        var timeline = md[md.IndexOf("<h2>Timeline</h2>", StringComparison.Ordinal)..];
+        // Scope to the Timeline panel — titles also appear in the (per-tab) rollup panel above it.
+        var timeline = md[md.IndexOf("data-panel=\"timeline\"", StringComparison.Ordinal)..];
         Assert.True(timeline.IndexOf("later block") < timeline.IndexOf("earlier block"),
             "the later block should render above the earlier one");
     }
@@ -100,6 +101,34 @@ public class HtmlReportWriterTests
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
 
         Assert.DoesNotContain("id=\"export-json\"", md);
+    }
+
+    [Fact]
+    public void SectionsAreTabbed_RollupActiveByDefault()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Email", "Inbox - Outlook")],
+            [new CallSpan(T0, T0.AddMinutes(10), "ms-teams", "Standup")],
+            []);
+
+        // A tab for each section, with rollup active and the others inactive.
+        Assert.Contains("data-tab=\"rollup\"", md);
+        Assert.Contains("data-tab=\"calls\"", md);
+        Assert.Contains("data-tab=\"timeline\"", md);
+        Assert.Contains("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">", md);
+        Assert.Contains("<section class=\"panel active\" data-panel=\"rollup\">", md);
+        Assert.Contains("<section class=\"panel\" data-panel=\"calls\">", md);
+        Assert.Contains("window.tallyApplyActiveTab", md);   // switcher present
+    }
+
+    [Fact]
+    public void CallsTab_ShowsEmptyState_WhenNoCalls()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        // The Calls tab still exists; its panel shows an empty state rather than being omitted.
+        Assert.Contains("data-tab=\"calls\"", md);
+        Assert.Contains("No calls recorded today.", md);
     }
 
     [Fact]

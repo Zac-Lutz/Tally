@@ -26,6 +26,7 @@ public static class HtmlReportWriter
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, threshold, showExport);
 
         sb.Append("</main>\n");
+        sb.Append("<script>").Append(TabScript).Append("</script>\n");
         if (showExport)
         {
             // The JSON is already default-encoder-escaped (< > & as \u00xx), so it can't break out
@@ -68,6 +69,7 @@ public static class HtmlReportWriter
         sb.Append("<title>Tally — Live</title>\n");
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n");
         sb.Append("<main id=\"tally-live\"><p class=\"empty\">Loading…</p></main>\n");
+        sb.Append("<script>").Append(TabScript).Append("</script>\n");
         sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
@@ -96,9 +98,28 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
+        AppendTabs(sb, blocks, calls);
+    }
+
+    // Rollup / Calls / Timeline as switchable tabs (Rollup active by default) instead of three
+    // stacked sections. Tab switching + preserving the choice across live refreshes is TabScript.
+    private static void AppendTabs(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls)
+    {
+        sb.Append("<div class=\"tabs\">");
+        sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
+        sb.Append("</div>\n");
+
+        sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
         AppendRollup(sb, blocks);
+        sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls);
+        sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"timeline\">\n");
         AppendTimeline(sb, blocks);
+        sb.Append("</section>\n");
     }
 
     private static void AppendSummary(
@@ -154,7 +175,7 @@ public static class HtmlReportWriter
 
     private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
     {
-        sb.Append("<h2>Rollup</h2>\n<div class=\"scroll\">\n<table>\n<thead>\n");
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th><th class=\"num\">Keys/Clk</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var row in RollupBuilder.Build(blocks))
@@ -173,9 +194,12 @@ public static class HtmlReportWriter
     private static void AppendCalls(StringBuilder sb, IReadOnlyList<CallSpan> calls)
     {
         if (calls.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">No calls recorded today.</p>\n");
             return;
+        }
 
-        sb.Append("<h2>Calls</h2>\n<div class=\"scroll\">\n<table>\n<thead>\n");
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>App</th><th>Title</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var call in calls)
@@ -192,7 +216,7 @@ public static class HtmlReportWriter
 
     private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
     {
-        sb.Append("<h2>Timeline</h2>\n<div class=\"scroll\">\n<table>\n<thead>\n");
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>Category</th><th class=\"num\">Keys/Clk</th><th>Title</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         // Newest first — most recent activity at the top.
@@ -284,11 +308,37 @@ public static class HtmlReportWriter
         .gaps ul { margin:10px 0; padding-left:20px; }
         .gaps li { margin:4px 0; }
         .empty { color:var(--muted); }
+        .tabs { display:flex; gap:2px; border-bottom:1px solid var(--border); margin:28px 0 16px; }
+        .tab { background:none; border:none; border-bottom:2px solid transparent; color:var(--muted);
+          font:inherit; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+          padding:9px 16px; margin-bottom:-1px; cursor:pointer; }
+        .tab:hover { color:var(--fg); }
+        .tab.active { color:var(--fg); border-bottom-color:var(--accent); }
+        .panel { display:none; }
+        .panel.active { display:block; }
         """;
 
-    // Swaps fresh <main> content in without a reload, keeping the scroll position steady.
+    // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
+    // delegated (so it outlives the innerHTML swap) and the chosen tab is stored on window and
+    // re-applied by tallyApplyActiveTab after each swap.
+    private const string TabScript =
+        """
+        (function(){
+        function apply(){
+        var name=window.__tallyTab||'rollup';var ok=false;
+        document.querySelectorAll('.tab').forEach(function(t){var on=t.getAttribute('data-tab')===name;t.classList.toggle('active',on);if(on)ok=true;});
+        if(!ok){name='rollup';window.__tallyTab='rollup';document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.getAttribute('data-tab')==='rollup');});}
+        document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-panel')===name);});
+        }
+        window.tallyApplyActiveTab=apply;
+        document.addEventListener('click',function(e){var t=e.target.closest?e.target.closest('.tab'):null;if(!t)return;window.__tallyTab=t.getAttribute('data-tab');apply();});
+        document.addEventListener('DOMContentLoaded',apply);
+        })();
+        """;
+
+    // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;window.scrollTo(0,y);}};";
+        "window.tallyUpdate=function(h){var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
 
     // Builds the .json download client-side from the embedded copy — works offline, no server.
     private const string ExportScript =
