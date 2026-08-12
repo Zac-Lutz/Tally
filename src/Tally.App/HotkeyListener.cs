@@ -33,6 +33,15 @@ public sealed class HotkeyListener : IDisposable
         Register(StopId, stopHotkey);
     }
 
+    /// <summary>Re-registers both hotkeys with new specs (used when reconfigured in the app).</summary>
+    public void Rebind(string startHotkey, string stopHotkey)
+    {
+        UnregisterHotKey(_window.Handle, StartId);
+        UnregisterHotKey(_window.Handle, StopId);
+        Register(StartId, startHotkey);
+        Register(StopId, stopHotkey);
+    }
+
     private void Register(int id, string spec)
     {
         if (!HotkeySpec.TryParse(spec, out var modifiers, out var vk))

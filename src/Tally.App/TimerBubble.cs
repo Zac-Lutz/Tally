@@ -18,10 +18,16 @@ public sealed class TimerBubble : Form
     [DllImport("gdi32.dll")]
     private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int w, int h);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    private static readonly Color InputBg = Color.FromArgb(0x2a, 0x2e, 0x35);
+
     private readonly ManualTimerService _timer;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
     private readonly Label _name;
     private readonly Label _elapsed;
+    private readonly TextBox _renameBox;
     private Point _dragCursorStart;
     private Point _dragFormStart;
     private bool _dragging;
@@ -88,7 +94,63 @@ public sealed class TimerBubble : Form
         _name.DoubleClick += (_, _) => RestoreRequested?.Invoke();
         _elapsed.DoubleClick += (_, _) => RestoreRequested?.Invoke();
 
+        // Inline rename box (hidden until "Rename"), overlaying the name line.
+        _renameBox = new TextBox
+        {
+            Visible = false,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = InputBg,
+            ForeColor = Color.White,
+            Location = new Point(14, 6),
+            Width = 186,
+        };
+        _renameBox.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; CommitRename(); }
+            else if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; CancelRename(); }
+        };
+        _renameBox.LostFocus += (_, _) => { if (_renameBox.Visible) CommitRename(); };
+        Controls.Add(_renameBox);
+
+        // Right-click anywhere for rename/stop/open — no need to open the full app.
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Rename", null, (_, _) => BeginRename());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Stop timer", null, (_, _) => StopRequested?.Invoke());
+        menu.Items.Add("Open Tally", null, (_, _) => RestoreRequested?.Invoke());
+        ContextMenuStrip = menu;
+        _name.ContextMenuStrip = menu;
+        _elapsed.ContextMenuStrip = menu;
+
         _tick.Tick += (_, _) => UpdateDisplay();
+    }
+
+    private void BeginRename()
+    {
+        _renameBox.Text = _timer.Active?.Name ?? string.Empty;
+        _renameBox.Visible = true;
+        _renameBox.BringToFront();
+        // The bubble is TopMost + ShowWithoutActivation, so it never holds focus. Explicitly force
+        // it to the foreground before focusing, or keystrokes would land in whatever app was active.
+        SetForegroundWindow(Handle);
+        Activate();
+        _renameBox.Focus();
+        _renameBox.SelectAll();
+    }
+
+    private void CommitRename()
+    {
+        if (!_renameBox.Visible)
+            return;
+        _renameBox.Visible = false;
+        _timer.Rename(_renameBox.Text);
+        UpdateDisplay();
+    }
+
+    private void CancelRename()
+    {
+        _renameBox.Visible = false;
+        UpdateDisplay();
     }
 
     // Don't steal focus from whatever the user is doing when the bubble appears.

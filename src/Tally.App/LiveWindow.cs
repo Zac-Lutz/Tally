@@ -31,6 +31,7 @@ public sealed class LiveWindow : Form
     private readonly TallySettings _settings;
     private readonly string _reportsDirectory;
     private readonly ManualTimerService _timer;
+    private readonly HotkeyListener? _hotkeys;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = ChromeBg };
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
@@ -53,12 +54,13 @@ public sealed class LiveWindow : Form
     /// the WinForms designer-serialization analyzer (WFO1000).</summary>
     internal bool HideOnClose = true;
 
-    public LiveWindow(DbContextOptions<TallyDbContext> dbOptions, TallySettings settings, string reportsDirectory, ManualTimerService timer)
+    public LiveWindow(DbContextOptions<TallyDbContext> dbOptions, TallySettings settings, string reportsDirectory, ManualTimerService timer, HotkeyListener? hotkeys = null)
     {
         _dbOptions = dbOptions;
         _settings = settings;
         _reportsDirectory = reportsDirectory;
         _timer = timer;
+        _hotkeys = hotkeys;
 
         Text = "Tally — Live";
         Width = 1120;
@@ -97,7 +99,22 @@ public sealed class LiveWindow : Form
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
         };
+        var hotkeysButton = new Button
+        {
+            Text = "Hotkeys…",
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = InputBg,
+            ForeColor = Fg,
+            Padding = new Padding(8, 3, 8, 3),
+            Margin = new Padding(0, 4, 12, 0),
+            Cursor = Cursors.Hand,
+        };
+        hotkeysButton.FlatAppearance.BorderSize = 0;
+        hotkeysButton.Click += (_, _) => HotkeySettingsDialog.Configure(this, _hotkeys);
+
         bar.Controls.Add(snapshot);
+        bar.Controls.Add(hotkeysButton);
         bar.Controls.Add(_statusLabel);
 
         var timerBar = BuildTimerBar();

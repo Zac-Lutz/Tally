@@ -38,13 +38,17 @@ Alongside the automatic tracking you can run **manual timers** — a named span 
 yourself (e.g. "Ticket #123 — phone call"):
 
 - **Global hotkeys** start/stop from anywhere, even when Tally isn't focused. Defaults are
-  `Ctrl+Alt+T` (start) and `Ctrl+Alt+S` (stop), configurable via `timerStartHotkey` /
-  `timerStopHotkey` in `settings.json` (combine `Ctrl`/`Alt`/`Shift`/`Win` + a letter or F-key).
+  `Ctrl+Alt+T` (start) and `Ctrl+Alt+S` (stop). **Reconfigure them in the app** — the live
+  view's **Hotkeys…** button (or the tray's **Configure hotkeys…**) opens a dialog where you
+  press the combo you want; it saves to `settings.json` and rebinds immediately. You can still
+  hand-edit `timerStartHotkey` / `timerStopHotkey` in `settings.json` (Ctrl/Alt/Shift/Win + a
+  letter or F-key; the in-app picker captures Ctrl/Alt/Shift combos).
 - **Name** the timer in the field at the top of the live view; editing while it runs renames it live.
 - **Tray menu** has a Start/Stop timer item too.
 - When a timer runs and the main window isn't visible (minimized or closed to tray), a small
   **floating bubble** appears at the bottom-right showing the name + elapsed time, with a stop
-  button. **Drag it** anywhere; **double-click** it to reopen the app.
+  button. **Drag it** anywhere; **double-click** it to reopen the app; **right-click** it to
+  rename the timer (inline) or stop it — without opening the full app.
 
 Completed timers are saved to the `manual_timers` table. (They're recorded now; surfacing them
 inside the report/export is a planned follow-up.)
