@@ -102,8 +102,10 @@ public static class ReportWriter
         sb.AppendLine();
         sb.AppendLine("| Start | End | Duration | Category | Keys/Clk | Title |");
         sb.AppendLine("|---|---|---|---|---|---|");
-        foreach (var b in blocks)
+        // Newest first — most recent activity at the top.
+        for (var i = blocks.Count - 1; i >= 0; i--)
         {
+            var b = blocks[i];
             sb.AppendLine(
                 $"| {Clock(b.Block.Start)} | {Clock(b.Block.End)} | {Fmt(b.Block.Duration)} | {Esc(b.Classification.Category)} | {ActivityCell(b.Activity.Keystrokes, b.Activity.MouseClicks)} | {Esc(b.Block.Title)} |");
         }

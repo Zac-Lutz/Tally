@@ -140,8 +140,10 @@ public static class HtmlReportWriter
         sb.Append("<h2>Timeline</h2>\n<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>Category</th><th class=\"num\">Keys/Clk</th><th>Title</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
-        foreach (var b in blocks)
+        // Newest first — most recent activity at the top.
+        for (var i = blocks.Count - 1; i >= 0; i--)
         {
+            var b = blocks[i];
             sb.Append("<tr><td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td>")

@@ -95,6 +95,20 @@ public class ReportWriterTests
     }
 
     [Fact]
+    public void Timeline_ListsNewestBlockFirst()
+    {
+        // Titles appear only in the timeline, so their order in the output is the row order.
+        var md = ReportWriter.BuildMarkdown(Date,
+        [
+            CB(0, 30, "Development", "earlier block"),
+            CB(60, 90, "Browsing", "later block"),
+        ], [], []);
+
+        Assert.True(md.IndexOf("later block") < md.IndexOf("earlier block"),
+            "the later block should render above the earlier one");
+    }
+
+    [Fact]
     public void Clock_IsRendered12Hour_LowercaseMeridiem()
     {
         // Build the block at the machine's local offset so ToLocalTime is a no-op and the

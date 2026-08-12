@@ -67,6 +67,19 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void TimelineListsNewestBlockFirst()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 30, "Development", "earlier block"),
+            CB(60, 90, "Browsing", "later block"),
+        ], [], []);
+
+        Assert.True(md.IndexOf("later block") < md.IndexOf("earlier block"),
+            "the later block should render above the earlier one");
+    }
+
+    [Fact]
     public void EmptyDaySaysSo()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [], [], []);
