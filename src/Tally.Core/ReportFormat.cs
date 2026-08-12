@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Tally.Core;
 
 /// <summary>Formatting shared by the Markdown and HTML report writers.</summary>
@@ -9,8 +11,13 @@ internal static class ReportFormat
             ? $"{(int)t.TotalMinutes}m"
             : $"{t.Seconds}s";
 
-    /// <summary>Local-time clock (HH:mm). Stored timestamps are UTC; reports read in local time.</summary>
-    public static string Clock(DateTimeOffset t) => t.ToLocalTime().ToString("HH:mm");
+    /// <summary>
+    /// Local-time clock in 12-hour form with a lowercase meridiem (e.g. 2:00pm, 9:05am).
+    /// Stored timestamps are UTC; reports read in local time. InvariantCulture keeps the
+    /// AM/PM designators stable regardless of the machine's culture.
+    /// </summary>
+    public static string Clock(DateTimeOffset t)
+        => t.ToLocalTime().ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
 
     /// <summary>Merges a block's client and subject into one display cell.</summary>
     public static string Detail(string? client, string? subject) => (client, subject) switch

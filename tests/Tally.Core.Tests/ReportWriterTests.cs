@@ -95,6 +95,25 @@ public class ReportWriterTests
     }
 
     [Fact]
+    public void Clock_IsRendered12Hour_LowercaseMeridiem()
+    {
+        // Build the block at the machine's local offset so ToLocalTime is a no-op and the
+        // rendered wall-clock is timezone-independent (2:30pm-3:00pm regardless of runner TZ).
+        var localOffset = TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 8, 12, 14, 30, 0));
+        var start = new DateTimeOffset(2026, 8, 12, 14, 30, 0, localOffset);
+        var block = new ClassifiedBlock(
+            new Block(start, start.AddMinutes(30), "chrome", "x"),
+            new Classification("Browsing", null, null, null, "rule"),
+            BlockActivity.None);
+
+        var md = ReportWriter.BuildMarkdown(Date, [block], [], []);
+
+        Assert.Contains("2:30pm", md);
+        Assert.Contains("3:00pm", md);
+        Assert.DoesNotContain("14:30", md);   // no 24-hour clock survives
+    }
+
+    [Fact]
     public void Rollup_SeparatesTeamsChats_BySubject()
     {
         var md = ReportWriter.BuildMarkdown(Date,
