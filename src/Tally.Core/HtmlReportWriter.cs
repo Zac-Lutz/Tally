@@ -11,16 +11,23 @@ public static class HtmlReportWriter
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
+        string? embeddedJson = null,
         TimeSpan? gapThreshold = null)
     {
         var threshold = gapThreshold ?? TimeSpan.FromMinutes(5);
+        var showExport = embeddedJson is not null && (blocks.Count > 0 || calls.Count > 0);
         var sb = new StringBuilder();
 
         sb.Append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
         sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
         sb.Append($"<title>Tally — {date:yyyy-MM-dd}</title>\n");
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
+
+        sb.Append("<div class=\"head\">\n");
         sb.Append($"<h1>Tally <span class=\"date\">{date:yyyy-MM-dd} · {date.DayOfWeek}</span></h1>\n");
+        if (showExport)
+            sb.Append($"<button id=\"export-json\" type=\"button\" data-filename=\"tally-{date:yyyy-MM-dd}.json\">Export JSON</button>\n");
+        sb.Append("</div>\n");
 
         if (blocks.Count == 0 && calls.Count == 0)
         {
@@ -34,7 +41,16 @@ public static class HtmlReportWriter
         AppendCalls(sb, calls);
         AppendTimeline(sb, blocks);
 
-        sb.Append("</main>\n</body>\n</html>\n");
+        sb.Append("</main>\n");
+        if (showExport)
+        {
+            // The JSON is already default-encoder-escaped (< > & as \u00xx), so it can't break out
+            // of the script element. The download is built client-side from this embedded copy.
+            sb.Append("<script type=\"application/json\" id=\"tally-export\">").Append(embeddedJson).Append("</script>\n");
+            sb.Append("<script>").Append(ExportScript).Append("</script>\n");
+        }
+
+        sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
 
@@ -188,11 +204,13 @@ public static class HtmlReportWriter
         """
         :root {
           --bg:#f6f7f9; --card:#fff; --fg:#1c2024; --muted:#626b75; --border:#e2e6ea;
+          --accent:#0d8a78; --btn-fg:#fff;
           --accent-weak:rgba(18,168,145,.12); --warn-bg:rgba(214,158,46,.12); --warn-border:rgba(214,158,46,.5);
         }
         @media (prefers-color-scheme: dark) {
           :root {
             --bg:#16181c; --card:#1e2126; --fg:#e6e9ec; --muted:#9aa4ae; --border:#2c3138;
+            --accent:#2fd4b6; --btn-fg:#08201c;
             --accent-weak:rgba(47,212,182,.14); --warn-bg:rgba(214,158,46,.16); --warn-border:rgba(214,158,46,.55);
           }
         }
@@ -200,6 +218,10 @@ public static class HtmlReportWriter
         body { margin:0; background:var(--bg); color:var(--fg);
           font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
         main { max-width:1080px; margin:0 auto; padding:32px 24px 64px; }
+        .head { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+        button#export-json { background:var(--accent); color:var(--btn-fg); border:none; border-radius:8px;
+          padding:8px 14px; font:inherit; font-weight:600; cursor:pointer; }
+        button#export-json:hover { filter:brightness(1.06); }
         h1 { font-size:24px; margin:0 0 2px; }
         h1 .date { color:var(--muted); font-weight:500; font-size:18px; margin-left:8px; }
         h2 { font-size:13px; margin:32px 0 10px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
@@ -223,5 +245,19 @@ public static class HtmlReportWriter
         .gaps ul { margin:10px 0; padding-left:20px; }
         .gaps li { margin:4px 0; }
         .empty { color:var(--muted); }
+        """;
+
+    // Builds the .json download client-side from the embedded copy — works offline, no server.
+    private const string ExportScript =
+        """
+        (function(){var b=document.getElementById('export-json');if(!b)return;
+        b.addEventListener('click',function(){
+        var t=document.getElementById('tally-export').textContent;
+        var blob=new Blob([t],{type:'application/json'});
+        var u=URL.createObjectURL(blob);
+        var a=document.createElement('a');
+        a.href=u;a.download=b.getAttribute('data-filename')||'tally.json';
+        document.body.appendChild(a);a.click();document.body.removeChild(a);
+        URL.revokeObjectURL(u);});})();
         """;
 }

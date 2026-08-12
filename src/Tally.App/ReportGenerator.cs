@@ -45,9 +45,16 @@ public static class ReportGenerator
                 b, classifier.Classify(b.ProcessName, b.Title), ActivityAttribution.For(b, samples)))
             .ToList();
 
-        var content = format == ReportFileFormat.Markdown
-            ? ReportWriter.BuildMarkdown(date, classified, sessions.Calls, sessions.InactivePeriods)
-            : HtmlReportWriter.BuildHtml(date, classified, sessions.Calls, sessions.InactivePeriods);
+        var jsonContext = new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now);
+        var content = format switch
+        {
+            ReportFileFormat.Markdown =>
+                ReportWriter.BuildMarkdown(date, classified, sessions.Calls, sessions.InactivePeriods),
+            ReportFileFormat.Json =>
+                JsonExportWriter.BuildJson(date, classified, sessions.Calls, jsonContext),
+            _ => HtmlReportWriter.BuildHtml(date, classified, sessions.Calls, sessions.InactivePeriods,
+                embeddedJson: JsonExportWriter.BuildJson(date, classified, sessions.Calls, jsonContext)),
+        };
 
         Directory.CreateDirectory(reportsDirectory);
         var path = Path.Combine(reportsDirectory, $"{date:yyyy-MM-dd}_{DateTime.Now:HHmmss}.{format.Extension()}");

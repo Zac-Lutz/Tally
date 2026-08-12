@@ -27,6 +27,15 @@ Everything stays on this machine. No cloud, no telemetry.
 - **No EF migrations.** Single-writer personal app; `TallyDbContext.EnsureSchema` creates a
   fresh schema and additively `CREATE TABLE IF NOT EXISTS`es new tables on an older DB. If the
   schema grows more complex than additive tables, adopt EF migrations.
+- **JSON export (`schema_version` "2").** `JsonExportWriter` maps blocks to *slots* (runs of
+  consecutive same-category blocks; hours = summed active time). Environment fields (machine,
+  generated_at) arrive via `JsonExportContext` so Core stays deterministic/testable. The
+  in-page **Export JSON** button embeds the JSON in a `<script type="application/json">` and
+  downloads it client-side via a Blob — the default STJ encoder escapes `< > &`, so the
+  embedded copy can't break out of the script element. `browser`/`sessions` are always empty
+  (no URL/repo capture); `summary` is modeled nullable + `WhenWritingNull` so it's omitted,
+  never null. Slots can be numerous/fragmented on a switch-heavy day — acceptable and valid;
+  a future coalescing heuristic could merge short cross-category interruptions.
 - **Mic-in-use detection** via Core Audio capture-session enumeration (NAudio), polled every
   5s. PID-based, so it joins directly onto recorded process names.
 - **Calls are an overlay lane**, not foreground blocks. During a Teams call you foreground

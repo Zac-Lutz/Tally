@@ -80,6 +80,27 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void ExportButtonAndEmbeddedJson_AppearWhenJsonProvided()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Email", "Inbox - Outlook")], [], [],
+            embeddedJson: "{\"schema_version\":\"2\"}");
+
+        Assert.Contains("id=\"export-json\"", md);
+        Assert.Contains("data-filename=\"tally-2026-08-12.json\"", md);
+        Assert.Contains("id=\"tally-export\"", md);
+        Assert.Contains("{\"schema_version\":\"2\"}", md);
+    }
+
+    [Fact]
+    public void NoExportButton_WhenJsonNotProvided()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        Assert.DoesNotContain("id=\"export-json\"", md);
+    }
+
+    [Fact]
     public void EmptyDaySaysSo()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [], [], []);

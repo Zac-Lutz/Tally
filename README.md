@@ -38,9 +38,18 @@ is a valid picture of the morning. Three triggers:
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
 opens in the browser: stat cards, color-coded categories, sortable-looking tables). Set
-`reportFormat` in `settings.json` to `"markdown"` for `.md` instead. The page is fully
-self-contained (inline CSS, no external requests), so it's safe to keep or share as a single
-file.
+`reportFormat` in `settings.json` to `"markdown"` for `.md`, or `"json"` to emit the machine
+export directly. The page is fully self-contained (inline CSS, no external requests), so it's
+safe to keep or share as a single file.
+
+**JSON export** — the HTML report has an **Export JSON** button (top-right) that downloads a
+`tally-YYYY-MM-DD.json` file built entirely client-side (works offline, no server). The same
+data is produced headlessly with `--report today json` or `reportFormat: "json"`. The format
+is the `schema_version: "2"` export: a `source`/`range`/`slots` envelope where each slot is a
+run of consecutive same-category blocks (bucket = the category slug, hours = summed active
+time, plus `window_titles`, `items` from tickets, `machines`, and `evidence` derived from
+tickets/Teams chats/overlapping calls). Fields Tally can't populate are honest: `browser` and
+`sessions` are always empty (no URL or repo capture), and `summary` is omitted entirely.
 
 **Every run writes its own file** — `yyyy-MM-dd_HHmmss.<ext>` (report date + run time), so
 successive runs never overwrite and you can compare a 2pm snapshot with the 5:30pm final.
