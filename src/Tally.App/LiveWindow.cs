@@ -38,8 +38,8 @@ public sealed class LiveWindow : Form
     private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Fg, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 0, 8, 0) };
     private readonly Label _dateLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(0, 5, 12, 0) };
     private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 6, 0, 0) };
-    private readonly TextBox _timerName = new() { Width = 170, BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "Timer name", Margin = new Padding(0, 3, 8, 0) };
-    private readonly Button _timerButton = new() { AutoSize = true, FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 1, 10, 0), Padding = new Padding(8, 3, 8, 3), Cursor = Cursors.Hand };
+    private readonly TextBox _timerName = new() { BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), PlaceholderText = "Timer name" };
+    private readonly Button _timerButton = new() { AutoSize = true, Margin = new Padding(0, 1, 10, 0), Padding = new Padding(8, 3, 8, 3), Cursor = Cursors.Hand };
     private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 4, 14, 0) };
     private bool _ready;
     private bool _refreshing;
@@ -106,33 +106,23 @@ public sealed class LiveWindow : Form
                 _timer.Start(_timerName.Text);
         };
 
-        var snapshot = new Button
-        {
-            Text = "Generate snapshot",
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Accent,
-            ForeColor = AccentFg,
-            Padding = new Padding(8, 3, 8, 3),
-            Margin = new Padding(0, 1, 8, 0),
-            Cursor = Cursors.Hand,
-        };
-        snapshot.FlatAppearance.BorderSize = 0;
+        var snapshot = new Button { Text = "Generate snapshot", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
+        StyleButton(snapshot);
         snapshot.Click += (_, _) => GenerateSnapshot();
 
-        var settings = new Button
-        {
-            Text = "Settings",
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = InputBg,
-            ForeColor = Fg,
-            Padding = new Padding(8, 3, 8, 3),
-            Margin = new Padding(0, 1, 0, 0),
-            Cursor = Cursors.Hand,
-        };
-        settings.FlatAppearance.BorderSize = 0;
+        var settings = new Button { Text = "Settings", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 0, 0), Cursor = Cursors.Hand };
+        StyleButton(settings);
         settings.Click += (_, _) => HotkeySettingsDialog.Configure(this, _hotkeys);
+
+        StyleButton(_timerButton);
+
+        // Wrap the borderless name box in a bordered panel so the placeholder is left-padded and
+        // vertically centered (a bare single-line TextBox pins it to the top-left).
+        var nameBox = new Panel { Size = new Size(186, 28), BackColor = InputBg, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(0, 1, 8, 0) };
+        nameBox.Controls.Add(_timerName);
+        _timerName.Left = 8;
+        _timerName.Width = nameBox.ClientSize.Width - 16;
+        _timerName.Top = Math.Max(0, (nameBox.ClientSize.Height - _timerName.Height) / 2);
 
         var left = new FlowLayoutPanel
         {
@@ -156,7 +146,7 @@ public sealed class LiveWindow : Form
             BackColor = ChromeBg,
             Padding = new Padding(0, 10, 14, 0),
         };
-        right.Controls.Add(_timerName);
+        right.Controls.Add(nameBox);
         right.Controls.Add(_timerButton);
         right.Controls.Add(_timerElapsed);
         right.Controls.Add(snapshot);
@@ -168,6 +158,23 @@ public sealed class LiveWindow : Form
         return bar;
     }
 
+    // Uniform dark buttons that light up in the accent color on hover (dark text for contrast).
+    // The resting foreground is stashed in Tag so MouseLeave can restore it (the timer button
+    // changes its resting color with state).
+    private static void StyleButton(Button b)
+    {
+        b.FlatStyle = FlatStyle.Flat;
+        b.UseVisualStyleBackColor = false;   // honor BackColor + FlatAppearance, not the theme
+        b.BackColor = InputBg;
+        b.ForeColor = Fg;
+        b.Tag = Fg;
+        b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.MouseOverBackColor = Accent;
+        b.FlatAppearance.MouseDownBackColor = Accent;
+        b.MouseEnter += (_, _) => b.ForeColor = AccentFg;
+        b.MouseLeave += (_, _) => b.ForeColor = b.Tag is Color c ? c : Fg;
+    }
+
     private void SyncTimerUi()
     {
         if (IsDisposed)
@@ -176,9 +183,10 @@ public sealed class LiveWindow : Form
         _syncingTimerUi = true;
         var active = _timer.IsActive;
         _timerButton.Text = active ? "Stop" : "Start";
-        _timerButton.BackColor = active ? StopColor : Accent;
-        _timerButton.ForeColor = active ? Color.White : AccentFg;
-        _timerButton.FlatAppearance.BorderSize = 0;
+        // Stays dark (styled by StyleButton); "Stop" is signalled by red text, not a filled color.
+        var restingFg = active ? StopColor : Fg;
+        _timerButton.Tag = restingFg;
+        _timerButton.ForeColor = restingFg;
 
         // Don't fight the user mid-type; otherwise reflect the authoritative name.
         if (!_timerName.Focused)
