@@ -11,6 +11,8 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly TallySettings _settings;
     private readonly string _reportsDirectory;
     private readonly NotifyIcon _trayIcon;
+    private readonly System.Drawing.Icon _liveIcon;
+    private readonly System.Drawing.Icon _pausedIcon;
     private readonly ToolStripMenuItem _pauseItem;
     private readonly EventRecorder _recorder;
     private readonly ForegroundWatcher _foreground;
@@ -62,9 +64,11 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication()));
 
+        _liveIcon = LoadTrayIcon("tally.ico");
+        _pausedIcon = LoadTrayIcon("tally-paused.ico");
         _trayIcon = new NotifyIcon
         {
-            Icon = LoadTrayIcon(),
+            Icon = _liveIcon,
             Text = "Tally — tracking",
             Visible = true,
             ContextMenuStrip = menu,
@@ -88,17 +92,17 @@ public sealed class TrayAppContext : ApplicationContext
         Log.Info("Tally started");
     }
 
-    private static System.Drawing.Icon LoadTrayIcon()
+    private static System.Drawing.Icon LoadTrayIcon(string fileName)
     {
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "Assets", "tally.ico");
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", fileName);
             // The size hint picks the 16px frame instead of scaling down a larger one.
             return new System.Drawing.Icon(path, SystemInformation.SmallIconSize);
         }
         catch (Exception ex)
         {
-            Log.Error("Failed to load tray icon — falling back to the generic icon", ex);
+            Log.Error($"Failed to load tray icon {fileName} — falling back to the generic icon", ex);
             return System.Drawing.SystemIcons.Application;
         }
     }
@@ -139,6 +143,7 @@ public sealed class TrayAppContext : ApplicationContext
         _recorder.Paused = !_recorder.Paused;
         _pauseItem.Text = _recorder.Paused ? "Resume tracking" : "Pause tracking";
         _trayIcon.Text = _recorder.Paused ? "Tally — paused" : "Tally — tracking";
+        _trayIcon.Icon = _recorder.Paused ? _pausedIcon : _liveIcon;   // red when paused, green when live
     }
 
     // async void is acceptable here: it is a UI event handler and all awaited work is wrapped in try/catch.
@@ -185,6 +190,8 @@ public sealed class TrayAppContext : ApplicationContext
         _recorder.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
         _trayIcon.Dispose();
+        _liveIcon.Dispose();
+        _pausedIcon.Dispose();
         Log.Info("Tally stopped");
         ExitThread();
     }

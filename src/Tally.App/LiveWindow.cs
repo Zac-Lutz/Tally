@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Web.WebView2.Core;
@@ -10,18 +12,24 @@ namespace Tally.App;
 /// <summary>
 /// Live dashboard: a WebView2 hosting the same report rendering, refreshed in place every few
 /// seconds so the current day's rollup/timeline/calls/activity update without generating a file.
-/// A snapshot report is still one toolbar click away.
+/// A snapshot report is still one toolbar click away. Dark-themed to match the report content.
 /// </summary>
 public sealed class LiveWindow : Form
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
 
+    // Dark palette matching the report's dark theme.
+    private static readonly Color ChromeBg = Color.FromArgb(0x16, 0x18, 0x1c);
+    private static readonly Color Accent = Color.FromArgb(0x2f, 0xd4, 0xb6);
+    private static readonly Color AccentFg = Color.FromArgb(0x08, 0x20, 0x1c);
+    private static readonly Color MutedFg = Color.FromArgb(0x9a, 0xa4, 0xae);
+
     private readonly DbContextOptions<TallyDbContext> _dbOptions;
     private readonly TallySettings _settings;
     private readonly string _reportsDirectory;
-    private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
+    private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = ChromeBg };
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
-    private readonly ToolStripLabel _statusLabel = new("Starting…");
+    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Margin = new Padding(0, 10, 0, 0) };
     private bool _ready;
     private bool _refreshing;
 
@@ -40,27 +48,53 @@ public sealed class LiveWindow : Form
         Width = 1120;
         Height = 760;
         StartPosition = FormStartPosition.CenterScreen;
+        BackColor = ChromeBg;
         try
         {
-            Icon = new System.Drawing.Icon(Path.Combine(AppContext.BaseDirectory, "Assets", "tally.ico"));
+            Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "Assets", "tally.ico"));
         }
         catch
         {
             // Non-fatal; the window just uses the default icon.
         }
 
-        var toolbar = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden };
-        var snapshot = new ToolStripButton("Generate snapshot report") { DisplayStyle = ToolStripItemDisplayStyle.Text };
+        var snapshot = new Button
+        {
+            Text = "Generate snapshot report",
+            AutoSize = true,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Accent,
+            ForeColor = AccentFg,
+            Padding = new Padding(8, 3, 8, 3),
+            Margin = new Padding(0, 0, 12, 0),
+            Cursor = Cursors.Hand,
+        };
+        snapshot.FlatAppearance.BorderSize = 0;
         snapshot.Click += (_, _) => GenerateSnapshot();
-        toolbar.Items.Add(snapshot);
-        toolbar.Items.Add(new ToolStripSeparator());
-        toolbar.Items.Add(_statusLabel);
 
-        Controls.Add(_webView);
-        Controls.Add(toolbar);
+        var bar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 48,
+            BackColor = ChromeBg,
+            Padding = new Padding(10, 8, 10, 8),
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+        };
+        bar.Controls.Add(snapshot);
+        bar.Controls.Add(_statusLabel);
+
+        Controls.Add(_webView);   // Fill added first, top bar second — bar claims the top edge.
+        Controls.Add(bar);
 
         _refreshTimer.Tick += (_, _) => _ = RefreshAsync();
         Load += (_, _) => InitializeWebViewAsync();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        DarkTitleBar.Apply(Handle);
     }
 
     // async void: WinForms event handler; all awaited work is wrapped in try/catch.
@@ -73,6 +107,17 @@ public sealed class LiveWindow : Form
             Directory.CreateDirectory(userDataFolder);
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
             await _webView.EnsureCoreWebView2Async(environment);
+
+            // Force the page's theme to dark regardless of the OS setting, so the live view is
+            // always dark to match the window chrome.
+            try
+            {
+                _webView.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Dark;
+            }
+            catch (NotImplementedException)
+            {
+                // Older runtime without profile support — content still follows the OS theme.
+            }
 
             _webView.CoreWebView2.NavigateToString(HtmlReportWriter.BuildLiveShell());
             _webView.CoreWebView2.NavigationCompleted += async (_, _) =>
@@ -163,5 +208,20 @@ public sealed class LiveWindow : Form
         }
 
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>Enables the Windows 11 dark title bar for a window via DWM.</summary>
+internal static class DarkTitleBar
+{
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    public static void Apply(IntPtr hwnd)
+    {
+        var enabled = 1;
+        // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 20H1+/Win11); 19 = the pre-20H1 attribute id.
+        if (DwmSetWindowAttribute(hwnd, 20, ref enabled, sizeof(int)) != 0)
+            DwmSetWindowAttribute(hwnd, 19, ref enabled, sizeof(int));
     }
 }

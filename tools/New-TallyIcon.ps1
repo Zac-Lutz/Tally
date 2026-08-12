@@ -1,21 +1,24 @@
-# Generates src/Tally.App/Assets/tally.ico — four tally marks + diagonal fifth stroke,
-# white on a teal rounded square. BMP frames for small sizes (max GDI compatibility),
-# PNG frame for 256. Rerun to regenerate after tweaking the drawing.
+# Generates the tray/app icons: white tally marks (four strokes + diagonal fifth) on a
+# rounded-square gradient. Two states so the tray shows tracking vs. paused at a glance:
+#   tally.ico         — green  (live tracking; also the exe/window icon)
+#   tally-paused.ico  — red    (paused)
+# Backgrounds are deliberately dark so the white marks contrast strongly even at 16px.
+# Rerun to regenerate after tweaking colors.
 [CmdletBinding()]
 param(
-    [string] $OutputPath = (Join-Path $PSScriptRoot '..\src\Tally.App\Assets\tally.ico')
+    [string] $AssetsDir = (Join-Path $PSScriptRoot '..\src\Tally.App\Assets')
 )
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
-function New-TallyBitmap([int] $Size) {
+function New-TallyBitmap([int] $Size, [System.Drawing.Color] $Top, [System.Drawing.Color] $Bottom) {
     $bmp = [System.Drawing.Bitmap]::new($Size, $Size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    # Rounded-square background with a vertical teal gradient
+    # Rounded-square background with a vertical gradient
     $radius = [Math]::Max(2.0, $Size * 0.22)
     $d = [single]($radius * 2)
     $rect = [System.Drawing.RectangleF]::new(0, 0, $Size, $Size)
@@ -26,12 +29,10 @@ function New-TallyBitmap([int] $Size) {
     $path.AddArc($rect.X, $rect.Bottom - $d, $d, $d, 90, 90)
     $path.CloseFigure()
 
-    $top = [System.Drawing.Color]::FromArgb(255, 18, 168, 145)
-    $bottom = [System.Drawing.Color]::FromArgb(255, 8, 100, 88)
-    $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new($rect, $top, $bottom, [single]90)
+    $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new($rect, $Top, $Bottom, [single]90)
     $g.FillPath($brush, $path)
 
-    # Tally marks: four verticals + the diagonal fifth stroke
+    # Tally marks: four verticals + the diagonal fifth stroke, white for max contrast
     $penWidth = [single][Math]::Max(1.4, $Size * 0.075)
     $pen = [System.Drawing.Pen]::new([System.Drawing.Color]::White, $penWidth)
     $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -88,36 +89,48 @@ function ConvertTo-DibBytes([System.Drawing.Bitmap] $Bitmap) {
     return , $ms.ToArray()
 }
 
-$sizes = 16, 20, 24, 32, 48, 64, 256
-$frames = [System.Collections.Generic.List[byte[]]]::new()
-foreach ($s in $sizes) {
-    $bmp = New-TallyBitmap $s
-    if ($s -ge 256) { $frames.Add((ConvertTo-PngBytes $bmp)) }
-    else { $frames.Add((ConvertTo-DibBytes $bmp)) }
-    $bmp.Dispose()
+function Write-IconFile([string] $Path, [System.Drawing.Color] $Top, [System.Drawing.Color] $Bottom) {
+    $sizes = 16, 20, 24, 32, 48, 64, 256
+    $frames = [System.Collections.Generic.List[byte[]]]::new()
+    foreach ($size in $sizes) {
+        $bmp = New-TallyBitmap $size $Top $Bottom
+        if ($size -ge 256) { $frames.Add((ConvertTo-PngBytes $bmp)) }
+        else { $frames.Add((ConvertTo-DibBytes $bmp)) }
+        $bmp.Dispose()
+    }
+
+    $fs = [System.IO.FileStream]::new($Path, [System.IO.FileMode]::Create)
+    $bw = [System.IO.BinaryWriter]::new($fs)
+    $bw.Write([uint16]0)                 # reserved
+    $bw.Write([uint16]1)                 # type: icon
+    $bw.Write([uint16]$sizes.Count)
+    $offset = 6 + 16 * $sizes.Count
+    for ($i = 0; $i -lt $sizes.Count; $i++) {
+        $size = $sizes[$i]
+        $bw.Write([byte]$(if ($size -ge 256) { 0 } else { $size }))   # width (0 = 256)
+        $bw.Write([byte]$(if ($size -ge 256) { 0 } else { $size }))   # height
+        $bw.Write([byte]0)               # palette
+        $bw.Write([byte]0)               # reserved
+        $bw.Write([uint16]1)             # planes
+        $bw.Write([uint16]32)            # bpp
+        $bw.Write([uint32]$frames[$i].Length)
+        $bw.Write([uint32]$offset)
+        $offset += $frames[$i].Length
+    }
+    foreach ($frame in $frames) { $bw.Write($frame) }
+    $bw.Dispose()
+    $fs.Dispose()
+    Write-Host "Wrote $Path"
 }
 
-$dir = Split-Path $OutputPath -Parent
-New-Item -ItemType Directory -Force $dir | Out-Null
-$fs = [System.IO.FileStream]::new($OutputPath, [System.IO.FileMode]::Create)
-$bw = [System.IO.BinaryWriter]::new($fs)
-$bw.Write([uint16]0)                 # reserved
-$bw.Write([uint16]1)                 # type: icon
-$bw.Write([uint16]$sizes.Count)
-$offset = 6 + 16 * $sizes.Count
-for ($i = 0; $i -lt $sizes.Count; $i++) {
-    $s = $sizes[$i]
-    $bw.Write([byte]$(if ($s -ge 256) { 0 } else { $s }))   # width (0 = 256)
-    $bw.Write([byte]$(if ($s -ge 256) { 0 } else { $s }))   # height
-    $bw.Write([byte]0)               # palette
-    $bw.Write([byte]0)               # reserved
-    $bw.Write([uint16]1)             # planes
-    $bw.Write([uint16]32)            # bpp
-    $bw.Write([uint32]$frames[$i].Length)
-    $bw.Write([uint32]$offset)
-    $offset += $frames[$i].Length
-}
-foreach ($frame in $frames) { $bw.Write($frame) }
-$bw.Dispose()
-$fs.Dispose()
-Write-Host "Wrote $OutputPath ($($sizes.Count) frames)"
+New-Item -ItemType Directory -Force $AssetsDir | Out-Null
+
+# Live (green) — darker gradient than the old teal so white marks contrast clearly.
+Write-IconFile (Join-Path $AssetsDir 'tally.ico') `
+    ([System.Drawing.Color]::FromArgb(255, 21, 128, 61)) `
+    ([System.Drawing.Color]::FromArgb(255, 20, 83, 45))
+
+# Paused (red)
+Write-IconFile (Join-Path $AssetsDir 'tally-paused.ico') `
+    ([System.Drawing.Color]::FromArgb(255, 185, 28, 28)) `
+    ([System.Drawing.Color]::FromArgb(255, 127, 29, 29))
