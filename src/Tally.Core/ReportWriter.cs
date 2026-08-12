@@ -140,25 +140,14 @@ public static class ReportWriter
         sb.AppendLine();
     }
 
-    private static string Detail(string? client, string? subject)
-        => (client, subject) switch
-        {
-            ({ } c, { } s) => $"{c} / {s}",
-            ({ } c, null) => c,
-            (null, { } s) => s,
-            _ => string.Empty,
-        };
+    private static string Detail(string? client, string? subject) => ReportFormat.Detail(client, subject);
 
     private static string ActivityCell(int keys, int clicks)
         => keys == 0 && clicks == 0 ? "—" : $"{keys}/{clicks}";
 
-    private static string Clock(DateTimeOffset t) => t.ToLocalTime().ToString("HH:mm");
+    private static string Clock(DateTimeOffset t) => ReportFormat.Clock(t);
 
-    private static string Fmt(TimeSpan t) => t.TotalHours >= 1
-        ? $"{(int)t.TotalHours}h {t.Minutes:D2}m"
-        : t.TotalMinutes >= 1
-            ? $"{(int)t.TotalMinutes}m"
-            : $"{t.Seconds}s";
+    private static string Fmt(TimeSpan t) => ReportFormat.Duration(t);
 
     private static string Esc(string s)
         => s.Replace("|", "\\|").Replace("\r", string.Empty).Replace("\n", " ");

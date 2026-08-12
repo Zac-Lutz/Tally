@@ -22,6 +22,9 @@ public sealed record TallySettings
     /// <summary>Directory reports are written to. Null uses %USERPROFILE%\.tally\reports.</summary>
     public string? ReportsDirectory { get; init; }
 
+    /// <summary>Report file format: "html" (default) or "markdown".</summary>
+    public string ReportFormat { get; init; } = "html";
+
     public TimeOnly? ParseAutoReportTime()
         => TimeOnly.TryParseExact(AutoReportTime, ["HH:mm", "H:mm"], out var time) ? time : null;
 
@@ -29,6 +32,9 @@ public sealed record TallySettings
         => string.IsNullOrWhiteSpace(ReportsDirectory)
             ? TallyPaths.ReportsDirectory
             : Environment.ExpandEnvironmentVariables(ReportsDirectory);
+
+    /// <summary>Resolves the format string; anything unrecognized falls back to HTML.</summary>
+    public ReportFileFormat ResolveReportFormat() => ReportFileFormats.Parse(ReportFormat);
 
     public static TallySettings LoadOrCreate(string path)
     {
@@ -60,7 +66,9 @@ public sealed record TallySettings
           "openReportOnAutoGenerate": false,
           // Where reports are written; environment variables (%USERPROFILE%) are expanded.
           // null = %USERPROFILE%\.tally\reports
-          "reportsDirectory": null
+          "reportsDirectory": null,
+          // Report file format: "html" (default) or "markdown".
+          "reportFormat": "html"
         }
         """;
 }

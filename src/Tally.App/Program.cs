@@ -8,10 +8,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // One-shot headless mode: tally.exe --report [today|yesterday|yyyy-MM-dd]
+        // One-shot headless mode: tally.exe --report [today|yesterday|yyyy-MM-dd] [html|md]
         // Bypasses the single-instance mutex — SQLite WAL supports a reader alongside the tray writer.
         if (args.Length > 0 && args[0].Equals("--report", StringComparison.OrdinalIgnoreCase))
-            return RunReport(args.Length > 1 ? args[1] : "today");
+            return RunReport(args.Length > 1 ? args[1] : "today", args.Length > 2 ? args[2] : null);
 
         using var mutex = new Mutex(initiallyOwned: true, @"Local\Tally_SingleInstance_5B2E9C4A", out var createdNew);
         if (!createdNew)
@@ -22,7 +22,7 @@ internal static class Program
         return 0;
     }
 
-    private static int RunReport(string dateArg)
+    private static int RunReport(string dateArg, string? formatArg)
     {
         try
         {
@@ -38,9 +38,12 @@ internal static class Program
                 _ => DateOnly.ParseExact(dateArg, "yyyy-MM-dd", CultureInfo.InvariantCulture),
             };
 
+            // An explicit CLI arg overrides the settings default.
+            var format = formatArg is null ? settings.ResolveReportFormat() : ReportFileFormats.Parse(formatArg);
+
             // Safe to block: no message pump or synchronization context exists yet.
             var path = ReportGenerator
-                .GenerateAsync(TallyDbContext.BuildOptions(TallyPaths.DatabasePath), date, settings.ResolveReportsDirectory())
+                .GenerateAsync(TallyDbContext.BuildOptions(TallyPaths.DatabasePath), date, settings.ResolveReportsDirectory(), format)
                 .GetAwaiter()
                 .GetResult();
             Log.Info($"Report generated via --report: {path}");

@@ -7,12 +7,13 @@ namespace Tally.App;
 public static class ReportGenerator
 {
     /// <summary>
-    /// Builds the markdown report for a local calendar day and writes it to
+    /// Builds the report for a local calendar day in <paramref name="format"/> and writes it to
     /// <paramref name="reportsDirectory"/>. Each run gets its own timestamped file
-    /// (yyyy-MM-dd_HHmmss.md, report date + run time), so successive runs never overwrite.
+    /// (yyyy-MM-dd_HHmmss.&lt;ext&gt;, report date + run time), so successive runs never overwrite.
     /// </summary>
     public static async Task<string> GenerateAsync(
-        DbContextOptions<TallyDbContext> dbOptions, DateOnly date, string reportsDirectory)
+        DbContextOptions<TallyDbContext> dbOptions, DateOnly date, string reportsDirectory,
+        ReportFileFormat format = ReportFileFormat.Html)
     {
         var dayStart = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue));   // local midnight
         var dayEnd = dayStart.AddDays(1);
@@ -44,10 +45,13 @@ public static class ReportGenerator
                 b, classifier.Classify(b.ProcessName, b.Title), ActivityAttribution.For(b, samples)))
             .ToList();
 
-        var markdown = ReportWriter.BuildMarkdown(date, classified, sessions.Calls, sessions.InactivePeriods);
+        var content = format == ReportFileFormat.Markdown
+            ? ReportWriter.BuildMarkdown(date, classified, sessions.Calls, sessions.InactivePeriods)
+            : HtmlReportWriter.BuildHtml(date, classified, sessions.Calls, sessions.InactivePeriods);
+
         Directory.CreateDirectory(reportsDirectory);
-        var path = Path.Combine(reportsDirectory, $"{date:yyyy-MM-dd}_{DateTime.Now:HHmmss}.md");
-        await File.WriteAllTextAsync(path, markdown);
+        var path = Path.Combine(reportsDirectory, $"{date:yyyy-MM-dd}_{DateTime.Now:HHmmss}.{format.Extension()}");
+        await File.WriteAllTextAsync(path, content);
         return path;
     }
 

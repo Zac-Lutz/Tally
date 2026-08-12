@@ -27,15 +27,22 @@ Reports can be generated **at any moment** — they cover the day *so far*, so a
 is a valid picture of the morning. Three triggers:
 
 - **Tray menu** — "Generate today's / yesterday's report" (writes + opens the file).
-- **CLI** — `tally.exe --report [today|yesterday|yyyy-MM-dd]` writes the file headlessly
-  (works while the tray instance runs; usable from a scheduled task).
+- **CLI** — `tally.exe --report [today|yesterday|yyyy-MM-dd] [html|md]` writes the file
+  headlessly (works while the tray instance runs; usable from a scheduled task). The optional
+  format arg overrides the setting for that one run.
 - **Automatic daily** — at the time set in `%USERPROFILE%\.tally\settings.json`
   (`autoReportTime`, default `17:30`, machine-local time; `null` disables). Shows a tray
   balloon when ready, or set `openReportOnAutoGenerate: true` to pop the file open. If
   tally starts after that time, it catches up once shortly after startup. Settings are
   read at startup — restart tally (or rerun `Install-Tally.ps1`) after editing.
 
-**Every run writes its own file** — `yyyy-MM-dd_HHmmss.md` (report date + run time), so
+**Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
+opens in the browser: stat cards, color-coded categories, sortable-looking tables). Set
+`reportFormat` in `settings.json` to `"markdown"` for `.md` instead. The page is fully
+self-contained (inline CSS, no external requests), so it's safe to keep or share as a single
+file.
+
+**Every run writes its own file** — `yyyy-MM-dd_HHmmss.<ext>` (report date + run time), so
 successive runs never overwrite and you can compare a 2pm snapshot with the 5:30pm final.
 Each report is recomputed from raw events, so late rule edits apply retroactively. The
 output folder is the `reportsDirectory` setting (env vars like `%USERPROFILE%` are

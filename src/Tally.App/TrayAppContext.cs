@@ -110,7 +110,7 @@ public sealed class TrayAppContext : ApplicationContext
                 return;
 
             _lastAutoReportDate = today;
-            var path = await ReportGenerator.GenerateAsync(_dbOptions, today, _reportsDirectory);
+            var path = await ReportGenerator.GenerateAsync(_dbOptions, today, _reportsDirectory, _settings.ResolveReportFormat());
             Log.Info($"Automatic daily report generated: {path}");
             if (_settings.OpenReportOnAutoGenerate)
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
@@ -136,7 +136,7 @@ public sealed class TrayAppContext : ApplicationContext
         try
         {
             var date = DateOnly.FromDateTime(DateTime.Now.AddDays(dayOffset));
-            var path = await ReportGenerator.GenerateAsync(_dbOptions, date, _reportsDirectory);
+            var path = await ReportGenerator.GenerateAsync(_dbOptions, date, _reportsDirectory, _settings.ResolveReportFormat());
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Exception ex)
