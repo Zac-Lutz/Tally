@@ -35,6 +35,9 @@ public static class RulesFile
             { "id": "screenconnect-client", "titlePattern": "^(?<client>.+?)\\s+[-\\u2013\\u2014].*(ScreenConnect|ConnectWise Control)", "category": "Remote Support" },
             { "id": "screenconnect", "titlePattern": "ScreenConnect|ConnectWise Control", "category": "Remote Support" },
             { "id": "owa", "titlePattern": "Outlook", "category": "Email" },
+            // Teams window titles carry the focused chat/channel: "Chat | <name> | Microsoft Teams".
+            // Capture that name as the subject so the rollup separates each conversation.
+            { "id": "teams-chat", "processPattern": "^(ms-teams|msteams|Teams)$", "titlePattern": "^(?:Chat \\| )?(?<subject>.+?)\\s*\\| Microsoft Teams", "category": "Teams" },
             { "id": "teams", "processPattern": "^(ms-teams|msteams|Teams)$", "category": "Teams" },
             { "id": "terminal", "processPattern": "^(WindowsTerminal|wt|OpenConsole|conhost|powershell|pwsh|cmd)$", "category": "Development" },
             { "id": "vscode", "processPattern": "^Code$", "category": "Development" },

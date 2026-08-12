@@ -11,10 +11,12 @@ public class ReportWriterTests
 
     private static ClassifiedBlock CB(
         double startMinutes, double endMinutes, string category, string title,
-        string? client = null, string? ticket = null, string process = "chrome")
+        string? client = null, string? ticket = null, string? subject = null,
+        int keys = 0, int clicks = 0, string process = "chrome")
         => new(
             new Block(T0.AddMinutes(startMinutes), T0.AddMinutes(endMinutes), process, title),
-            new Classification(category, client, ticket, category == Classification.Unclassified ? null : "rule"));
+            new Classification(category, client, ticket, subject, category == Classification.Unclassified ? null : "rule"),
+            keys == 0 && clicks == 0 ? BlockActivity.None : new BlockActivity(keys, clicks));
 
     [Fact]
     public void Rollup_GroupsByCategoryClientTicket_AndOrdersByDuration()
@@ -90,5 +92,41 @@ public class ReportWriterTests
         var md = ReportWriter.BuildMarkdown(Date, [], [], []);
 
         Assert.Contains("No activity recorded.", md);
+    }
+
+    [Fact]
+    public void Rollup_SeparatesTeamsChats_BySubject()
+    {
+        var md = ReportWriter.BuildMarkdown(Date,
+        [
+            CB(0, 15, "Teams", "Chat | Matt Longenecker | Microsoft Teams", subject: "Matt Longenecker", process: "ms-teams"),
+            CB(15, 21, "Teams", "Chat | Service Family | Microsoft Teams", subject: "Service Family", process: "ms-teams"),
+        ], [], []);
+
+        var rollup = md.Split('\n').Where(l => l.StartsWith("| Teams")).ToList();
+        Assert.Equal(2, rollup.Count);
+        Assert.Contains(rollup, l => l.Contains("Matt Longenecker"));
+        Assert.Contains(rollup, l => l.Contains("Service Family"));
+    }
+
+    [Fact]
+    public void Activity_AppearsInSummaryAndRollup()
+    {
+        var md = ReportWriter.BuildMarkdown(Date,
+            [CB(0, 30, "HaloPSA", "Ticket #1 - HaloPSA", ticket: "1", keys: 412, clicks: 88)], [], []);
+
+        Assert.Contains("412 keys", md);   // summary line
+        Assert.Contains("88 clicks", md);
+        Assert.Contains("412/88", md);     // rollup activity cell
+    }
+
+    [Fact]
+    public void ZeroActivityBlock_RendersDash()
+    {
+        var md = ReportWriter.BuildMarkdown(Date,
+            [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        var timeline = md.Split('\n').First(l => l.Contains("Inbox - Outlook"));
+        Assert.Contains("—", timeline);
     }
 }

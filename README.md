@@ -55,9 +55,21 @@ dotnet test tests/Tally.Core.Tests
 
 Edit `%USERPROFILE%\.tally\rules.json` (created with starter rules on first run; comments
 allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
-regexes; named groups `(?<ticket>...)` and `(?<client>...)` extract those fields. Rules are
-re-read on every report generation, so edits apply immediately — check the report's
-"Gaps to account for" section for unclassified blocks worth a new rule.
+regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
+fields. Rules are re-read on every report generation, so edits apply immediately — check the
+report's "Gaps to account for" section for unclassified blocks worth a new rule.
+
+`subject` captures a free-text "what/who" — e.g. the shipped Teams rule pulls the focused
+chat/channel name out of `Chat | <name> | Microsoft Teams`, so the rollup lists each
+conversation separately instead of one lumped "Teams" row.
+
+## Activity intensity
+
+Each report block carries a **Keys/Clk** count (`412/88` = 412 keystrokes, 88 mouse clicks),
+and the summary line totals the day. It's an intensity signal that separates active work
+from a window left open — a long block reading `0/0` is a candidate to reclassify or drop at
+time-entry. Only **counts** are recorded, sampled once a minute; which keys were pressed is
+never observed or stored, so the database can't become a keystroke log.
 
 ## Install (autostart)
 

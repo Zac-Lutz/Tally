@@ -43,11 +43,13 @@ public static class ReportWriter
         var active = TimeSpan.FromTicks(blocks.Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactivePeriods.Sum(p => p.Duration.Ticks));
+        var totalKeys = blocks.Sum(b => b.Activity.Keystrokes);
+        var totalClicks = blocks.Sum(b => b.Activity.MouseClicks);
         var first = blocks.Count > 0 ? blocks[0].Block.Start : calls[0].Start;
         var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
 
         sb.AppendLine(
-            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)}");
+            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)} \u00b7 {totalKeys} keys \u00b7 {totalClicks} clicks");
         sb.AppendLine();
     }
 
@@ -55,19 +57,22 @@ public static class ReportWriter
     {
         sb.AppendLine("## Rollup");
         sb.AppendLine();
-        sb.AppendLine("| Category | Client | Ticket | Time |");
-        sb.AppendLine("|---|---|---|---|");
+        sb.AppendLine("| Category | Client / Subject | Ticket | Time | Keys/Clk |");
+        sb.AppendLine("|---|---|---|---|---|");
 
         var groups = blocks
-            .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.TicketRef))
-            .Select(g => (g.Key.Category, g.Key.Client, g.Key.TicketRef,
-                Total: TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks))))
+            .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.Subject, b.Classification.TicketRef))
+            .Select(g => (g.Key.Category, g.Key.Client, g.Key.Subject, g.Key.TicketRef,
+                Total: TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks)),
+                Keys: g.Sum(x => x.Activity.Keystrokes),
+                Clicks: g.Sum(x => x.Activity.MouseClicks)))
             .OrderByDescending(g => g.Total);
 
-        foreach (var (category, client, ticketRef, total) in groups)
+        foreach (var (category, client, subject, ticketRef, total, keys, clicks) in groups)
         {
             var ticket = ticketRef is { } t ? $"#{t}" : string.Empty;
-            sb.AppendLine($"| {Esc(category)} | {Esc(client ?? string.Empty)} | {Esc(ticket)} | {Fmt(total)} |");
+            sb.AppendLine(
+                $"| {Esc(category)} | {Esc(Detail(client, subject))} | {Esc(ticket)} | {Fmt(total)} | {ActivityCell(keys, clicks)} |");
         }
 
         sb.AppendLine();
@@ -95,12 +100,12 @@ public static class ReportWriter
     {
         sb.AppendLine("## Timeline");
         sb.AppendLine();
-        sb.AppendLine("| Start | End | Duration | Category | Title |");
-        sb.AppendLine("|---|---|---|---|---|");
+        sb.AppendLine("| Start | End | Duration | Category | Keys/Clk | Title |");
+        sb.AppendLine("|---|---|---|---|---|---|");
         foreach (var b in blocks)
         {
             sb.AppendLine(
-                $"| {Clock(b.Block.Start)} | {Clock(b.Block.End)} | {Fmt(b.Block.Duration)} | {Esc(b.Classification.Category)} | {Esc(b.Block.Title)} |");
+                $"| {Clock(b.Block.Start)} | {Clock(b.Block.End)} | {Fmt(b.Block.Duration)} | {Esc(b.Classification.Category)} | {ActivityCell(b.Activity.Keystrokes, b.Activity.MouseClicks)} | {Esc(b.Block.Title)} |");
         }
 
         sb.AppendLine();
@@ -134,6 +139,18 @@ public static class ReportWriter
 
         sb.AppendLine();
     }
+
+    private static string Detail(string? client, string? subject)
+        => (client, subject) switch
+        {
+            ({ } c, { } s) => $"{c} / {s}",
+            ({ } c, null) => c,
+            (null, { } s) => s,
+            _ => string.Empty,
+        };
+
+    private static string ActivityCell(int keys, int clicks)
+        => keys == 0 && clicks == 0 ? "—" : $"{keys}/{clicks}";
 
     private static string Clock(DateTimeOffset t) => t.ToLocalTime().ToString("HH:mm");
 

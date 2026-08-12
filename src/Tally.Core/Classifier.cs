@@ -11,8 +11,9 @@ public sealed record ClassificationRule
     public string? ProcessPattern { get; init; }
 
     /// <summary>
-    /// Regex matched against the window title. Named groups <c>(?&lt;ticket&gt;)</c> and
-    /// <c>(?&lt;client&gt;)</c> are extracted into the classification. Null = any title.
+    /// Regex matched against the window title. Named groups <c>(?&lt;ticket&gt;)</c>,
+    /// <c>(?&lt;client&gt;)</c>, and <c>(?&lt;subject&gt;)</c> are extracted into the
+    /// classification. Null = any title.
     /// </summary>
     public string? TitlePattern { get; init; }
 
@@ -58,10 +59,11 @@ public sealed class Classifier
 
             var ticket = GroupValue(titleMatch, "ticket");
             var client = GroupValue(titleMatch, "client") ?? rule.Client;
-            return new Classification(rule.Category, client, ticket, rule.Id);
+            var subject = GroupValue(titleMatch, "subject");
+            return new Classification(rule.Category, client, ticket, subject, rule.Id);
         }
 
-        return new Classification(Classification.Unclassified, null, null, null);
+        return new Classification(Classification.Unclassified, null, null, null, null);
     }
 
     private static Regex? Compile(string? pattern)

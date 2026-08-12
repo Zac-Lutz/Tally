@@ -87,6 +87,43 @@ public class ClassifierTests
     }
 
     [Fact]
+    public void TeamsChatName_IsExtractedAsSubject()
+    {
+        var c = DefaultClassifier().Classify("ms-teams", "Chat | Matt Longenecker | Microsoft Teams");
+
+        Assert.Equal("Teams", c.Category);
+        Assert.Equal("Matt Longenecker", c.Subject);
+        Assert.Equal("teams-chat", c.RuleId);
+    }
+
+    [Fact]
+    public void TeamsChannel_SubjectKeepsTeamAndChannel()
+    {
+        var c = DefaultClassifier().Classify("ms-teams", "Chat | Lutz Tech | att Dev Channel | Microsoft Teams");
+
+        Assert.Equal("Lutz Tech | att Dev Channel", c.Subject);
+    }
+
+    [Fact]
+    public void TeamsTitle_WithoutChatPrefix_StillExtractsSubject()
+    {
+        var c = DefaultClassifier().Classify("ms-teams", "All Hands Content Gathering | Microsoft Teams");
+
+        Assert.Equal("All Hands Content Gathering", c.Subject);
+    }
+
+    [Fact]
+    public void BareTeamsWindow_ClassifiesAsTeams_WithNoSubject()
+    {
+        // No "| Microsoft Teams"-preceded name → the chat rule can't match; falls to the generic rule.
+        var c = DefaultClassifier().Classify("ms-teams", "Microsoft Teams");
+
+        Assert.Equal("Teams", c.Category);
+        Assert.Null(c.Subject);
+        Assert.Equal("teams", c.RuleId);
+    }
+
+    [Fact]
     public void RuleWithNoPatterns_NeverMatches()
     {
         // A pattern-less rule would otherwise swallow everything ahead of later rules.

@@ -17,6 +17,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly IdleWatcher _idle;
     private readonly SessionWatcher _session;
     private readonly MicWatcher _mic;
+    private readonly ActivityWatcher _activity;
     private readonly System.Windows.Forms.Timer? _autoReportTimer;
     private readonly TimeOnly? _autoReportTime;
     private DateOnly _lastAutoReportDate;
@@ -31,7 +32,7 @@ public sealed class TrayAppContext : ApplicationContext
 
         _dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
         using (var db = new TallyDbContext(_dbOptions))
-            db.Database.EnsureCreated();
+            TallyDbContext.EnsureSchema(db);
 
         _recorder = new EventRecorder(_dbOptions);
 
@@ -39,10 +40,12 @@ public sealed class TrayAppContext : ApplicationContext
         _idle = new IdleWatcher();
         _session = new SessionWatcher();
         _mic = new MicWatcher();
+        _activity = new ActivityWatcher();
         _foreground.EventCaptured += _recorder.Record;
         _idle.EventCaptured += _recorder.Record;
         _session.EventCaptured += _recorder.Record;
         _mic.EventCaptured += _recorder.Record;
+        _activity.SampleReady += _recorder.RecordSample;
 
         var menu = new ContextMenuStrip();
         _pauseItem = new ToolStripMenuItem("Pause tracking", null, (_, _) => TogglePause());
@@ -77,6 +80,7 @@ public sealed class TrayAppContext : ApplicationContext
         _idle.Start();
         _session.Start();
         _mic.Start();
+        _activity.Start();
         Log.Info("Tally started");
     }
 
@@ -162,6 +166,7 @@ public sealed class TrayAppContext : ApplicationContext
         _idle.Dispose();
         _session.Dispose();
         _mic.Dispose();
+        _activity.Dispose();
 
         // Watchers are stopped, so the channel drains and completes quickly; the writer runs on
         // the thread pool with no UI synchronization context to deadlock against.

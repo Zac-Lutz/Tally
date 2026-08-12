@@ -28,11 +28,28 @@ public static class InactiveReasons
     public const string Locked = "locked";
 }
 
-public sealed record Classification(string Category, string? Client, string? TicketRef, string? RuleId)
+/// <summary>
+/// The classification of a block. <see cref="Subject"/> is a free-text "what/who" the block
+/// was about (a Teams chat name, a document) captured by a rule's <c>(?&lt;subject&gt;)</c> group,
+/// distinct from <see cref="Client"/> (an organization) and <see cref="TicketRef"/>.
+/// </summary>
+public sealed record Classification(
+    string Category, string? Client, string? TicketRef, string? Subject, string? RuleId)
 {
     public const string Unclassified = "Unclassified";
 
     public bool IsUnclassified => Category == Unclassified;
 }
 
-public sealed record ClassifiedBlock(Block Block, Classification Classification);
+/// <summary>
+/// Input-activity counts attributed to a block. Keystroke/click COUNTS only — never which
+/// keys — an intensity signal that separates active work from a window left open.
+/// </summary>
+public sealed record BlockActivity(int Keystrokes, int MouseClicks)
+{
+    public static readonly BlockActivity None = new(0, 0);
+
+    public int Total => Keystrokes + MouseClicks;
+}
+
+public sealed record ClassifiedBlock(Block Block, Classification Classification, BlockActivity Activity);
