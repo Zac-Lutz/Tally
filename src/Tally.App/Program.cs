@@ -44,8 +44,9 @@ internal static class Program
             var settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
 
             ApplicationConfiguration.Initialize();
-            var window = new LiveWindow(
-                TallyDbContext.BuildOptions(TallyPaths.DatabasePath), settings, settings.ResolveReportsDirectory())
+            var dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
+            var timer = new ManualTimerService(t => PersistTimerDirect(dbOptions, t));
+            var window = new LiveWindow(dbOptions, settings, settings.ResolveReportsDirectory(), timer)
             {
                 HideOnClose = false,   // standalone: closing exits
             };
@@ -56,6 +57,22 @@ internal static class Program
         {
             Log.Error("--live failed", ex);
             return 1;
+        }
+    }
+
+    // Standalone --live has no EventRecorder, so it persists completed timers directly.
+    private static void PersistTimerDirect(Microsoft.EntityFrameworkCore.DbContextOptions<TallyDbContext> dbOptions, Tally.Core.Models.ManualTimer timer)
+    {
+        try
+        {
+            using var db = new TallyDbContext(dbOptions);
+            TallyDbContext.EnsureSchema(db);
+            db.ManualTimers.Add(timer);
+            db.SaveChanges();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to persist manual timer (--live)", ex);
         }
     }
 

@@ -7,6 +7,7 @@ public sealed class TallyDbContext(DbContextOptions<TallyDbContext> options) : D
 {
     public DbSet<TrackedEvent> Events => Set<TrackedEvent>();
     public DbSet<ActivitySample> ActivitySamples => Set<ActivitySample>();
+    public DbSet<ManualTimer> ManualTimers => Set<ManualTimer>();
 
     public static DbContextOptions<TallyDbContext> BuildOptions(string databasePath)
         => new DbContextOptionsBuilder<TallyDbContext>()
@@ -32,6 +33,16 @@ public sealed class TallyDbContext(DbContextOptions<TallyDbContext> options) : D
             """);
         db.Database.ExecuteSqlRaw(
             "CREATE INDEX IF NOT EXISTS IX_activity_samples_Timestamp ON activity_samples (Timestamp);");
+        db.Database.ExecuteSqlRaw(
+            """
+            CREATE TABLE IF NOT EXISTS manual_timers (
+                Id INTEGER NOT NULL CONSTRAINT PK_manual_timers PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Start INTEGER NOT NULL,
+                End INTEGER NOT NULL);
+            """);
+        db.Database.ExecuteSqlRaw(
+            "CREATE INDEX IF NOT EXISTS IX_manual_timers_Start ON manual_timers (Start);");
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -55,5 +66,15 @@ public sealed class TallyDbContext(DbContextOptions<TallyDbContext> options) : D
         samples.Property(s => s.Timestamp)
             .HasConversion(v => v.UtcTicks, v => new DateTimeOffset(v, TimeSpan.Zero));
         samples.HasIndex(s => s.Timestamp);
+
+        var timers = modelBuilder.Entity<ManualTimer>();
+        timers.ToTable("manual_timers");
+        timers.HasKey(t => t.Id);
+        timers.Property(t => t.Name).HasMaxLength(400);
+        timers.Property(t => t.Start)
+            .HasConversion(v => v.UtcTicks, v => new DateTimeOffset(v, TimeSpan.Zero));
+        timers.Property(t => t.End)
+            .HasConversion(v => v.UtcTicks, v => new DateTimeOffset(v, TimeSpan.Zero));
+        timers.HasIndex(t => t.Start);
     }
 }

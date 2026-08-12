@@ -28,6 +28,12 @@ public sealed record TallySettings
     /// <summary>Start Tally automatically at login (per-user HKCU Run entry).</summary>
     public bool AutoStart { get; init; } = true;
 
+    /// <summary>Global hotkey to start a manual timer, e.g. "Ctrl+Alt+T".</summary>
+    public string TimerStartHotkey { get; init; } = "Ctrl+Alt+T";
+
+    /// <summary>Global hotkey to stop the running manual timer, e.g. "Ctrl+Alt+S".</summary>
+    public string TimerStopHotkey { get; init; } = "Ctrl+Alt+S";
+
     public TimeOnly? ParseAutoReportTime()
         => TimeOnly.TryParseExact(AutoReportTime, ["HH:mm", "H:mm"], out var time) ? time : null;
 
@@ -73,7 +79,10 @@ public sealed record TallySettings
           // Report file format: "html" (default), "markdown", or "json".
           "reportFormat": "html",
           // Start Tally automatically at login.
-          "autoStart": true
+          "autoStart": true,
+          // Global hotkeys for manual timers. Combine Ctrl/Alt/Shift/Win + a letter/F-key.
+          "timerStartHotkey": "Ctrl+Alt+T",
+          "timerStopHotkey": "Ctrl+Alt+S"
         }
         """;
 }

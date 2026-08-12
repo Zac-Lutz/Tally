@@ -106,7 +106,14 @@ correctly; rendered in local time.
    rendering code. C# drives refresh: `ReportGenerator.ComputeAsync` → `BuildMainInner` →
    `ExecuteScriptAsync("tallyUpdate(...)")` swaps `<main>` innerHTML while preserving scroll (no
    reload, no flicker). WebView2 runtime is a machine dependency (present on Win11).
-3. Unclassified triage UI → "save as rule".
+3. Manual timers (done): `ManualTimerService` (Core, deterministic + unit-tested) holds the
+   single active timer; persistence is a callback (the EventRecorder channel, so timer writes
+   serialize with event/sample writes). WinForms wires it up: `HotkeyListener` (global
+   RegisterHotKey via a hidden message window), a timer bar in `LiveWindow`, and `TimerBubble`
+   (borderless TopMost draggable window). `TrayAppContext` coordinates: the bubble shows only
+   while a timer runs AND the live window isn't shown normally. Follow-up: surface completed
+   `manual_timers` in the report/export.
+4. Unclassified triage UI → "save as rule".
 4. Persist classified blocks + manual block edits; raw-event retention/purge.
 5. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),
    Velopack installer (done — `Package-Tally.ps1`).

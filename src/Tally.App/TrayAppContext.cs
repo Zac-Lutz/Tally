@@ -24,6 +24,10 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly TimeOnly? _autoReportTime;
     private DateOnly _lastAutoReportDate;
     private LiveWindow? _liveWindow;
+    private readonly ManualTimerService _timerService;
+    private readonly HotkeyListener _hotkeys;
+    private readonly TimerBubble _bubble;
+    private readonly ToolStripMenuItem _timerMenuItem;
 
     public TrayAppContext()
     {
@@ -39,6 +43,7 @@ public sealed class TrayAppContext : ApplicationContext
             TallyDbContext.EnsureSchema(db);
 
         _recorder = new EventRecorder(_dbOptions);
+        _timerService = new ManualTimerService(_recorder.RecordTimer);
 
         _foreground = new ForegroundWatcher();
         _idle = new IdleWatcher();
@@ -53,6 +58,8 @@ public sealed class TrayAppContext : ApplicationContext
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Open live view", null, (_, _) => OpenLiveView()));
+        _timerMenuItem = new ToolStripMenuItem("Start timer", null, (_, _) => _timerService.Toggle());
+        menu.Items.Add(_timerMenuItem);
         menu.Items.Add(new ToolStripSeparator());
         _pauseItem = new ToolStripMenuItem("Pause tracking", null, (_, _) => TogglePause());
         menu.Items.Add(_pauseItem);
@@ -73,6 +80,14 @@ public sealed class TrayAppContext : ApplicationContext
             Visible = true,
             ContextMenuStrip = menu,
         };
+
+        _hotkeys = new HotkeyListener(
+            _settings.TimerStartHotkey, _settings.TimerStopHotkey,
+            onStart: () => _timerService.Start(), onStop: () => _timerService.Stop());
+        _bubble = new TimerBubble(_timerService);
+        _bubble.StopRequested += () => _timerService.Stop();
+        _bubble.RestoreRequested += OpenLiveView;
+        _timerService.Changed += OnTimerChanged;
 
         _autoReportTime = _settings.ParseAutoReportTime();
         if (_settings.AutoReportTime is not null && _autoReportTime is null)
@@ -134,16 +149,47 @@ public sealed class TrayAppContext : ApplicationContext
     private void OpenLiveView()
     {
         if (_liveWindow is null || _liveWindow.IsDisposed)
-            _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory);
+        {
+            _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory, _timerService);
+            _liveWindow.VisibilityChanged += UpdateBubble;
+        }
+
         _liveWindow.ShowLive();
+        UpdateBubble();
     }
+
+    private void OnTimerChanged()
+    {
+        _timerMenuItem.Text = _timerService.IsActive
+            ? $"Stop timer: {Shorten(_timerService.Active!.Name)}"
+            : "Start timer";
+        UpdateTrayText();
+        UpdateBubble();
+    }
+
+    // The bubble stands in for the app window: shown only while a timer runs AND the live window
+    // isn't visible (minimized, closed to tray, or never opened).
+    private void UpdateBubble()
+    {
+        if (_timerService.IsActive && !(_liveWindow?.IsShownNormally ?? false))
+            _bubble.ShowBubble();
+        else
+            _bubble.HideBubble();
+    }
+
+    private void UpdateTrayText()
+        => _trayIcon.Text = _timerService.IsActive
+            ? $"Tally — timer: {Shorten(_timerService.Active!.Name)}"
+            : (_recorder.Paused ? "Tally — paused" : "Tally — tracking");
+
+    private static string Shorten(string s) => s.Length <= 40 ? s : s[..39] + "…";
 
     private void TogglePause()
     {
         _recorder.Paused = !_recorder.Paused;
         _pauseItem.Text = _recorder.Paused ? "Resume tracking" : "Pause tracking";
-        _trayIcon.Text = _recorder.Paused ? "Tally — paused" : "Tally — tracking";
         _trayIcon.Icon = _recorder.Paused ? _pausedIcon : _liveIcon;   // red when paused, green when live
+        UpdateTrayText();
     }
 
     // async void is acceptable here: it is a UI event handler and all awaited work is wrapped in try/catch.
@@ -177,6 +223,8 @@ public sealed class TrayAppContext : ApplicationContext
     private void ExitApplication()
     {
         _trayIcon.Visible = false;
+        _hotkeys.Dispose();
+        _bubble.Dispose();
         _liveWindow?.Dispose();
         _autoReportTimer?.Dispose();
         _foreground.Dispose();

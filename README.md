@@ -32,6 +32,23 @@ so you can watch it fill in without generating anything. It renders through the 
 frozen copy. The window uses the Microsoft Edge WebView2 runtime (preinstalled on Windows 11);
 if it's missing, the window says so and reports still work from the tray.
 
+## Manual timers
+
+Alongside the automatic tracking you can run **manual timers** — a named span you start and stop
+yourself (e.g. "Ticket #123 — phone call"):
+
+- **Global hotkeys** start/stop from anywhere, even when Tally isn't focused. Defaults are
+  `Ctrl+Alt+T` (start) and `Ctrl+Alt+S` (stop), configurable via `timerStartHotkey` /
+  `timerStopHotkey` in `settings.json` (combine `Ctrl`/`Alt`/`Shift`/`Win` + a letter or F-key).
+- **Name** the timer in the field at the top of the live view; editing while it runs renames it live.
+- **Tray menu** has a Start/Stop timer item too.
+- When a timer runs and the main window isn't visible (minimized or closed to tray), a small
+  **floating bubble** appears at the bottom-right showing the name + elapsed time, with a stop
+  button. **Drag it** anywhere; **double-click** it to reopen the app.
+
+Completed timers are saved to the `manual_timers` table. (They're recorded now; surfacing them
+inside the report/export is a planned follow-up.)
+
 ## Reports: on demand and automatic
 
 Reports can be generated **at any moment** — they cover the day *so far*, so a 2pm report
