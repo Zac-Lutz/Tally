@@ -23,23 +23,7 @@ public static class HtmlReportWriter
         sb.Append($"<title>Tally — {date:yyyy-MM-dd}</title>\n");
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
 
-        sb.Append("<div class=\"head\">\n");
-        sb.Append($"<h1>Tally <span class=\"date\">{date:yyyy-MM-dd} · {date.DayOfWeek}</span></h1>\n");
-        if (showExport)
-            sb.Append($"<button id=\"export-json\" type=\"button\" data-filename=\"tally-{date:yyyy-MM-dd}.json\">Export JSON</button>\n");
-        sb.Append("</div>\n");
-
-        if (blocks.Count == 0 && calls.Count == 0)
-        {
-            sb.Append("<p class=\"empty\">No activity recorded.</p>\n</main>\n</body>\n</html>\n");
-            return sb.ToString();
-        }
-
-        AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendRollup(sb, blocks);
-        AppendCalls(sb, calls);
-        AppendTimeline(sb, blocks);
+        AppendMainInner(sb, date, blocks, calls, inactivePeriods, threshold, showExport);
 
         sb.Append("</main>\n");
         if (showExport)
@@ -52,6 +36,69 @@ public static class HtmlReportWriter
 
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// The content that goes INSIDE &lt;main&gt; — the same sections BuildHtml renders, without the
+    /// page shell or export button. The live view swaps this into its window each refresh, so the
+    /// live dashboard and the file report always show identical information.
+    /// </summary>
+    public static string BuildMainInner(
+        DateOnly date,
+        IReadOnlyList<ClassifiedBlock> blocks,
+        IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<InactivePeriod> inactivePeriods,
+        TimeSpan? gapThreshold = null)
+    {
+        var sb = new StringBuilder();
+        AppendMainInner(sb, date, blocks, calls, inactivePeriods, gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The one-time page shell for the live view: same styles as the report, an empty
+    /// &lt;main id="tally-live"&gt;, and a <c>tallyUpdate(html)</c> function that swaps in fresh
+    /// content while preserving scroll position (so the C# side can refresh without a reload).
+    /// </summary>
+    public static string BuildLiveShell()
+    {
+        var sb = new StringBuilder();
+        sb.Append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+        sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+        sb.Append("<title>Tally — Live</title>\n");
+        sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n");
+        sb.Append("<main id=\"tally-live\"><p class=\"empty\">Loading…</p></main>\n");
+        sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
+        sb.Append("</body>\n</html>\n");
+        return sb.ToString();
+    }
+
+    private static void AppendMainInner(
+        StringBuilder sb,
+        DateOnly date,
+        IReadOnlyList<ClassifiedBlock> blocks,
+        IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<InactivePeriod> inactivePeriods,
+        TimeSpan threshold,
+        bool showExport)
+    {
+        sb.Append("<div class=\"head\">\n");
+        sb.Append($"<h1>Tally <span class=\"date\">{date:yyyy-MM-dd} · {date.DayOfWeek}</span></h1>\n");
+        if (showExport)
+            sb.Append($"<button id=\"export-json\" type=\"button\" data-filename=\"tally-{date:yyyy-MM-dd}.json\">Export JSON</button>\n");
+        sb.Append("</div>\n");
+
+        if (blocks.Count == 0 && calls.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">No activity recorded.</p>\n");
+            return;
+        }
+
+        AppendSummary(sb, blocks, calls, inactivePeriods);
+        AppendGaps(sb, blocks, inactivePeriods, threshold);
+        AppendRollup(sb, blocks);
+        AppendCalls(sb, calls);
+        AppendTimeline(sb, blocks);
     }
 
     private static void AppendSummary(
@@ -238,6 +285,10 @@ public static class HtmlReportWriter
         .gaps li { margin:4px 0; }
         .empty { color:var(--muted); }
         """;
+
+    // Swaps fresh <main> content in without a reload, keeping the scroll position steady.
+    private const string LiveUpdateScript =
+        "window.tallyUpdate=function(h){var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;window.scrollTo(0,y);}};";
 
     // Builds the .json download client-side from the embedded copy — works offline, no server.
     private const string ExportScript =

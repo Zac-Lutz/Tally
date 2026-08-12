@@ -21,6 +21,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly System.Windows.Forms.Timer? _autoReportTimer;
     private readonly TimeOnly? _autoReportTime;
     private DateOnly _lastAutoReportDate;
+    private LiveWindow? _liveWindow;
 
     public TrayAppContext()
     {
@@ -49,6 +50,8 @@ public sealed class TrayAppContext : ApplicationContext
         _activity.SampleReady += _recorder.RecordSample;
 
         var menu = new ContextMenuStrip();
+        menu.Items.Add(new ToolStripMenuItem("Open live view", null, (_, _) => OpenLiveView()));
+        menu.Items.Add(new ToolStripSeparator());
         _pauseItem = new ToolStripMenuItem("Pause tracking", null, (_, _) => TogglePause());
         menu.Items.Add(_pauseItem);
         menu.Items.Add(new ToolStripMenuItem("Generate today's report", null, (_, _) => GenerateReport(0)));
@@ -124,6 +127,13 @@ public sealed class TrayAppContext : ApplicationContext
         }
     }
 
+    private void OpenLiveView()
+    {
+        if (_liveWindow is null || _liveWindow.IsDisposed)
+            _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory);
+        _liveWindow.ShowLive();
+    }
+
     private void TogglePause()
     {
         _recorder.Paused = !_recorder.Paused;
@@ -162,6 +172,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void ExitApplication()
     {
         _trayIcon.Visible = false;
+        _liveWindow?.Dispose();
         _autoReportTimer?.Dispose();
         _foreground.Dispose();
         _idle.Dispose();

@@ -9,6 +9,9 @@
     <RootNamespace>Tally.App</RootNamespace>
     <AssemblyName>tally</AssemblyName>
     <ApplicationIcon>Assets\tally.ico</ApplicationIcon>
+    <!-- WebView2 ships both WinForms and WPF controls; we use only WinForms, so the unused WPF
+         control's transitive WPF dependencies raise a benign MSB3277 conflict. Demote to a message. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +27,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 

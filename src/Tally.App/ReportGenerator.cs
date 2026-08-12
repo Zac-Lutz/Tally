@@ -4,16 +4,21 @@ using Tally.Core.Models;
 
 namespace Tally.App;
 
+/// <summary>A day's classified sessions, ready to render into any report format or the live view.</summary>
+public sealed record ReportData(
+    DateOnly Date,
+    IReadOnlyList<ClassifiedBlock> Blocks,
+    IReadOnlyList<CallSpan> Calls,
+    IReadOnlyList<InactivePeriod> Inactive);
+
 public static class ReportGenerator
 {
     /// <summary>
-    /// Builds the report for a local calendar day in <paramref name="format"/> and writes it to
-    /// <paramref name="reportsDirectory"/>. Each run gets its own timestamped file
-    /// (yyyy-MM-dd_HHmmss.&lt;ext&gt;, report date + run time), so successive runs never overwrite.
+    /// Loads and classifies a local calendar day's sessions from the database. Shared by the file
+    /// report and the live view so both show identical data. For today, open blocks/calls run to
+    /// "now"; past days clamp to the last recorded event.
     /// </summary>
-    public static async Task<string> GenerateAsync(
-        DbContextOptions<TallyDbContext> dbOptions, DateOnly date, string reportsDirectory,
-        ReportFileFormat format = ReportFileFormat.Html)
+    public static async Task<ReportData> ComputeAsync(DbContextOptions<TallyDbContext> dbOptions, DateOnly date)
     {
         var dayStart = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue));   // local midnight
         var dayEnd = dayStart.AddDays(1);
@@ -32,7 +37,6 @@ public static class ReportGenerator
                 .ToListAsync();
         }
 
-        // For today, open blocks/calls run to "now"; for past days, clamp to the last thing seen.
         var now = DateTimeOffset.Now;
         var endOfData = now < dayEnd
             ? now
@@ -45,15 +49,28 @@ public static class ReportGenerator
                 b, classifier.Classify(b.ProcessName, b.Title), ActivityAttribution.For(b, samples)))
             .ToList();
 
+        return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods);
+    }
+
+    /// <summary>
+    /// Builds the report for a local calendar day in <paramref name="format"/> and writes it to
+    /// <paramref name="reportsDirectory"/>. Each run gets its own timestamped file
+    /// (yyyy-MM-dd_HHmmss.&lt;ext&gt;, report date + run time), so successive runs never overwrite.
+    /// </summary>
+    public static async Task<string> GenerateAsync(
+        DbContextOptions<TallyDbContext> dbOptions, DateOnly date, string reportsDirectory,
+        ReportFileFormat format = ReportFileFormat.Html)
+    {
+        var data = await ComputeAsync(dbOptions, date);
         var jsonContext = new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now);
         var content = format switch
         {
             ReportFileFormat.Markdown =>
-                ReportWriter.BuildMarkdown(date, classified, sessions.Calls, sessions.InactivePeriods),
+                ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive),
             ReportFileFormat.Json =>
-                JsonExportWriter.BuildJson(date, classified, sessions.Calls, jsonContext),
-            _ => HtmlReportWriter.BuildHtml(date, classified, sessions.Calls, sessions.InactivePeriods,
-                embeddedJson: JsonExportWriter.BuildJson(date, classified, sessions.Calls, jsonContext)),
+                JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
+            _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
+                embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext)),
         };
 
         Directory.CreateDirectory(reportsDirectory);

@@ -99,7 +99,13 @@ correctly; rendered in local time.
 
 1. **(done) Thin slice** — capture → SQLite → sessionize → classify → markdown report from
    the tray menu.
-2. Blazor UI (WinForms + BlazorWebView + Radzen): today timeline + report view.
+2. ~~Blazor UI: today timeline + report view.~~ **Done, simpler than planned** — a WinForms
+   window hosting **WebView2** that renders the same `HtmlReportWriter` output and refreshes in
+   place every ~5s (`LiveWindow.cs`). Chose this over Blazor Hybrid because reusing the report
+   renderer guarantees the live view and snapshots show identical data with almost no new
+   rendering code. C# drives refresh: `ReportGenerator.ComputeAsync` → `BuildMainInner` →
+   `ExecuteScriptAsync("tallyUpdate(...)")` swaps `<main>` innerHTML while preserving scroll (no
+   reload, no flicker). WebView2 runtime is a machine dependency (present on Win11).
 3. Unclassified triage UI → "save as rule".
 4. Persist classified blocks + manual block edits; raw-event retention/purge.
 5. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),

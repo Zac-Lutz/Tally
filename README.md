@@ -15,11 +15,21 @@ dotnet run --project src/Tally.App
 
 The app lives in the system tray (teal tally-marks icon). Right-click it for:
 
+- **Open live view** — a dashboard window that shows the current day and refreshes in place
 - **Pause/Resume tracking**
-- **Generate today's / yesterday's report** — writes and opens
-  `%USERPROFILE%\.tally\reports\YYYY-MM-DD.md`
+- **Generate today's / yesterday's report** — writes and opens a snapshot
 - **Open reports / data folder**
 - **Exit**
+
+## Live view
+
+**Open live view** (tray menu, or `tally.exe --live`) opens an in-app window showing the same
+rollup / calls / timeline / activity as a report, for **today**, refreshing every ~5 seconds
+so you can watch it fill in without generating anything. It renders through the same
+`HtmlReportWriter` as the file report, so the live view and a snapshot always agree. A
+**Generate snapshot report** button on its toolbar writes a timestamped report when you want a
+frozen copy. The window uses the Microsoft Edge WebView2 runtime (preinstalled on Windows 11);
+if it's missing, the window says so and reports still work from the tray.
 
 ## Reports: on demand and automatic
 

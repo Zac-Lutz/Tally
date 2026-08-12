@@ -103,6 +103,43 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void LiveShell_HasUpdateHookAndStyles_ButNoContentYet()
+    {
+        var shell = HtmlReportWriter.BuildLiveShell();
+
+        Assert.Contains("id=\"tally-live\"", shell);
+        Assert.Contains("window.tallyUpdate", shell);
+        Assert.Contains("<style>", shell);        // same styling as the report
+        Assert.Contains("</html>", shell);
+    }
+
+    [Fact]
+    public void MainInner_HasSectionsButNoPageShell_NorExportButton()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date,
+            [CB(0, 30, "HaloPSA", "Ticket #1 - HaloPSA", ticket: "1", keys: 5)],
+            [], []);
+
+        Assert.Contains("Rollup", inner);
+        Assert.Contains("Timeline", inner);
+        Assert.DoesNotContain("<!DOCTYPE html>", inner);   // fragment only — no shell
+        Assert.DoesNotContain("id=\"export-json\"", inner); // export lives on the file report
+    }
+
+    [Fact]
+    public void MainInner_MatchesTheReportBody()
+    {
+        var blocks = new[] { CB(0, 30, "Email", "Inbox - Outlook", keys: 3) };
+        var full = HtmlReportWriter.BuildHtml(Date, blocks, [], []);
+        var inner = HtmlReportWriter.BuildMainInner(Date, blocks, [], []);
+
+        // The live fragment is exactly what sits inside the report's <main>.
+        var body = full[(full.IndexOf("<main>", StringComparison.Ordinal) + "<main>".Length)..
+                        full.IndexOf("</main>", StringComparison.Ordinal)];
+        Assert.Equal(body.Trim(), inner.Trim());
+    }
+
+    [Fact]
     public void EmptyDaySaysSo()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [], [], []);

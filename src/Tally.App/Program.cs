@@ -20,6 +20,11 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--report", StringComparison.OrdinalIgnoreCase))
             return RunReport(args.Length > 1 ? args[1] : "today", args.Length > 2 ? args[2] : null);
 
+        // Standalone live dashboard (also usable as a desktop shortcut). Read-only, so it runs
+        // alongside the tray recorder without the single-instance mutex.
+        if (args.Length > 0 && args[0].Equals("--live", StringComparison.OrdinalIgnoreCase))
+            return RunLive();
+
         using var mutex = new Mutex(initiallyOwned: true, @"Local\Tally_SingleInstance_5B2E9C4A", out var createdNew);
         if (!createdNew)
             return 0;   // already running in this session
@@ -27,6 +32,31 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         Application.Run(new TrayAppContext());
         return 0;
+    }
+
+    private static int RunLive()
+    {
+        try
+        {
+            TallyPaths.EnsureCreated();
+            if (!File.Exists(TallyPaths.RulesPath))
+                RulesFile.WriteDefault(TallyPaths.RulesPath);
+            var settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
+
+            ApplicationConfiguration.Initialize();
+            var window = new LiveWindow(
+                TallyDbContext.BuildOptions(TallyPaths.DatabasePath), settings, settings.ResolveReportsDirectory())
+            {
+                HideOnClose = false,   // standalone: closing exits
+            };
+            Application.Run(window);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("--live failed", ex);
+            return 1;
+        }
     }
 
     private static int RunReport(string dateArg, string? formatArg)
