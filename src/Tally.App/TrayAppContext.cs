@@ -29,6 +29,7 @@ public sealed class TrayAppContext : ApplicationContext
             RulesFile.WriteDefault(TallyPaths.RulesPath);
         _settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
         _reportsDirectory = _settings.ResolveReportsDirectory();
+        Autostart.Apply(_settings.AutoStart);
 
         _dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
         using (var db = new TallyDbContext(_dbOptions))

@@ -87,16 +87,35 @@ from a window left open — a long block reading `0/0` is a candidate to reclass
 time-entry. Only **counts** are recorded, sampled once a minute; which keys were pressed is
 never observed or stored, so the database can't become a keystroke log.
 
-## Install (autostart)
+## Build an installer to give to someone else
+
+```powershell
+./Package-Tally.ps1 -Version 1.0.0
+```
+
+Produces `dist/Tally-Setup-1.0.0.exe` — a single self-contained installer (via
+[Velopack](https://velopack.io)) you can hand to another person. Double-clicking it installs
+Tally **per-user with no admin prompt**, bundles the .NET runtime (they don't need .NET
+installed), adds Start Menu + Desktop shortcuts and an uninstall entry, and the app
+self-registers login autostart. `dist/` also gets a `Tally-win-Portable.zip` (a no-install
+run-from-folder build) and the `.nupkg`/`RELEASES` files that enable in-app auto-update if a
+release feed is hosted later. Re-run with a higher `-Version` to cut a new release.
+
+The installer is **unsigned**, so Windows SmartScreen shows "Windows protected your PC" on
+first run — the recipient clicks **More info -> Run anyway**. For wider distribution, add an
+Authenticode code-signing certificate (`vpk pack --signParams ...`) to remove that prompt.
+
+## Install for local development (autostart)
 
 ```powershell
 ./Install-Tally.ps1
 ```
 
-Publishes a Release build to `%LOCALAPPDATA%\Programs\tally`, registers autostart via the
-HKCU `Run` key (`Tally`), and starts it. The installed copy is what autostarts — dev
-rebuilds in this repo never conflict with the running instance. Rerun the script to update
-the installed copy after changes. To uninstall autostart:
+Publishes a Release build to `%LOCALAPPDATA%\Programs\tally` and starts it; the app
+self-registers autostart (HKCU `Run` -> `Tally`) on launch. The installed copy is what
+autostarts — dev rebuilds in this repo never conflict with the running instance. Rerun the
+script to update the installed copy after changes. Autostart can be turned off with
+`"autoStart": false` in `settings.json`, or removed manually:
 
 ```powershell
 Remove-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'Tally'

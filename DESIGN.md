@@ -102,7 +102,18 @@ correctly; rendered in local time.
 2. Blazor UI (WinForms + BlazorWebView + Radzen): today timeline + report view.
 3. Unclassified triage UI → "save as rule".
 4. Persist classified blocks + manual block edits; raw-event retention/purge.
-5. Polish: HKCU Run autostart, settings, real tray icon, Velopack installer.
+5. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),
+   Velopack installer (done — `Package-Tally.ps1`).
+
+## Packaging
+
+`Package-Tally.ps1` builds a Velopack `Setup.exe` (self-contained, per-user, no admin) for
+handing to another person. `VelopackApp.Build().Run()` runs first in `Main` to handle
+install/update/uninstall hooks; the uninstall hook removes the autostart Run key. The app owns
+autostart registration (`Autostart.cs`, gated by the `autoStart` setting), pointing the Run key
+at `Environment.ProcessPath` so it works for both the dev publish and the Velopack install and
+self-heals across updates. The installer is unsigned (SmartScreen "Run anyway"); add an
+Authenticode cert for wider distribution.
 
 ## Known week-one risks
 

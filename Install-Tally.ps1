@@ -20,10 +20,8 @@ Write-Host "Publishing tally (Release) to $InstallDir..."
 dotnet publish (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj') -c Release -o $InstallDir
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
+# Autostart is registered by the app itself on launch (see Autostart.cs), pointing the HKCU
+# Run entry at whichever exe is running — so starting the published copy below sets it up.
 $exePath = Join-Path $InstallDir 'tally.exe'
-Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' `
-    -Name 'Tally' -Value ('"{0}"' -f $exePath)
-Write-Host 'Autostart registered (HKCU Run "Tally").'
-
 Start-Process -FilePath $exePath
-Write-Host 'tally is running from the installed copy.'
+Write-Host 'tally is running from the installed copy (autostart self-registers on launch).'

@@ -22,8 +22,11 @@ public sealed record TallySettings
     /// <summary>Directory reports are written to. Null uses %USERPROFILE%\.tally\reports.</summary>
     public string? ReportsDirectory { get; init; }
 
-    /// <summary>Report file format: "html" (default) or "markdown".</summary>
+    /// <summary>Report file format: "html" (default), "markdown", or "json".</summary>
     public string ReportFormat { get; init; } = "html";
+
+    /// <summary>Start Tally automatically at login (per-user HKCU Run entry).</summary>
+    public bool AutoStart { get; init; } = true;
 
     public TimeOnly? ParseAutoReportTime()
         => TimeOnly.TryParseExact(AutoReportTime, ["HH:mm", "H:mm"], out var time) ? time : null;
@@ -67,8 +70,10 @@ public sealed record TallySettings
           // Where reports are written; environment variables (%USERPROFILE%) are expanded.
           // null = %USERPROFILE%\.tally\reports
           "reportsDirectory": null,
-          // Report file format: "html" (default) or "markdown".
-          "reportFormat": "html"
+          // Report file format: "html" (default), "markdown", or "json".
+          "reportFormat": "html",
+          // Start Tally automatically at login.
+          "autoStart": true
         }
         """;
 }

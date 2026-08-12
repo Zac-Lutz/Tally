@@ -483,3 +483,7 @@ $RECYCLE.BIN/
 
 # Generated daily reports (personal activity data)
 /reports/
+
+# Build/publish artifacts
+/publish/
+/dist/

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Tally.Core;
+using Velopack;
 
 namespace Tally.App;
 
@@ -8,7 +9,13 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // One-shot headless mode: tally.exe --report [today|yesterday|yyyy-MM-dd] [html|md]
+        // Must be first: handles Velopack's install/update/uninstall hook invocations and exits
+        // for them. Returns immediately for a normal launch or --report, so nothing else changes.
+        VelopackApp.Build()
+            .OnBeforeUninstallFastCallback(_ => Autostart.Disable())
+            .Run();
+
+        // One-shot headless mode: tally.exe --report [today|yesterday|yyyy-MM-dd] [html|md|json]
         // Bypasses the single-instance mutex — SQLite WAL supports a reader alongside the tray writer.
         if (args.Length > 0 && args[0].Equals("--report", StringComparison.OrdinalIgnoreCase))
             return RunReport(args.Length > 1 ? args[1] : "today", args.Length > 2 ? args[2] : null);
