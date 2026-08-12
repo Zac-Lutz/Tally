@@ -8,6 +8,7 @@ namespace Tally.App;
 public sealed class TrayAppContext : ApplicationContext
 {
     private readonly DbContextOptions<TallyDbContext> _dbOptions;
+    private readonly TallySettings _settings;
     private readonly NotifyIcon _trayIcon;
     private readonly ToolStripMenuItem _pauseItem;
     private readonly EventRecorder _recorder;
@@ -15,12 +16,16 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly IdleWatcher _idle;
     private readonly SessionWatcher _session;
     private readonly MicWatcher _mic;
+    private readonly System.Windows.Forms.Timer? _autoReportTimer;
+    private readonly TimeOnly? _autoReportTime;
+    private DateOnly _lastAutoReportDate;
 
     public TrayAppContext()
     {
         TallyPaths.EnsureCreated();
         if (!File.Exists(TallyPaths.RulesPath))
             RulesFile.WriteDefault(TallyPaths.RulesPath);
+        _settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
 
         _dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
         using (var db = new TallyDbContext(_dbOptions))
@@ -50,17 +55,66 @@ public sealed class TrayAppContext : ApplicationContext
 
         _trayIcon = new NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadTrayIcon(),
             Text = "Tally — tracking",
             Visible = true,
             ContextMenuStrip = menu,
         };
+
+        _autoReportTime = _settings.ParseAutoReportTime();
+        if (_settings.AutoReportTime is not null && _autoReportTime is null)
+            Log.Error($"settings.json autoReportTime '{_settings.AutoReportTime}' is not HH:mm — automatic report disabled");
+        if (_autoReportTime is not null)
+        {
+            _autoReportTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+            _autoReportTimer.Tick += (_, _) => AutoReportTick();
+            _autoReportTimer.Start();
+        }
 
         _foreground.Start();
         _idle.Start();
         _session.Start();
         _mic.Start();
         Log.Info("Tally started");
+    }
+
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", "tally.ico");
+            // The size hint picks the 16px frame instead of scaling down a larger one.
+            return new System.Drawing.Icon(path, SystemInformation.SmallIconSize);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to load tray icon — falling back to the generic icon", ex);
+            return System.Drawing.SystemIcons.Application;
+        }
+    }
+
+    // async void is acceptable here: it is a UI timer handler and all awaited work is in the try/catch.
+    private async void AutoReportTick()
+    {
+        try
+        {
+            var now = DateTime.Now;
+            var today = DateOnly.FromDateTime(now);
+            if (_lastAutoReportDate == today || TimeOnly.FromDateTime(now) < _autoReportTime!.Value)
+                return;
+
+            _lastAutoReportDate = today;
+            var path = await ReportGenerator.GenerateAsync(_dbOptions, today);
+            Log.Info($"Automatic daily report generated: {path}");
+            if (_settings.OpenReportOnAutoGenerate)
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            else
+                _trayIcon.ShowBalloonTip(10_000, "Tally", "Today's report is ready — open it from the tray menu.", ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Automatic report generation failed", ex);
+        }
     }
 
     private void TogglePause()
@@ -101,6 +155,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void ExitApplication()
     {
         _trayIcon.Visible = false;
+        _autoReportTimer?.Dispose();
         _foreground.Dispose();
         _idle.Dispose();
         _session.Dispose();

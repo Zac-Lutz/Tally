@@ -8,7 +8,14 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Tally.App</RootNamespace>
     <AssemblyName>tally</AssemblyName>
+    <ApplicationIcon>Assets\tally.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\tally.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Tally.Core\Tally.Core.csproj" />
