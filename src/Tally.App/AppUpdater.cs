@@ -38,4 +38,27 @@ internal static class AppUpdater
             Log.Error("Update check failed", ex);
         }
     }
+
+    /// <summary>
+    /// The running release version for display (e.g. "v1.2.2") when this is a Velopack-installed
+    /// build, or "dev" for a from-source / portable run that isn't a real release. Computed once;
+    /// reads local Velopack metadata only, so it's safe offline and off the network.
+    /// </summary>
+    public static string DisplayVersion { get; } = ResolveDisplayVersion();
+
+    private static string ResolveDisplayVersion()
+    {
+        try
+        {
+            var manager = new UpdateManager(new GithubSource(RepoUrl, accessToken: null, prerelease: false));
+            if (manager.IsInstalled && manager.CurrentVersion is { } v)
+                return $"v{v}";
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to read the installed version", ex);
+        }
+
+        return "dev";
+    }
 }

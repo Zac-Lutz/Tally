@@ -37,6 +37,7 @@ public sealed class LiveWindow : Form
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
     private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Fg, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 0, 8, 0) };
+    private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 8.5f), Margin = new Padding(0, 0, 0, 0) };
     private readonly Label _dateLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(0, 5, 12, 0) };
     private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 6, 0, 0) };
     private readonly TextBox _timerName = new() { BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), PlaceholderText = "Timer name" };
@@ -120,6 +121,20 @@ public sealed class LiveWindow : Form
         _timerName.Width = nameBox.ClientSize.Width - 16;
         _timerName.Top = Math.Max(0, (nameBox.ClientSize.Height - _timerName.Height) / 2);
 
+        // "Tally" with the running version tucked directly under it, so the current version is
+        // always visible at a glance (e.g. "v1.2.2", or "dev" for a from-source build).
+        _versionLabel.Text = AppUpdater.DisplayVersion;
+        var titleStack = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = false,
+            FlowDirection = FlowDirection.TopDown,
+            BackColor = ChromeBg,
+            Margin = new Padding(0),
+        };
+        titleStack.Controls.Add(_titleLabel);
+        titleStack.Controls.Add(_versionLabel);
+
         var left = new FlowLayoutPanel
         {
             Dock = DockStyle.Left,
@@ -127,9 +142,9 @@ public sealed class LiveWindow : Form
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
             BackColor = ChromeBg,
-            Padding = new Padding(14, 15, 0, 0),
+            Padding = new Padding(14, 10, 0, 0),
         };
-        left.Controls.Add(_titleLabel);
+        left.Controls.Add(titleStack);
         left.Controls.Add(_dateLabel);
         left.Controls.Add(_statusLabel);
 
