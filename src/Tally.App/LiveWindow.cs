@@ -222,6 +222,9 @@ public sealed class LiveWindow : Form
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
             await _webView.EnsureCoreWebView2Async(environment);
 
+            // Receives ticket-override edits posted from the Rollup's editable cells.
+            _webView.CoreWebView2.WebMessageReceived += OnTicketWebMessage;
+
             // Force the page's theme to dark regardless of the OS setting, so the live view is
             // always dark to match the window chrome.
             try
@@ -271,6 +274,30 @@ public sealed class LiveWindow : Form
             _refreshing = false;
         }
     }
+
+    // A Rollup ticket cell was committed in the live view. Save it as an override for today (the
+    // live view always shows today) and refresh so the rollup + JSON export reflect it.
+    private void OnTicketWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            var msg = JsonSerializer.Deserialize<TicketMessage>(e.WebMessageAsJson, TicketMessageOptions);
+            if (msg is null || msg.Type != "ticket" || string.IsNullOrEmpty(msg.Key))
+                return;
+
+            var rowKey = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(msg.Key));
+            TicketOverrideStore.Set(DateOnly.FromDateTime(DateTime.Now), rowKey, msg.Value);
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to apply a ticket override from the live view", ex);
+        }
+    }
+
+    private static readonly JsonSerializerOptions TicketMessageOptions = new() { PropertyNameCaseInsensitive = true };
+
+    private sealed record TicketMessage(string? Type, string? Key, string? Value);
 
     private async void GenerateSnapshot()
     {

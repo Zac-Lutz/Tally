@@ -71,6 +71,23 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void LiveView_RollupTicketCells_AreEditableInputs()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Development", "Client Profiles")], [], []);
+
+        Assert.Contains("class=\"tk\"", inner);   // an editable ticket input in the live view
+        Assert.Contains("data-k=", inner);        // carrying the row's override key
+    }
+
+    [Fact]
+    public void FileReport_RollupTicketCells_AreReadOnly()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Development", "Client Profiles")], [], []);
+
+        Assert.DoesNotContain("class=\"tk\"", md);   // the saved file report is static
+    }
+
+    [Fact]
     public void GapsSectionAppearsForLongIdleAndUnclassified()
     {
         var md = HtmlReportWriter.BuildHtml(Date,

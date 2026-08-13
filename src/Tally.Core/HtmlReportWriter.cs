@@ -25,7 +25,8 @@ public static class HtmlReportWriter
         sb.Append($"<title>Tally — {ReportFormat.DisplayDate(date)}</title>\n");
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
 
-        AppendMainInner(sb, date, blocks, calls, inactivePeriods, timerList, threshold, showExport, includeHeader: true);
+        AppendMainInner(sb, date, blocks, calls, inactivePeriods, timerList, threshold, showExport,
+            includeHeader: true, editableTickets: false);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -45,6 +46,8 @@ public static class HtmlReportWriter
     /// The content that goes INSIDE &lt;main&gt; — the sections BuildHtml renders, without the page
     /// shell, export button, or the Tally/date header (the live window shows that in its own chrome).
     /// The live view swaps this in each refresh, so live and the file report show identical data.
+    /// The Rollup's Ticket cells are editable here (the live view is the working surface); the saved
+    /// file report renders them read-only.
     /// </summary>
     public static string BuildMainInner(
         DateOnly date,
@@ -56,7 +59,7 @@ public static class HtmlReportWriter
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
-            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false);
+            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false, editableTickets: true);
         return sb.ToString();
     }
 
@@ -75,6 +78,7 @@ public static class HtmlReportWriter
         sb.Append("<main id=\"tally-live\"><p class=\"empty\">Loading…</p></main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
         sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
+        sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
@@ -88,7 +92,8 @@ public static class HtmlReportWriter
         IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold,
         bool showExport,
-        bool includeHeader)
+        bool includeHeader,
+        bool editableTickets)
     {
         if (includeHeader)
         {
@@ -107,13 +112,14 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls, timers);
+        AppendTabs(sb, blocks, calls, timers, editableTickets);
     }
 
     // Rollup / Calls / Timeline / Timers as switchable tabs (Rollup active by default) instead of
     // stacked sections. Tab switching + preserving the choice across live refreshes is TabScript.
     private static void AppendTabs(
-        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls, IReadOnlyList<ManualTimer> timers)
+        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers, bool editableTickets)
     {
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
@@ -123,7 +129,7 @@ public static class HtmlReportWriter
         sb.Append("</div>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
-        AppendRollup(sb, blocks, calls);
+        AppendRollup(sb, blocks, calls, editableTickets);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls);
@@ -212,7 +218,8 @@ public static class HtmlReportWriter
     // Window activity AND calls, merged into one time-ordered table so the Rollup is a complete
     // picture of the day. Calls carry the "Call" category badge; they overlay (don't replace) the
     // focused-window rows, so a call and its underlying window can both appear.
-    private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls)
+    private static void AppendRollup(
+        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls, bool editableTickets)
     {
         var rows = RollupBuilder.Build(blocks)
             .Concat(RollupBuilder.BuildCalls(calls))
@@ -224,14 +231,27 @@ public static class HtmlReportWriter
         sb.Append("</thead>\n<tbody>\n");
         foreach (var row in rows)
         {
-            var ticket = row.TicketRef is { } t ? $"#{Esc(t)}" : string.Empty;
             sb.Append("<tr><td>").Append(CategoryBadge(row.Category)).Append("</td>")
               .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
-              .Append("<td>").Append(ticket).Append("</td>")
+              .Append("<td>").Append(TicketCell(row, editableTickets)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
+    }
+
+    // In the live view, an activity row's Ticket cell is an editable input that saves a per-day
+    // manual ticket (keyed by RowKey). Call rows (RowKey null) and the saved file report stay static.
+    private static string TicketCell(RollupRow row, bool editableTickets)
+    {
+        if (editableTickets && row.RowKey is { } rowKey)
+        {
+            var key = Convert.ToBase64String(Encoding.UTF8.GetBytes(rowKey));
+            var value = row.TicketRef is { } t ? Esc(t) : string.Empty;
+            return $"<input class=\"tk\" type=\"text\" inputmode=\"numeric\" data-k=\"{key}\" value=\"{value}\" placeholder=\"—\" aria-label=\"Ticket number\">";
+        }
+
+        return row.TicketRef is { } tk ? $"#{Esc(tk)}" : string.Empty;
     }
 
     private static void AppendCalls(StringBuilder sb, IReadOnlyList<CallSpan> calls)
@@ -356,6 +376,11 @@ public static class HtmlReportWriter
         .tab.active { color:var(--fg); border-bottom-color:var(--accent); }
         .panel { display:none; }
         .panel.active { display:block; }
+        .tk { width:84px; background:transparent; border:1px solid transparent; border-radius:6px;
+          color:var(--fg); font:inherit; font-size:13px; padding:2px 6px; }
+        .tk::placeholder { color:var(--muted); }
+        .tk:hover { border-color:var(--border); }
+        .tk:focus { outline:none; border-color:var(--accent); background:var(--bg); }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -377,8 +402,20 @@ public static class HtmlReportWriter
         """;
 
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
+    // Skips the swap while a ticket cell is being edited so a refresh never wipes an in-progress edit.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&a.classList&&a.classList.contains('tk'))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+
+    // Editable Ticket cells: on commit (blur, or Enter which blurs), post {rowKey, value} to the C#
+    // host, which saves the per-day override and refreshes. Delegated so it survives innerHTML swaps.
+    private const string TicketEditScript =
+        """
+        (function(){
+        function post(i){if(window.chrome&&window.chrome.webview){window.chrome.webview.postMessage({type:'ticket',key:i.getAttribute('data-k'),value:i.value});}}
+        document.addEventListener('change',function(e){var t=e.target;if(t&&t.classList&&t.classList.contains('tk'))post(t);});
+        document.addEventListener('keydown',function(e){var t=e.target;if(e.key==='Enter'&&t&&t.classList&&t.classList.contains('tk')){e.preventDefault();t.blur();}});
+        })();
+        """;
 
     // Builds the .json download client-side from the embedded copy — works offline, no server.
     private const string ExportScript =

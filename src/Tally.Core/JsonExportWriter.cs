@@ -80,8 +80,8 @@ public static class JsonExportWriter
             .ToList();
 
         var items = group
-            .Where(g => g.Classification.TicketRef is not null)
-            .Select(g => g.Classification.TicketRef!)
+            .Where(g => g.EffectiveTicket is not null)
+            .Select(g => g.EffectiveTicket!)
             .Distinct()
             .Select(ticket => new JsonItem("wi", "#" + ticket, TicketTitle(group, ticket), string.Empty))
             .ToList();
@@ -116,7 +116,7 @@ public static class JsonExportWriter
                 evidence.Add(line);
         }
 
-        foreach (var ticket in group.Select(g => g.Classification.TicketRef).Where(t => t is not null))
+        foreach (var ticket in group.Select(g => g.EffectiveTicket).Where(t => t is not null))
             Add($"Ticket #{ticket}");
 
         foreach (var g in group)
@@ -131,7 +131,7 @@ public static class JsonExportWriter
     }
 
     private static string TicketTitle(List<ClassifiedBlock> group, string ticket)
-        => group.First(g => g.Classification.TicketRef == ticket).Block.Title;
+        => group.First(g => g.EffectiveTicket == ticket).Block.Title;
 
     private static int Seconds(double seconds) => (int)Math.Round(seconds);
 

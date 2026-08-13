@@ -45,8 +45,16 @@ public static class ReportGenerator
 
         var sessions = Sessionizer.Build(events, endOfData);
         var classifier = new Classifier(LoadRules());
+        var overrides = TicketOverrideStore.GetForDate(date);
         var classified = sessions.Blocks
-            .Select(b => new ClassifiedBlock(b, classifier.Classify(b.ProcessName, b.Title)))
+            .Select(b =>
+            {
+                var classification = classifier.Classify(b.ProcessName, b.Title);
+                var key = TicketOverrideKey.ForBlock(
+                    classification.Category, classification.TicketRef, classification.Subject, b.Title);
+                var overrideTicket = overrides.TryGetValue(key, out var t) ? t : null;
+                return new ClassifiedBlock(b, classification, overrideTicket);
+            })
             .ToList();
 
         return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods, timers);

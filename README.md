@@ -27,10 +27,13 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 
 ## Live view
 
-**Open live view** (tray menu, or `tally.exe --live`) opens an in-app window showing the same
-rollup / calls / timeline / activity as a report, for **today**, refreshing every ~5 seconds
-so you can watch it fill in without generating anything. It renders through the same
-`HtmlReportWriter` as the file report, so the live view and a snapshot always agree. A
+**Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
+window showing the same rollup / calls / timeline / timers as a report, for **today**, refreshing
+every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
+**Ticket** column is editable: click any activity row's Ticket cell and type a number — it's saved
+for that day (in `ticket-overrides.json`) and flows into your generated reports and the JSON export.
+It renders through the same `HtmlReportWriter` as the file report, so the live view and a snapshot
+always agree. A
 **Generate snapshot report** button on its toolbar writes a timestamped report when you want a
 frozen copy. The window uses the Microsoft Edge WebView2 runtime (preinstalled on Windows 11);
 if it's missing, the window says so and reports still work from the tray.

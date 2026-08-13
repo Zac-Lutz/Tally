@@ -41,4 +41,14 @@ public sealed record Classification(
     public bool IsUnclassified => Category == Unclassified;
 }
 
-public sealed record ClassifiedBlock(Block Block, Classification Classification);
+/// <summary>
+/// A classified block, plus an optional per-day manual ticket the user typed into the Rollup's
+/// Ticket cell. <see cref="OverrideTicket"/> is kept separate from the auto-detected
+/// <see cref="Classification"/>.<see cref="Classification.TicketRef"/> so the block's original
+/// identity stays stable (grouping and the override key don't shift when a ticket is entered).
+/// <see cref="EffectiveTicket"/> is what reports and the export should show.
+/// </summary>
+public sealed record ClassifiedBlock(Block Block, Classification Classification, string? OverrideTicket = null)
+{
+    public string? EffectiveTicket => OverrideTicket ?? Classification.TicketRef;
+}

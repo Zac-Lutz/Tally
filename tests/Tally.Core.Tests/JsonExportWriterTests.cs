@@ -83,6 +83,20 @@ public class JsonExportWriterTests
     }
 
     [Fact]
+    public void ManualOverrideTicket_FlowsIntoTheExport()
+    {
+        var block = new ClassifiedBlock(
+            new Block(At(8, 0), At(9, 0), "devenv", "Client Profiles"),
+            new Classification("Development", null, null, null, "rule"),
+            OverrideTicket: "777");
+        var root = Parse(JsonExportWriter.BuildJson(Date, [block], [], Context));
+
+        var item = root.GetProperty("slots")[0].GetProperty("items")[0];
+        Assert.Equal("wi", item.GetProperty("kind").GetString());
+        Assert.Equal("#777", item.GetProperty("ref").GetString());
+    }
+
+    [Fact]
     public void SummaryKeyIsOmitted_NotNull()
     {
         var root = Parse(JsonExportWriter.BuildJson(Date, [CB(At(8, 0), At(9, 0), "Email", "Inbox")], [], Context));

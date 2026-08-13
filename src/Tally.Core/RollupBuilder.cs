@@ -2,9 +2,15 @@ using Tally.Core.Models;
 
 namespace Tally.Core;
 
-/// <summary>One aggregated rollup line: a category + specific activity with its summed time.</summary>
+/// <summary>
+/// One aggregated rollup line: a category + specific activity with its summed time.
+/// <see cref="TicketRef"/> is the effective ticket to display (a manual override wins over the
+/// auto-detected one). <see cref="RowKey"/> is the stable identity for a per-day manual ticket
+/// override (null = not editable, e.g. call rows).
+/// </summary>
 public sealed record RollupRow(
-    string Category, string? Client, string? TicketRef, string DetailName, TimeSpan Time);
+    string Category, string? Client, string? TicketRef, string DetailName, TimeSpan Time,
+    string? RowKey = null);
 
 /// <summary>
 /// Builds the report rollup at per-activity granularity. Each distinct activity gets its own row:
@@ -14,15 +20,24 @@ public sealed record RollupRow(
 /// </summary>
 public static class RollupBuilder
 {
+    // Grouping is by the ORIGINAL classification (category, client, auto-ticket, activity), so a
+    // manual override never re-groups a row. The displayed ticket is the effective one (override
+    // wins); the RowKey is built from the original ticket so it stays put once a value is entered.
     public static IReadOnlyList<RollupRow> Build(IReadOnlyList<ClassifiedBlock> blocks)
         => blocks
             .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.TicketRef, Key: ActivityKey(b)))
-            .Select(g => new RollupRow(
-                g.Key.Category,
-                g.Key.Client,
-                g.Key.TicketRef,
-                DisplayName(g),
-                TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks))))
+            .Select(g =>
+            {
+                var detail = DisplayName(g);
+                var overrideTicket = g.Select(x => x.OverrideTicket).FirstOrDefault(o => o is not null);
+                return new RollupRow(
+                    g.Key.Category,
+                    g.Key.Client,
+                    overrideTicket ?? g.Key.TicketRef,
+                    detail,
+                    TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks)),
+                    TicketOverrideKey.ForRow(g.Key.Category, g.Key.TicketRef, detail));
+            })
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
             .ToList();
