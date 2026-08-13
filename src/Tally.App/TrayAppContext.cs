@@ -86,6 +86,14 @@ public sealed class TrayAppContext : ApplicationContext
             ContextMenuStrip = menu,
         };
 
+        // Left-click the tray icon opens the live view (right-click still shows the menu, which
+        // NotifyIcon handles on its own). Handy when Tally is closed to the tray.
+        _trayIcon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                OpenLiveView();
+        };
+
         _hotkeys = new HotkeyListener(
             _settings.TimerStartHotkey, _settings.TimerStopHotkey,
             onStart: () => _timerService.Start(), onStop: () => _timerService.Stop());
@@ -194,10 +202,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void OpenLiveView()
     {
         if (_liveWindow is null || _liveWindow.IsDisposed)
-        {
             _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory, _timerService, _hotkeys, ReloadAutoReportSchedule);
-            _liveWindow.VisibilityChanged += UpdateBubble;
-        }
 
         _liveWindow.ShowLive();
         UpdateBubble();
@@ -212,11 +217,11 @@ public sealed class TrayAppContext : ApplicationContext
         UpdateBubble();
     }
 
-    // The bubble stands in for the app window: shown only while a timer runs AND the live window
-    // isn't visible (minimized, closed to tray, or never opened).
+    // The floating bubble shows whenever a manual timer is running — including while the live
+    // window is open — so the running timer is always visible and draggable on screen.
     private void UpdateBubble()
     {
-        if (_timerService.IsActive && !(_liveWindow?.IsShownNormally ?? false))
+        if (_timerService.IsActive)
             _bubble.ShowBubble();
         else
             _bubble.HideBubble();

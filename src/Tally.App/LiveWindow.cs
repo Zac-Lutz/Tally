@@ -46,12 +46,6 @@ public sealed class LiveWindow : Form
     private bool _refreshing;
     private bool _syncingTimerUi;
 
-    /// <summary>Raised when the window is shown, hidden, minimized, or restored (drives the bubble).</summary>
-    public event Action? VisibilityChanged;
-
-    /// <summary>True when the window is visible and not minimized.</summary>
-    public bool IsShownNormally => Visible && WindowState != FormWindowState.Minimized;
-
     /// <summary>When true (tray-hosted), closing hides the window to keep WebView2 warm. Standalone
     /// (`--live`) sets this false so closing exits the process. A field, not a property, to avoid
     /// the WinForms designer-serialization analyzer (WFO1000).</summary>
@@ -204,18 +198,6 @@ public sealed class LiveWindow : Form
 
     private void UpdateElapsed()
         => _timerElapsed.Text = _timer.IsActive ? TimerText.Elapsed(_timer.Elapsed) : string.Empty;
-
-    protected override void OnResize(EventArgs e)
-    {
-        base.OnResize(e);
-        VisibilityChanged?.Invoke();
-    }
-
-    protected override void OnVisibleChanged(EventArgs e)
-    {
-        base.OnVisibleChanged(e);
-        VisibilityChanged?.Invoke();
-    }
 
     protected override void OnHandleCreated(EventArgs e)
     {
