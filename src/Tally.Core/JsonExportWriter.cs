@@ -53,7 +53,7 @@ public static class JsonExportWriter
         IReadOnlyList<ManualTimer>? timers = null,
         SuggestionSlotOptions? slotOptions = null)
     {
-        var suggestions = SuggestionSlotBuilder.Build(blocks, slotOptions);
+        var suggestions = SuggestionSlotBuilder.Build(blocks, calls, timers, slotOptions);
         var slots = BuildSlots(suggestions, calls, timers ?? [], context.Machine);
         var rangeStart = slots.Count > 0 ? slots[0].Date : date.ToString("yyyy-MM-dd");
         var rangeEnd = slots.Count > 0 ? slots[^1].Date : date.ToString("yyyy-MM-dd");
@@ -100,10 +100,13 @@ public static class JsonExportWriter
             Evidence: BuildEvidence(slot, calls, timers),
             WorkingToward: false,
             // The consumer default-checks the summary when there is one, otherwise every work
-            // item. So a slot WITH a ticket omits the summary — letting the ticket compose the
-            // note is better than a sentence that buries it — and a slot without one supplies it,
-            // so the note panel is never blank.
-            Summary: items.Count > 0 ? null : Cap(note, MaxSummaryLength),
+            // item. An activity slot with a ticket therefore omits the summary — letting the
+            // ticket compose the note beats a sentence that buries it. A call or timer always
+            // supplies one: its own name is the point, and the tickets that happened to be on
+            // screen underneath it must not outrank the meeting in the note.
+            Summary: items.Count > 0 && slot.Kind == SuggestionSlotKind.Activity
+                ? null
+                : Cap(note, MaxSummaryLength),
             Items: items,
             WindowTitles: BuildWindowTitles(slot),
             Browser: [],     // no URL capture
@@ -113,11 +116,15 @@ public static class JsonExportWriter
 
     private static string BuildNote(SuggestionSlot slot)
     {
-        var note = slot.IsOddsAndEnds
-            ? $"Odds and ends — {DistinctActivities(slot)} short activities, none long enough to stand alone"
-            : slot.TicketRef is { } ticket
-                ? $"Ticket #{ticket} - {slot.Label}"
-                : $"{slot.Category} - {slot.Label}";
+        var note = slot.Kind switch
+        {
+            SuggestionSlotKind.OddsAndEnds =>
+                $"Odds and ends — {DistinctActivities(slot)} short activities, none long enough to stand alone",
+            SuggestionSlotKind.Call => $"Call - {slot.Label}",
+            SuggestionSlotKind.Timer => $"Timer - {slot.Label}",
+            _ when slot.TicketRef is { } ticket => $"Ticket #{ticket} - {slot.Label}",
+            _ => $"{slot.Category} - {slot.Label}",
+        };
 
         return Cap(note, MaxNoteLength);
     }

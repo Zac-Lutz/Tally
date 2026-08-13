@@ -123,44 +123,54 @@ public class JsonExportWriterTests
     }
 
     [Fact]
-    public void OverlappingCall_BecomesEvidence()
+    public void AMeeting_IsItsOwnSlot_CarryingWhatWasOnScreenAsDetail()
     {
         var root = Parse(JsonExportWriter.BuildJson(Date,
             [CB(At(13, 0), At(14, 0), "Teams", "Chat | Standup | Microsoft Teams", subject: "Standup")],
-            [new CallSpan(At(13, 5), At(13, 40), "ms-teams", "Sprint planning")],
+            [new CallSpan(At(13, 0), At(14, 0), "ms-teams", "Sprint planning")],
             Context));
 
-        var evidence = root.GetProperty("slots")[0].GetProperty("evidence");
-        var lines = evidence.EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.Contains("Teams: Standup", lines);
-        Assert.Contains("Call: Sprint planning", lines);
+        var slot = Assert.Single(root.GetProperty("slots").EnumerateArray());
+        Assert.Equal("call", slot.GetProperty("bucket").GetString());
+        Assert.Equal(1.0, slot.GetProperty("hours").GetDouble());   // the meeting's hour, once
+        Assert.Contains("Sprint planning", slot.GetProperty("note").GetString());
+        // The meeting names itself in the note panel rather than deferring to what was on screen.
+        Assert.Contains("Sprint planning", slot.GetProperty("summary").GetString());
+        // What was on screen during it survives as detail.
+        var titles = slot.GetProperty("window_titles").EnumerateArray()
+            .Select(w => w.GetProperty("title").GetString()).ToList();
+        Assert.Contains("Chat | Standup | Microsoft Teams", titles);
     }
 
     [Fact]
-    public void OverlappingManualTimer_BecomesEvidence_WithItsDuration()
+    public void AManualTimer_IsItsOwnSlot_AndTheDayIsNotBilledTwice()
     {
-        var timer = new ManualTimer { Name = "Ticket #123 phone call", Start = At(13, 10), End = At(13, 28) };
+        var timer = new ManualTimer { Name = "Ticket #123 phone call", Start = At(13, 0), End = At(13, 30) };
         var root = Parse(JsonExportWriter.BuildJson(Date,
             [CB(At(13, 0), At(14, 0), "HaloPSA", "Ticket #123 - VPN", ticket: "123")],
             [], Context, [timer]));
 
-        var slot = root.GetProperty("slots")[0];
-        var lines = slot.GetProperty("evidence").EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.Contains("Timer: Ticket #123 phone call (18m)", lines);
-        // Timers overlay the slot rather than adding to it — the hours stay the block time.
-        Assert.Equal(1.0, slot.GetProperty("hours").GetDouble());
+        var slots = root.GetProperty("slots").EnumerateArray().ToList();
+        var timerSlot = Assert.Single(slots, s => s.GetProperty("bucket").GetString() == "timer");
+        Assert.Equal(0.5, timerSlot.GetProperty("hours").GetDouble());
+        Assert.Contains("Ticket #123 phone call", timerSlot.GetProperty("note").GetString());
+
+        // The hour of window activity keeps only the half the timer didn't claim.
+        var work = Assert.Single(slots, s => s.GetProperty("bucket").GetString() == "halopsa");
+        Assert.Equal(0.5, work.GetProperty("hours").GetDouble());
+        Assert.Equal(1.0, slots.Sum(s => s.GetProperty("hours").GetDouble()));
     }
 
     [Fact]
-    public void ATimerOutsideASlot_IsNotAttachedToIt()
+    public void ATimerOutsideTheDaysActivity_StillGetsItsOwnLine()
     {
         var timer = new ManualTimer { Name = "Evening admin", Start = At(17, 0), End = At(17, 30) };
         var root = Parse(JsonExportWriter.BuildJson(Date,
             [CB(At(8, 0), At(9, 0), "Email", "Inbox")], [], Context, [timer]));
 
-        var lines = root.GetProperty("slots")[0].GetProperty("evidence")
-            .EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.DoesNotContain(lines, l => l!.StartsWith("Timer:", StringComparison.Ordinal));
+        var slots = root.GetProperty("slots").EnumerateArray().ToList();
+        Assert.Equal(2, slots.Count);
+        Assert.Contains(slots, s => s.GetProperty("note").GetString()!.Contains("Evening admin"));
     }
 
     [Fact]
