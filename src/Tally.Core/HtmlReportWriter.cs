@@ -359,8 +359,10 @@ public static class HtmlReportWriter
         else
         {
             sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-            sb.Append("<tr><th>Timer</th><th>Start</th><th>End</th><th class=\"num\">Duration</th></tr>\n");
-            sb.Append("</thead>\n<tbody>\n");
+            sb.Append("<tr><th>Timer</th><th>Start</th><th>End</th><th class=\"num\">Duration</th>");
+            if (editable)
+                sb.Append("<th></th>");
+            sb.Append("</tr>\n</thead>\n<tbody>\n");
             foreach (var t in timers.OrderByDescending(t => t.Start))
             {
                 var nameCell = editable
@@ -369,7 +371,10 @@ public static class HtmlReportWriter
                 sb.Append("<tr><td>").Append(nameCell).Append("</td>")
                   .Append("<td>").Append(ReportFormat.Clock(t.Start)).Append("</td>")
                   .Append("<td>").Append(ReportFormat.Clock(t.End)).Append("</td>")
-                  .Append("<td class=\"num\">").Append(ReportFormat.Duration(t.Duration)).Append("</td></tr>\n");
+                  .Append("<td class=\"num\">").Append(ReportFormat.Duration(t.Duration)).Append("</td>");
+                if (editable)
+                    sb.Append($"<td class=\"num\"><button class=\"tm-del\" type=\"button\" data-timer-id=\"{t.Id}\" title=\"Delete this recorded timer\">Delete</button></td>");
+                sb.Append("</tr>\n");
             }
 
             sb.Append("</tbody>\n</table>\n</div>\n");
@@ -672,6 +677,9 @@ public static class HtmlReportWriter
         .win-all { background:none; border:1px solid var(--border); border-radius:6px; color:var(--muted);
           font:inherit; font-size:12px; padding:4px 10px; cursor:pointer; }
         .win-all:hover { color:var(--fg); border-color:var(--accent); }
+        .tm-del { background:none; border:1px solid transparent; border-radius:6px; color:var(--muted);
+          font:inherit; font-size:12px; padding:2px 10px; cursor:pointer; }
+        .tm-del:hover { color:#fff; background:#c04141; border-color:#c04141; }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -742,8 +750,10 @@ public static class HtmlReportWriter
         function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
         function name(){var n=document.querySelector('.tm-name');return n?n.value:'';}
         document.addEventListener('click',function(e){
-        var b=e.target.closest?e.target.closest('.tm-go'):null;if(!b)return;
-        post({type:'timerToggle',value:name()});});
+        var b=e.target.closest?e.target.closest('.tm-go'):null;
+        if(b){post({type:'timerToggle',value:name()});return;}
+        var d=e.target.closest?e.target.closest('.tm-del'):null;
+        if(d)post({type:'timerDelete',id:d.getAttribute('data-timer-id')});});
         document.addEventListener('change',function(e){
         if(e.target.classList&&e.target.classList.contains('tm-name'))post({type:'timerRename',value:e.target.value});});
         document.addEventListener('keydown',function(e){

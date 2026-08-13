@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Tally.Core;
+using Tally.Core.Models;
 
 namespace Tally.App;
 
@@ -282,6 +283,10 @@ public sealed class LiveWindow : Form
             {
                 _ = RenameTimerAsync(timerId, msg.Value);
             }
+            else if (msg.Type == "timerDelete" && long.TryParse(msg.Id, out var deleteId))
+            {
+                _ = DeleteTimerAsync(deleteId);
+            }
             else if (msg.Type == "rule")
             {
                 SaveRule(msg);
@@ -395,6 +400,47 @@ public sealed class LiveWindow : Form
         catch (Exception ex)
         {
             Log.Error($"Failed to rename timer {id}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Removes a recorded timer. Recorded time is the one thing here that can't be recomputed from
+    /// events, so the row is read back and named in a confirmation before anything is deleted — and
+    /// the prompt defaults to No.
+    /// </summary>
+    private async Task DeleteTimerAsync(long id)
+    {
+        try
+        {
+            ManualTimer? timer;
+            await using (var db = new TallyDbContext(_dbOptions))
+                timer = await db.ManualTimers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
+
+            if (timer is null)
+                return;
+
+            var answer = MessageBox.Show(
+                this,
+                $"Delete this recorded timer?\n\n{timer.Name}\n{ReportFormat.Clock(timer.Start)}–{ReportFormat.Clock(timer.End)}  ({ReportFormat.Duration(timer.Duration)})\n\nThis can't be undone.",
+                "Delete timer",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (answer != DialogResult.Yes)
+                return;
+
+            await using (var db = new TallyDbContext(_dbOptions))
+                await db.ManualTimers.Where(t => t.Id == id).ExecuteDeleteAsync();
+
+            Log.Info($"Deleted recorded timer {id} ('{timer.Name}') from the live view");
+            Note("timer deleted");
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to delete timer {id}", ex);
+            Note("couldn't delete that timer — see the log");
         }
     }
 

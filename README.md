@@ -157,7 +157,9 @@ Completed timers are saved to the `manual_timers` table and listed in the report
 tab** (name, start, end, duration), and each also appears on the **Rollup** under a **Timer**
 category (the detail is the timer name; timers sharing a name are summed). In the live view you
 can **rename a recorded timer** by editing its name in the Timers tab — the change persists and
-reflects on the Rollup. The running timer shows in the top bar / bubble; it joins the Timers tab
+reflects on the Rollup — and **Delete** at the end of a row removes one you didn't mean to record.
+That asks first, naming the timer and its length: recorded timers are the one thing Tally can't
+rebuild from raw events, so a deleted one is gone. The running timer shows in the top bar / bubble; it joins the Timers tab
 once stopped. In the JSON export a timer appears as **evidence** (`Timer: <name> (18m)`) on the
 slots its time overlaps — like calls, a timer overlays your day rather than adding hours to it, so
 it isn't a slot of its own.

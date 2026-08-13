@@ -2,8 +2,12 @@ using System.Globalization;
 
 namespace Tally.Core;
 
-/// <summary>Formatting shared by the Markdown and HTML report writers.</summary>
-internal static class ReportFormat
+/// <summary>
+/// Formatting shared by the Markdown and HTML report writers — and by the app wherever it names a
+/// duration or a time back to the user, so a confirmation dialog reads the same as the table it
+/// was opened from.
+/// </summary>
+public static class ReportFormat
 {
 
     public static string Duration(TimeSpan t) => t.TotalHours >= 1

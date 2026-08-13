@@ -464,6 +464,37 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void TimersTab_OffersToDeleteEachRecordedTimer()
+    {
+        var timers = new[]
+        {
+            new ManualTimer { Id = 7, Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) },
+            new ManualTimer { Id = 9, Name = "Standup", Start = T0.AddHours(1), End = T0.AddHours(1).AddMinutes(12) },
+        };
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Email", "Inbox")], [], [], timers: timers);
+
+        var panel = Panel(inner, "timers");
+        // Each row carries its own id, so the button deletes the row it sits on and no other.
+        Assert.Contains("class=\"tm-del\" type=\"button\" data-timer-id=\"7\"", panel);
+        Assert.Contains("class=\"tm-del\" type=\"button\" data-timer-id=\"9\"", panel);
+    }
+
+    [Fact]
+    public void LiveShell_CarriesTheDeleteTimerHandler()
+        => Assert.Contains("type:'timerDelete'", HtmlReportWriter.BuildLiveShell());
+
+    [Fact]
+    public void SavedSnapshot_HasNoDeleteButtons()
+    {
+        var timers = new[] { new ManualTimer { Id = 7, Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) } };
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox")], [], [], timers: timers);
+
+        var panel = Panel(md, "timers");
+        Assert.Contains("Ticket #123 call", panel);
+        Assert.DoesNotContain("tm-del", panel);
+    }
+
+    [Fact]
     public void SavedSnapshot_HasNoTimerControl()
     {
         var timers = new[] { new ManualTimer { Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) } };
