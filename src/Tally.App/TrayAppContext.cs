@@ -20,9 +20,10 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly SessionWatcher _session;
     private readonly MicWatcher _mic;
     private readonly ActivityWatcher _activity;
-    private readonly System.Windows.Forms.Timer? _autoReportTimer;
-    private readonly TimeOnly? _autoReportTime;
-    private DateOnly _lastAutoReportDate;
+    private readonly System.Windows.Forms.Timer _autoReportTimer;
+    private IReadOnlyList<TimeOnly> _autoReportTimes;
+    private HashSet<TimeOnly> _firedTimes = [];
+    private DateOnly _firedDate;
     private LiveWindow? _liveWindow;
     private readonly ManualTimerService _timerService;
     private readonly HotkeyListener _hotkeys;
@@ -66,7 +67,7 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Generate today's report", null, (_, _) => GenerateReport(0)));
         menu.Items.Add(new ToolStripMenuItem("Generate yesterday's report", null, (_, _) => GenerateReport(-1)));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => HotkeySettingsDialog.Configure(null, _hotkeys)));
+        menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => SettingsDialog.Configure(null, _hotkeys, ReloadAutoReportSchedule)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Open reports folder", null, (_, _) => OpenFolder(_reportsDirectory)));
         menu.Items.Add(new ToolStripMenuItem("Open data folder", null, (_, _) => OpenFolder(TallyPaths.Root)));
@@ -91,15 +92,11 @@ public sealed class TrayAppContext : ApplicationContext
         _bubble.RestoreRequested += OpenLiveView;
         _timerService.Changed += OnTimerChanged;
 
-        _autoReportTime = _settings.ParseAutoReportTime();
-        if (_settings.AutoReportTime is not null && _autoReportTime is null)
-            Log.Error($"settings.json autoReportTime '{_settings.AutoReportTime}' is not HH:mm — automatic report disabled");
-        if (_autoReportTime is not null)
-        {
-            _autoReportTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
-            _autoReportTimer.Tick += (_, _) => AutoReportTick();
-            _autoReportTimer.Start();
-        }
+        _autoReportTimes = _settings.ResolveAutoReportTimes();
+        _firedDate = DateOnly.FromDateTime(DateTime.Now);
+        _autoReportTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+        _autoReportTimer.Tick += (_, _) => AutoReportTick();
+        _autoReportTimer.Start();
 
         _foreground.Start();
         _idle.Start();
@@ -131,16 +128,29 @@ public sealed class TrayAppContext : ApplicationContext
         {
             var now = DateTime.Now;
             var today = DateOnly.FromDateTime(now);
-            if (_lastAutoReportDate == today || TimeOnly.FromDateTime(now) < _autoReportTime!.Value)
+            if (_firedDate != today)
+            {
+                _firedDate = today;
+                _firedTimes.Clear();
+            }
+
+            // Any configured time that has passed today and hasn't fired yet is due. If several are
+            // due at once (e.g. catching up at startup), generate ONE report and mark them all —
+            // each would show the same "today so far", so duplicates add nothing.
+            var nowTime = TimeOnly.FromDateTime(now);
+            var due = _autoReportTimes.Where(t => t <= nowTime && !_firedTimes.Contains(t)).ToList();
+            if (due.Count == 0)
                 return;
 
-            _lastAutoReportDate = today;
+            foreach (var t in due)
+                _firedTimes.Add(t);
+
             var path = await ReportGenerator.GenerateAsync(_dbOptions, today, _reportsDirectory, _settings.ResolveReportFormat());
-            Log.Info($"Automatic daily report generated: {path}");
+            Log.Info($"Automatic report generated (times {string.Join(", ", due)}): {path}");
             if (_settings.OpenReportOnAutoGenerate)
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
             else
-                _trayIcon.ShowBalloonTip(10_000, "Tally", "Today's report is ready — open it from the tray menu.", ToolTipIcon.Info);
+                _trayIcon.ShowBalloonTip(10_000, "Tally", "A report is ready — open it from the tray menu.", ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
@@ -148,11 +158,23 @@ public sealed class TrayAppContext : ApplicationContext
         }
     }
 
+    // Re-reads the schedule after Settings changes. Times already passed today are marked fired so a
+    // settings save doesn't retroactively spit out a report; new/future times still fire on arrival.
+    private void ReloadAutoReportSchedule()
+    {
+        var settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
+        _autoReportTimes = settings.ResolveAutoReportTimes();
+        var now = DateTime.Now;
+        _firedDate = DateOnly.FromDateTime(now);
+        var nowTime = TimeOnly.FromDateTime(now);
+        _firedTimes = [.. _autoReportTimes.Where(t => t <= nowTime)];
+    }
+
     private void OpenLiveView()
     {
         if (_liveWindow is null || _liveWindow.IsDisposed)
         {
-            _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory, _timerService, _hotkeys);
+            _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory, _timerService, _hotkeys, ReloadAutoReportSchedule);
             _liveWindow.VisibilityChanged += UpdateBubble;
         }
 
@@ -228,7 +250,7 @@ public sealed class TrayAppContext : ApplicationContext
         _hotkeys.Dispose();
         _bubble.Dispose();
         _liveWindow?.Dispose();
-        _autoReportTimer?.Dispose();
+        _autoReportTimer.Dispose();
         _foreground.Dispose();
         _idle.Dispose();
         _session.Dispose();

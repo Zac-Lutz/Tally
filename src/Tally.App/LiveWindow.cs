@@ -32,6 +32,7 @@ public sealed class LiveWindow : Form
     private readonly string _reportsDirectory;
     private readonly ManualTimerService _timer;
     private readonly HotkeyListener? _hotkeys;
+    private readonly Action? _onSettingsSaved;
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = ChromeBg };
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
@@ -56,13 +57,14 @@ public sealed class LiveWindow : Form
     /// the WinForms designer-serialization analyzer (WFO1000).</summary>
     internal bool HideOnClose = true;
 
-    public LiveWindow(DbContextOptions<TallyDbContext> dbOptions, TallySettings settings, string reportsDirectory, ManualTimerService timer, HotkeyListener? hotkeys = null)
+    public LiveWindow(DbContextOptions<TallyDbContext> dbOptions, TallySettings settings, string reportsDirectory, ManualTimerService timer, HotkeyListener? hotkeys = null, Action? onSettingsSaved = null)
     {
         _dbOptions = dbOptions;
         _settings = settings;
         _reportsDirectory = reportsDirectory;
         _timer = timer;
         _hotkeys = hotkeys;
+        _onSettingsSaved = onSettingsSaved;
 
         Text = "Tally — Live";
         Width = 1120;
@@ -112,7 +114,7 @@ public sealed class LiveWindow : Form
 
         var settings = new Button { Text = "Settings", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 0, 0), Cursor = Cursors.Hand };
         StyleButton(settings);
-        settings.Click += (_, _) => HotkeySettingsDialog.Configure(this, _hotkeys);
+        settings.Click += (_, _) => SettingsDialog.Configure(this, _hotkeys, _onSettingsSaved);
 
         StyleButton(_timerButton);
 

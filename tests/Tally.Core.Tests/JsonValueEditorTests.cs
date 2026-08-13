@@ -45,6 +45,38 @@ public class JsonValueEditorTests
         Assert.Equal("Alt+F9", ValueOf(updated, "timerStartHotkey"));
     }
 
+    private static string[] ArrayOf(string json, string key)
+        => JsonDocument.Parse(json, Options).RootElement.GetProperty(key)
+            .EnumerateArray().Select(e => e.GetString()!).ToArray();
+
+    [Fact]
+    public void SetStringArray_InsertsWhenAbsent()
+    {
+        const string json = """{ "a": "x" }""";
+        var updated = JsonValueEditor.SetStringArrayProperty(json, "autoReportTimes", ["12:00", "17:30"]);
+
+        Assert.Equal(new[] { "12:00", "17:30" }, ArrayOf(updated, "autoReportTimes"));
+        Assert.Equal("x", ValueOf(updated, "a"));
+    }
+
+    [Fact]
+    public void SetStringArray_ReplacesExisting()
+    {
+        const string json = """{ "autoReportTimes": ["09:00"], "b": 1 }""";
+        var updated = JsonValueEditor.SetStringArrayProperty(json, "autoReportTimes", ["12:00", "15:30", "17:30"]);
+
+        Assert.Equal(new[] { "12:00", "15:30", "17:30" }, ArrayOf(updated, "autoReportTimes"));
+    }
+
+    [Fact]
+    public void SetStringArray_Empty_WritesEmptyArray()
+    {
+        const string json = """{ "autoReportTimes": ["09:00"] }""";
+        var updated = JsonValueEditor.SetStringArrayProperty(json, "autoReportTimes", []);
+
+        Assert.Empty(ArrayOf(updated, "autoReportTimes"));
+    }
+
     [Fact]
     public void OnlyReplacesFirstMatch_AndProducesValidJson()
     {

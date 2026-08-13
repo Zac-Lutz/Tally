@@ -2,21 +2,22 @@ using Tally.Core;
 
 namespace Tally.App;
 
-/// <summary>Persists individual settings back to settings.json, preserving comments/formatting.</summary>
+/// <summary>Persists settings back to settings.json, preserving comments/formatting.</summary>
 internal static class SettingsWriter
 {
-    public static void UpdateHotkeys(string path, string startSpec, string stopSpec)
+    public static void UpdateSettings(string path, string startHotkey, string stopHotkey, IReadOnlyList<string> autoReportTimes)
     {
         try
         {
             var text = File.Exists(path) ? File.ReadAllText(path) : TallySettings.DefaultJson;
-            text = JsonValueEditor.SetStringProperty(text, "timerStartHotkey", startSpec);
-            text = JsonValueEditor.SetStringProperty(text, "timerStopHotkey", stopSpec);
+            text = JsonValueEditor.SetStringProperty(text, "timerStartHotkey", startHotkey);
+            text = JsonValueEditor.SetStringProperty(text, "timerStopHotkey", stopHotkey);
+            text = JsonValueEditor.SetStringArrayProperty(text, "autoReportTimes", autoReportTimes);
             File.WriteAllText(path, text);
         }
         catch (Exception ex)
         {
-            Log.Error("Failed to save hotkey settings", ex);
+            Log.Error("Failed to save settings", ex);
         }
     }
 }

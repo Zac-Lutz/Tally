@@ -13,8 +13,11 @@ public sealed record TallySettings
         AllowTrailingCommas = true,
     };
 
-    /// <summary>Local time (HH:mm) to auto-generate the daily report. Null disables the timer.</summary>
+    /// <summary>Legacy single auto-report time; superseded by <see cref="AutoReportTimes"/> when present.</summary>
     public string? AutoReportTime { get; init; } = "17:30";
+
+    /// <summary>Local times (HH:mm) to auto-generate the report. Several = multiple snapshots; empty disables.</summary>
+    public string[]? AutoReportTimes { get; init; }
 
     /// <summary>Open the report file when the timed report generates (a tray balloon always shows).</summary>
     public bool OpenReportOnAutoGenerate { get; init; }
@@ -34,8 +37,23 @@ public sealed record TallySettings
     /// <summary>Global hotkey to stop the running manual timer, e.g. "Ctrl+Alt+S".</summary>
     public string TimerStopHotkey { get; init; } = "Ctrl+Alt+S";
 
-    public TimeOnly? ParseAutoReportTime()
-        => TimeOnly.TryParseExact(AutoReportTime, ["HH:mm", "H:mm"], out var time) ? time : null;
+    /// <summary>
+    /// The distinct, sorted auto-report times. Uses <see cref="AutoReportTimes"/> when set (even
+    /// empty, to allow disabling); otherwise falls back to the legacy single <see cref="AutoReportTime"/>.
+    /// Unparseable entries are skipped.
+    /// </summary>
+    public IReadOnlyList<TimeOnly> ResolveAutoReportTimes()
+    {
+        var raw = AutoReportTimes is not null
+            ? AutoReportTimes.AsEnumerable()
+            : AutoReportTime is { } single ? [single] : [];
+
+        var times = new SortedSet<TimeOnly>();
+        foreach (var s in raw)
+            if (s is not null && TimeOnly.TryParseExact(s.Trim(), ["HH:mm", "H:mm"], out var t))
+                times.Add(t);
+        return times.ToList();
+    }
 
     public string ResolveReportsDirectory()
         => string.IsNullOrWhiteSpace(ReportsDirectory)
@@ -68,9 +86,10 @@ public sealed record TallySettings
     public const string DefaultJson =
         """
         {
-          // Local time (HH:mm) to auto-generate the daily report; set to null to disable.
-          // If tally starts after this time, it catches up once shortly after startup.
-          "autoReportTime": "17:30",
+          // Local times (HH:mm) to auto-generate the report. Add several for multiple snapshots
+          // per day; empty [] disables. Configure these under Settings in the app. If tally starts
+          // after a time, it catches up once shortly after startup.
+          "autoReportTimes": ["17:30"],
           // Open the report automatically when the timed report generates (a tray balloon always shows).
           "openReportOnAutoGenerate": false,
           // Where reports are written; environment variables (%USERPROFILE%) are expanded.

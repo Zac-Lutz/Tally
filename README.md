@@ -63,11 +63,14 @@ is a valid picture of the morning. Three triggers:
 - **CLI** — `tally.exe --report [today|yesterday|yyyy-MM-dd] [html|md]` writes the file
   headlessly (works while the tray instance runs; usable from a scheduled task). The optional
   format arg overrides the setting for that one run.
-- **Automatic daily** — at the time set in `%USERPROFILE%\.tally\settings.json`
-  (`autoReportTime`, default `17:30`, machine-local time; `null` disables). Shows a tray
-  balloon when ready, or set `openReportOnAutoGenerate: true` to pop the file open. If
-  tally starts after that time, it catches up once shortly after startup. Settings are
-  read at startup — restart tally (or rerun `Install-Tally.ps1`) after editing.
+- **Automatic** — at one or more times a day. Configure them in the app under **Settings**
+  (tray menu or the live view's Settings button): add each time with the picker, or remove
+  them; no times = auto-reports off. They're stored as `autoReportTimes` (e.g.
+  `["12:00", "17:30"]`, machine-local) in `settings.json`, and applied immediately when you
+  save — no restart. Each time shows a tray balloon when ready (or set
+  `openReportOnAutoGenerate: true` to pop the file open); if tally starts after a time, it
+  catches up once shortly after startup. (The old single `autoReportTime` still works as a
+  fallback if `autoReportTimes` isn't set.)
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
 opens in the browser: stat cards up top, then **Rollup / Calls / Timeline / Timers as tabs** —
