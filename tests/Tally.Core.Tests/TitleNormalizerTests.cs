@@ -28,6 +28,30 @@ public class TitleNormalizerTests
         Assert.Equal(a, c);
     }
 
+    [Theory]
+    [InlineData(@"*C:\Users\me\@NOTES.txt - Notepad++", @"C:\Users\me\@NOTES.txt - Notepad++")]
+    [InlineData("*Untitled - Notepad", "Untitled - Notepad")]
+    [InlineData("● Sessionizer.cs - tally - Visual Studio Code", "Sessionizer.cs - tally - Visual Studio Code")]
+    public void StripsTheUnsavedChangesMarker(string input, string expected)
+        => Assert.Equal(expected, TitleNormalizer.Normalize(input));
+
+    [Fact]
+    public void TheSameFile_DirtyOrSaved_NormalizesToOneKey()
+    {
+        var dirty = TitleNormalizer.Normalize(@"*C:\Users\me\@NOTES.txt - Notepad++");
+        var saved = TitleNormalizer.Normalize(@"C:\Users\me\@NOTES.txt - Notepad++");
+
+        Assert.Equal(dirty, saved);
+    }
+
+    [Fact]
+    public void AnAsteriskInsideATitle_IsLeftAlone()
+    {
+        // Only the leading marker is chrome; a star anywhere else is part of the name.
+        const string title = "Rating: 5* review - Work";
+        Assert.Equal(title, TitleNormalizer.Normalize(title));
+    }
+
     [Fact]
     public void NonBrowserTitles_AreUnchanged()
     {
