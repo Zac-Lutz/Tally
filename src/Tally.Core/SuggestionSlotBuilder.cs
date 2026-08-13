@@ -50,6 +50,14 @@ public sealed record SuggestionSlotOptions
 
     /// <summary>Below this the odds-and-ends slot isn't worth emitting at all.</summary>
     public TimeSpan MinimumOddsAndEnds { get; init; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Keep only slots that <b>begin</b> at or after this local time. Null covers the whole day.
+    /// </summary>
+    public TimeOnly? WindowStart { get; init; }
+
+    /// <summary>Keep only slots that <b>begin</b> before this local time. Null covers the whole day.</summary>
+    public TimeOnly? WindowEnd { get; init; }
 }
 
 /// <summary>
@@ -133,9 +141,25 @@ public static class SuggestionSlotBuilder
         slots.AddRange(ActivitySlots(free, opts));
 
         return slots
+            .Where(s => InWindow(s, opts.WindowStart, opts.WindowEnd))
             .OrderBy(s => s.Start)
             .ThenBy(s => s.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Whether a slot belongs to an export window. Membership is decided by where a slot
+    /// <b>begins</b>, never by overlap: a meeting running through the cut-off belongs to the half
+    /// of the day it started in, so exporting a morning and then an afternoon covers everything
+    /// exactly once instead of billing the straddler twice.
+    /// </summary>
+    public static bool InWindow(SuggestionSlot slot, TimeOnly? from, TimeOnly? to)
+    {
+        if (from is null && to is null)
+            return true;
+
+        var at = TimeOnly.FromDateTime(slot.Start.ToLocalTime().DateTime);
+        return (from is null || at >= from) && (to is null || at < to);
     }
 
     /// <summary>

@@ -214,4 +214,62 @@ public class SuggestionSlotBuilderTests
     [Fact]
     public void AnEmptyDay_ProducesNoSlots()
         => Assert.Empty(SuggestionSlotBuilder.Build([]));
+
+    // ---- Export window ----
+
+    private static SuggestionSlotOptions Window(string? from, string? to) => new()
+    {
+        WindowStart = from is null ? null : TimeOnly.Parse(from),
+        WindowEnd = to is null ? null : TimeOnly.Parse(to),
+    };
+
+    [Fact]
+    public void NoWindow_KeepsTheWholeDay()
+    {
+        var day = new[] { CB(0, 30, "Development", "Morning"), CB(360, 400, "Development", "Afternoon") };
+
+        Assert.Equal(2, SuggestionSlotBuilder.Build(day).Count);
+    }
+
+    [Fact]
+    public void AWindow_KeepsOnlyWhatStartedInsideIt()
+    {
+        // T0 is 08:00; the second block starts at 14:00.
+        var day = new[] { CB(0, 30, "Development", "Morning"), CB(360, 400, "Development", "Afternoon") };
+
+        var morning = SuggestionSlotBuilder.Build(day, options: Window(null, "12:00"));
+        var afternoon = SuggestionSlotBuilder.Build(day, options: Window("12:00", null));
+
+        Assert.Equal("Morning", Assert.Single(morning).Label);
+        Assert.Equal("Afternoon", Assert.Single(afternoon).Label);
+    }
+
+    [Fact]
+    public void ASlotStraddlingTheCutOff_BelongsOnlyToTheHalfItStartedIn()
+    {
+        // A meeting from 11:30 to 12:30 with a noon split must be billed once, not in both halves.
+        var calls = new[] { Call(210, 270, "Long meeting | Microsoft Teams") };
+
+        var morning = SuggestionSlotBuilder.Build([], calls, options: Window(null, "12:00"));
+        var afternoon = SuggestionSlotBuilder.Build([], calls, options: Window("12:00", null));
+
+        Assert.Single(morning);
+        Assert.Empty(afternoon);
+    }
+
+    [Fact]
+    public void TwoSlicesOfADay_CoverExactlyTheWholeDayBetweenThem()
+    {
+        var day = new[] { CB(0, 90, "Development", "Morning"), CB(300, 400, "Browsing", "Afternoon") };
+        var whole = SuggestionSlotBuilder.Build(day);
+
+        var split = SuggestionSlotBuilder.Build(day, options: Window(null, "12:00"))
+            .Concat(SuggestionSlotBuilder.Build(day, options: Window("12:00", null)))
+            .ToList();
+
+        Assert.Equal(whole.Count, split.Count);
+        Assert.Equal(
+            TimeSpan.FromTicks(whole.Sum(s => s.Reported.Ticks)),
+            TimeSpan.FromTicks(split.Sum(s => s.Reported.Ticks)));
+    }
 }

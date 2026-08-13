@@ -420,6 +420,50 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void TimesheetTab_OffersAnExportWindow_BlankByDefault()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 60, "Development", "Tally")], [], []);
+
+        var panel = Panel(inner, "timesheet");
+        Assert.Contains("class=\"win-from\" type=\"time\" value=\"\"", panel);   // blank = whole day
+        Assert.Contains("class=\"win-to\" type=\"time\" value=\"\"", panel);
+        Assert.DoesNotContain("win-all", panel);                                // nothing to reset yet
+    }
+
+    [Fact]
+    public void TimesheetTab_ShowsTheChosenWindow_AndHowToClearIt()
+    {
+        var options = new SuggestionSlotOptions { WindowEnd = new TimeOnly(12, 0) };
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 60, "Development", "Tally")], [], [],
+            slotOptions: options);
+
+        var panel = Panel(inner, "timesheet");
+        Assert.Contains("class=\"win-to\" type=\"time\" value=\"12:00\"", panel);
+        Assert.Contains("Whole day", panel);
+        // The consequence of slicing is stated where the slicing happens.
+        Assert.Contains("replaces that day&#39;s suggestions", panel.Replace("'", "&#39;"));
+    }
+
+    [Fact]
+    public void TimesheetTab_SaysSo_WhenTheWindowCatchesNothing()
+    {
+        // Blocks run 9:00-10:00 local; the window asks for the afternoon.
+        var options = new SuggestionSlotOptions { WindowStart = new TimeOnly(13, 0) };
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 60, "Development", "Tally")], [], [],
+            slotOptions: options);
+
+        Assert.Contains("Nothing started inside that window", Panel(inner, "timesheet"));
+    }
+
+    [Fact]
+    public void SavedSnapshot_HasNoExportWindowControl()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 60, "Development", "Tally")], [], []);
+
+        Assert.DoesNotContain("win-from", Panel(md, "timesheet"));
+    }
+
+    [Fact]
     public void SavedSnapshot_HasNoTimerControl()
     {
         var timers = new[] { new ManualTimer { Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) } };

@@ -24,6 +24,7 @@ public sealed class TrayAppContext : ApplicationContext
     private HashSet<TimeOnly> _firedTimes = [];
     private DateOnly _firedDate;
     private LiveWindow? _liveWindow;
+    private bool _liveFocused;
     private readonly ManualTimerService _timerService;
     private readonly HotkeyListener _hotkeys;
     private readonly TimerBubble _bubble;
@@ -217,7 +218,20 @@ public sealed class TrayAppContext : ApplicationContext
     private void OpenLiveView()
     {
         if (_liveWindow is null || _liveWindow.IsDisposed)
+        {
             _liveWindow = new LiveWindow(_dbOptions, _settings, _reportsDirectory, _timerService, _hotkeys, ReloadAutoReportSchedule);
+
+            // The bubble steps aside only while the live window has the user's attention, so it
+            // tracks activation rather than mere visibility.
+            _liveWindow.Activated += (_, _) => { _liveFocused = true; UpdateBubble(); };
+            _liveWindow.Deactivate += (_, _) => { _liveFocused = false; UpdateBubble(); };
+            _liveWindow.VisibleChanged += (_, _) =>
+            {
+                if (_liveWindow is { Visible: false })
+                    _liveFocused = false;
+                UpdateBubble();
+            };
+        }
 
         _liveWindow.ShowLive();
         UpdateBubble();
@@ -232,11 +246,18 @@ public sealed class TrayAppContext : ApplicationContext
         UpdateBubble();
     }
 
-    // The floating bubble shows whenever a manual timer is running — including while the live
-    // window is open — so the running timer is always visible and draggable on screen.
+    /// <summary>
+    /// The floating bubble is visible whenever a timer runs, wherever you are — including with the
+    /// live window open behind another app. The one exception is the live window having focus:
+    /// there the timer is already on screen (top bar and Timers tab), so a bubble on top of it is
+    /// just something in the way.
+    /// </summary>
     private void UpdateBubble()
     {
-        if (_timerService.IsActive)
+        var liveHasFocus = _liveFocused
+            && _liveWindow is { IsDisposed: false, Visible: true, WindowState: not FormWindowState.Minimized };
+
+        if (_timerService.IsActive && !liveHasFocus)
             _bubble.ShowBubble();
         else
             _bubble.HideBubble();

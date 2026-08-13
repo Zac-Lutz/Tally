@@ -59,6 +59,13 @@ Everything stays on this machine. No cloud, no telemetry.
   (no URL/repo capture). `summary` is emitted only where it helps: omitted for a ticketed activity
   slot so the consumer default-checks the work item, always supplied for a call/timer so the
   meeting's own name isn't outranked in the note by a ticket that happened to be on screen.
+- **An export window partitions by slot START, never by overlap.** Splitting a day (file the
+  morning at lunch, the afternoon at close) has to cover the day exactly once; a meeting running
+  through the cut-off would otherwise be billed in both halves. Start-membership makes the slices
+  disjoint and exhaustive. The window lives in `SuggestionSlotOptions`, so the Timesheet tab's
+  preview and the written file are the same query — the calendar is never showing something the
+  export won't contain. Note the consumer replaces a whole day's suggestions on import, so a second
+  slice clears the first's un-logged cards; the tab says so where the slicing happens.
 - **Exporting belongs to the live view, not the saved snapshot.** A snapshot is a frozen record;
   an export embedded in it goes stale the moment the day moves on. The live window writes the file
   after bringing up the Timesheet tab, so what uploads is reviewed first.

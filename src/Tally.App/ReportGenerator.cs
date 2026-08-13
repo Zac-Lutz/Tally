@@ -92,11 +92,11 @@ public static class ReportGenerator
     /// headless <c>--report ... json</c> run and the live view's export button so both write the
     /// same document.
     /// </summary>
-    public static string BuildExportJson(ReportData data)
+    public static string BuildExportJson(ReportData data, SuggestionSlotOptions? slotOptions = null)
         => JsonExportWriter.BuildJson(
             data.Date, data.Blocks, data.Calls,
             new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now),
-            data.Timers);
+            data.Timers, slotOptions);
 
     private static IReadOnlyList<ClassificationRule> LoadRules()
     {

@@ -47,6 +47,17 @@ suggestion card sitting next to your meetings; click **Log Time** on one and the
 prefilled. Nothing is entered automatically, re-uploading never touches entries you've already
 created, and once you log time from a suggestion it shows **Added**.
 
+**Export part of a day.** By default the export covers everything. The **Export … to …** boxes at
+the top of the Timesheet tab narrow it — file the morning at lunch, then the afternoon at the end
+of the day. The calendar below updates as you change them, so you always see exactly what will be
+written, and the window is in the saved filename (`tally-2026-08-13-0800-1200.json`). **Whole day**
+clears it.
+
+An entry belongs to the window it *started* in, so two slices never double-count a meeting that
+ran through the cut-off. One thing to know: importing into att **replaces that day's suggestions**,
+so log the morning's entries before you upload the afternoon — time you've already logged is never
+touched, but un-logged suggestion cards from the earlier slice will go.
+
 **Check it before you send it.** The **Timesheet** tab draws the day as a calendar — each entry a
 block sitting where the work happened, coloured by category, with the hours to enter on it. Hover a
 block for its times and the measured-vs-rounded figures. Entries that overlap in time sit side by
@@ -135,10 +146,12 @@ yourself (e.g. "Ticket #123 — phone call"):
   started it from. Editing the name while it runs renames it live. However a timer was started, its
   elapsed time also shows in the top bar, so it stays visible from any tab.
 - **Tray menu** has a Start/Stop timer item too.
-- When a timer runs and the main window isn't visible (minimized or closed to tray), a small
-  **floating bubble** appears at the bottom-right showing the name + elapsed time, with a stop
-  button. **Drag it** anywhere; **double-click** it to reopen the app; **right-click** it to
-  rename the timer (inline) or stop it — without opening the full app.
+- While a timer runs, a small **floating bubble** sits at the bottom-right showing the name +
+  elapsed time, with a stop button — on top of whatever you're working in, whether the live window
+  is closed, minimized, or just behind something else. It steps aside only while the live window
+  itself has focus, where the timer is already on screen. **Drag it** anywhere; **double-click** it
+  to reopen the app; **right-click** it to rename the timer (inline) or stop it — without opening
+  the full app.
 
 Completed timers are saved to the `manual_timers` table and listed in the report's **Timers
 tab** (name, start, end, duration), and each also appears on the **Rollup** under a **Timer**
