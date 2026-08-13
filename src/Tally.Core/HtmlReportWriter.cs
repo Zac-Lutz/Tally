@@ -311,7 +311,7 @@ public static class HtmlReportWriter
 
     // Categories seen today, plus the shipped defaults so a fresh day still offers sensible names.
     private static readonly string[] BaselineCategories =
-        ["Admin", "Browsing", "Development", "Email", "HaloPSA", "Meetings", "Remote Support", "Teams"];
+        ["Admin", "Browsing", "Development", "Discord", "Email", "HaloPSA", "Meetings", "Remote Support", "Teams"];
 
     private static IReadOnlyList<string> KnownCategories(IReadOnlyList<ClassifiedBlock> blocks)
         => blocks
@@ -553,6 +553,7 @@ public static class HtmlReportWriter
     {
         "HaloPSA" => "59,130,246",
         "Teams" => "139,92,246",
+        "Discord" => "88,101,242",
         "Email" => "20,184,166",
         "Development" => "34,197,94",
         "Browsing" => "234,179,8",

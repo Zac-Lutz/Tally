@@ -30,6 +30,38 @@ public class ClassifierTests
         Assert.Equal("12345", c.TicketRef);
     }
 
+    // The four title shapes Discord actually produces, taken from a real day's captures.
+    [Theory]
+    [InlineData("#type-here-just-no-client-info-eh | Lutz Tech - Discord", "#type-here-just-no-client-info-eh | Lutz Tech")]
+    [InlineData("@zyr - Discord", "@zyr")]
+    [InlineData("Friends - Discord", "Friends")]
+    public void Discord_ChannelIsCapturedAsTheSubject(string title, string expected)
+    {
+        var c = DefaultClassifier().Classify("Discord", title);
+
+        Assert.Equal("Discord", c.Category);
+        Assert.Equal(expected, c.Subject);
+    }
+
+    [Theory]
+    [InlineData("Discord")]
+    [InlineData("")]
+    public void Discord_WithNoChannelInTheTitle_IsStillDiscord(string title)
+    {
+        var c = DefaultClassifier().Classify("Discord", title);
+
+        Assert.Equal("Discord", c.Category);
+        Assert.Null(c.Subject);
+    }
+
+    [Fact]
+    public void Discord_DoesNotClaimOtherAppsThatMentionIt()
+    {
+        // A shell jump list and a browser tab both say "Discord"; only the app itself counts.
+        Assert.True(DefaultClassifier().Classify("ShellExperienceHost", "Jump List for Discord").IsUnclassified);
+        Assert.Equal("Browsing", DefaultClassifier().Classify("chrome", "Discord | Lutz Tech").Category);
+    }
+
     [Fact]
     public void ScreenConnect_ClientIsCapturedFromTitle()
     {

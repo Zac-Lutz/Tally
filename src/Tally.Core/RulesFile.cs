@@ -189,6 +189,11 @@ public static partial class RulesFile
             // Capture that name as the subject so the rollup separates each conversation.
             { "id": "teams-chat", "processPattern": "^(ms-teams|msteams|Teams)$", "titlePattern": "^(?:Chat \\| )?(?<subject>.+?)\\s*\\| Microsoft Teams", "category": "Teams" },
             { "id": "teams", "processPattern": "^(ms-teams|msteams|Teams)$", "category": "Teams" },
+            // Discord titles the focused channel, DM or view: "#channel | Server - Discord",
+            // "@someone - Discord", "Friends - Discord". Capturing it as the subject separates each
+            // conversation on the rollup; a bare "Discord" falls through to the rule below.
+            { "id": "discord-channel", "processPattern": "^Discord$", "titlePattern": "^(?<subject>.+?)\\s*-\\s*Discord$", "category": "Discord" },
+            { "id": "discord", "processPattern": "^Discord$", "category": "Discord" },
             { "id": "terminal", "processPattern": "^(WindowsTerminal|wt|OpenConsole|conhost|powershell|pwsh|cmd)$", "category": "Development" },
             { "id": "vscode", "processPattern": "^Code$", "category": "Development" },
             { "id": "visual-studio", "processPattern": "^devenv$", "category": "Development" },

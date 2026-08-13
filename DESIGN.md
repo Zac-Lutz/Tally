@@ -19,8 +19,11 @@ Everything stays on this machine. No cloud, no telemetry.
   the low-level keyboard hook is the component most likely to trip endpoint-security/antivirus.
   Idle/lock detection alone covers "was I actually at the machine."
 - **Classification `subject`** is a third capture field beside client/ticket, for a free-text
-  what/who (Teams chat name today). The Teams title `Chat | <name> | Microsoft Teams` yields
-  `<name>`; a channel `Chat | Team | Channel | Microsoft Teams` keeps `Team | Channel`.
+  what/who (a chat or channel name). The Teams title `Chat | <name> | Microsoft Teams` yields
+  `<name>`; a channel `Chat | Team | Channel | Microsoft Teams` keeps `Team | Channel`. Discord
+  follows the same shape from the other end of the title (`… - Discord`), with a process-gated
+  fallback for the bare `Discord` window — chat apps title themselves by what's focused, so both
+  get a specific rule plus a catch-all rather than one loose pattern.
 - **Saved rules are placed by specificity, not appended blindly.** Rules are first-match-wins, so
   a rule written from the Unclassified tab lands where its breadth earns: a *window* rule (app +
   exact title) goes first — it names one thing and should beat the generic rules — while an *app*
