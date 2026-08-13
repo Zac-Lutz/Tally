@@ -60,15 +60,13 @@ public static class ReportWriter
         var active = TimeSpan.FromTicks(blocks.Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactivePeriods.Sum(p => p.Duration.Ticks));
-        var totalKeys = blocks.Sum(b => b.Activity.Keystrokes);
-        var totalClicks = blocks.Sum(b => b.Activity.MouseClicks);
         if (blocks.Count == 0 && calls.Count == 0)
             return;   // timers-only day: no auto-tracked range to summarize
         var first = blocks.Count > 0 ? blocks[0].Block.Start : calls[0].Start;
         var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
 
         sb.AppendLine(
-            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)} \u00b7 {totalKeys} keys \u00b7 {totalClicks} clicks");
+            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)}");
         sb.AppendLine();
     }
 
@@ -83,14 +81,14 @@ public static class ReportWriter
 
         sb.AppendLine("## Rollup");
         sb.AppendLine();
-        sb.AppendLine("| Category | Detail | Ticket | Time | Keys/Clk |");
-        sb.AppendLine("|---|---|---|---|---|");
+        sb.AppendLine("| Category | Detail | Ticket | Time |");
+        sb.AppendLine("|---|---|---|---|");
 
         foreach (var row in rows)
         {
             var ticket = row.TicketRef is { } t ? $"#{t}" : string.Empty;
             sb.AppendLine(
-                $"| {Esc(row.Category)} | {Esc(Detail(row.Client, row.DetailName))} | {Esc(ticket)} | {Fmt(row.Time)} | {ActivityCell(row.Keystrokes, row.MouseClicks)} |");
+                $"| {Esc(row.Category)} | {Esc(Detail(row.Client, row.DetailName))} | {Esc(ticket)} | {Fmt(row.Time)} |");
         }
 
         sb.AppendLine();
@@ -118,14 +116,14 @@ public static class ReportWriter
     {
         sb.AppendLine("## Timeline");
         sb.AppendLine();
-        sb.AppendLine("| Start | End | Duration | Category | Keys/Clk | Title |");
-        sb.AppendLine("|---|---|---|---|---|---|");
+        sb.AppendLine("| Start | End | Duration | Category | Title |");
+        sb.AppendLine("|---|---|---|---|---|");
         // Newest first — most recent activity at the top.
         for (var i = blocks.Count - 1; i >= 0; i--)
         {
             var b = blocks[i];
             sb.AppendLine(
-                $"| {Clock(b.Block.Start)} | {Clock(b.Block.End)} | {Fmt(b.Block.Duration)} | {Esc(b.Classification.Category)} | {ActivityCell(b.Activity.Keystrokes, b.Activity.MouseClicks)} | {Esc(b.Block.Title)} |");
+                $"| {Clock(b.Block.Start)} | {Clock(b.Block.End)} | {Fmt(b.Block.Duration)} | {Esc(b.Classification.Category)} | {Esc(b.Block.Title)} |");
         }
 
         sb.AppendLine();
@@ -161,9 +159,6 @@ public static class ReportWriter
     }
 
     private static string Detail(string? client, string? subject) => ReportFormat.Detail(client, subject);
-
-    private static string ActivityCell(int keys, int clicks)
-        => keys == 0 && clicks == 0 ? "—" : $"{keys}/{clicks}";
 
     private static string Clock(DateTimeOffset t) => ReportFormat.Clock(t);
 

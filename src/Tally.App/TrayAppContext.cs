@@ -19,7 +19,6 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly IdleWatcher _idle;
     private readonly SessionWatcher _session;
     private readonly MicWatcher _mic;
-    private readonly ActivityWatcher _activity;
     private readonly System.Windows.Forms.Timer _autoReportTimer;
     private IReadOnlyList<TimeOnly> _autoReportTimes;
     private HashSet<TimeOnly> _firedTimes = [];
@@ -52,12 +51,10 @@ public sealed class TrayAppContext : ApplicationContext
         _idle = new IdleWatcher();
         _session = new SessionWatcher();
         _mic = new MicWatcher();
-        _activity = new ActivityWatcher();
         _foreground.EventCaptured += _recorder.Record;
         _idle.EventCaptured += _recorder.Record;
         _session.EventCaptured += _recorder.Record;
         _mic.EventCaptured += _recorder.Record;
-        _activity.SampleReady += _recorder.RecordSample;
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Open live view", null, (_, _) => OpenLiveView()));
@@ -70,6 +67,7 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Generate yesterday's report", null, (_, _) => GenerateReport(-1)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => SettingsDialog.Configure(null, _hotkeys, ReloadAutoReportSchedule)));
+        menu.Items.Add(new ToolStripMenuItem("Check for updates…", null, (_, _) => CheckForUpdates()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Open reports folder", null, (_, _) => OpenFolder(_reportsDirectory)));
         menu.Items.Add(new ToolStripMenuItem("Open data folder", null, (_, _) => OpenFolder(TallyPaths.Root)));
@@ -112,7 +110,6 @@ public sealed class TrayAppContext : ApplicationContext
         _idle.Start();
         _session.Start();
         _mic.Start();
-        _activity.Start();
 
         // First auto-update check ~8s after startup (once the message loop is running, so the
         // async continuation resumes on the UI thread), then every 4 hours.
@@ -133,6 +130,15 @@ public sealed class TrayAppContext : ApplicationContext
 
         _ = AppUpdater.CheckAndStageAsync(version =>
             _trayIcon.ShowBalloonTip(10_000, "Tally", $"Update {version} downloaded — it applies next time you restart Tally.", ToolTipIcon.Info));
+    }
+
+    // Right-click tray -> "Check for updates…": check now, and if one exists, download it and
+    // restart into it right away instead of waiting for the periodic check.
+    private void CheckForUpdates()
+    {
+        _trayIcon.ShowBalloonTip(4_000, "Tally", "Checking for updates…", ToolTipIcon.Info);
+        _ = AppUpdater.CheckNowAsync(status =>
+            _trayIcon.ShowBalloonTip(8_000, "Tally", status, ToolTipIcon.Info));
     }
 
     private static System.Drawing.Icon LoadTrayIcon(string fileName)
@@ -282,7 +288,6 @@ public sealed class TrayAppContext : ApplicationContext
         _idle.Dispose();
         _session.Dispose();
         _mic.Dispose();
-        _activity.Dispose();
 
         // Watchers are stopped, so the channel drains and completes quickly; the writer runs on
         // the thread pool with no UI synchronization context to deadlock against.

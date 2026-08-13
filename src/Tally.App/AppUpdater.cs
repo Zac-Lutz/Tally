@@ -40,6 +40,42 @@ internal static class AppUpdater
     }
 
     /// <summary>
+    /// On-demand update check for the tray menu. Unlike <see cref="CheckAndStageAsync"/> (which
+    /// stages for the next exit), this downloads any newer release and restarts into it immediately.
+    /// Reports progress via <paramref name="report"/>. Call from the UI thread so its balloons are safe.
+    /// </summary>
+    public static async Task CheckNowAsync(Action<string> report)
+    {
+        try
+        {
+            var manager = new UpdateManager(new GithubSource(RepoUrl, accessToken: null, prerelease: false));
+            if (!manager.IsInstalled)
+            {
+                report("This is a dev/portable build, so it can't self-update.");
+                return;
+            }
+
+            var update = await manager.CheckForUpdatesAsync();
+            if (update is null)
+            {
+                report($"Tally is up to date ({DisplayVersion}).");
+                return;
+            }
+
+            var version = update.TargetFullRelease.Version.ToString();
+            report($"Downloading update v{version}…");
+            await manager.DownloadUpdatesAsync(update);
+            report($"Update v{version} ready — restarting Tally to apply…");
+            manager.ApplyUpdatesAndRestart(update.TargetFullRelease, []);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Manual update check failed", ex);
+            report("Update check failed — see the logs.");
+        }
+    }
+
+    /// <summary>
     /// The running release version for display (e.g. "v1.2.2") when this is a Velopack-installed
     /// build, or "dev" for a from-source / portable run that isn't a real release. Computed once;
     /// reads local Velopack metadata only, so it's safe offline and off the network.

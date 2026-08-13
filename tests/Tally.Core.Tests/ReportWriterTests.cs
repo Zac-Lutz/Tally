@@ -12,11 +12,10 @@ public class ReportWriterTests
     private static ClassifiedBlock CB(
         double startMinutes, double endMinutes, string category, string title,
         string? client = null, string? ticket = null, string? subject = null,
-        int keys = 0, int clicks = 0, string process = "chrome")
+        string process = "chrome")
         => new(
             new Block(T0.AddMinutes(startMinutes), T0.AddMinutes(endMinutes), process, title),
-            new Classification(category, client, ticket, subject, category == Classification.Unclassified ? null : "rule"),
-            keys == 0 && clicks == 0 ? BlockActivity.None : new BlockActivity(keys, clicks));
+            new Classification(category, client, ticket, subject, category == Classification.Unclassified ? null : "rule"));
 
     [Fact]
     public void Rollup_GroupsByCategoryClientTicket_AndOrdersByDuration()
@@ -118,8 +117,7 @@ public class ReportWriterTests
         var start = new DateTimeOffset(2026, 8, 12, 14, 30, 0, localOffset);
         var block = new ClassifiedBlock(
             new Block(start, start.AddMinutes(30), "chrome", "x"),
-            new Classification("Browsing", null, null, null, "rule"),
-            BlockActivity.None);
+            new Classification("Browsing", null, null, null, "rule"));
 
         var md = ReportWriter.BuildMarkdown(Date, [block], [], []);
 
@@ -143,24 +141,4 @@ public class ReportWriterTests
         Assert.Contains(rollup, l => l.Contains("Service Family"));
     }
 
-    [Fact]
-    public void Activity_AppearsInSummaryAndRollup()
-    {
-        var md = ReportWriter.BuildMarkdown(Date,
-            [CB(0, 30, "HaloPSA", "Ticket #1 - HaloPSA", ticket: "1", keys: 412, clicks: 88)], [], []);
-
-        Assert.Contains("412 keys", md);   // summary line
-        Assert.Contains("88 clicks", md);
-        Assert.Contains("412/88", md);     // rollup activity cell
-    }
-
-    [Fact]
-    public void ZeroActivityBlock_RendersDash()
-    {
-        var md = ReportWriter.BuildMarkdown(Date,
-            [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
-
-        var timeline = md.Split('\n').First(l => l.Contains("Inbox - Outlook"));
-        Assert.Contains("—", timeline);
-    }
 }

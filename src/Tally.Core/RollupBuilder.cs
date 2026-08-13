@@ -4,8 +4,7 @@ namespace Tally.Core;
 
 /// <summary>One aggregated rollup line: a category + specific activity with its summed time.</summary>
 public sealed record RollupRow(
-    string Category, string? Client, string? TicketRef, string DetailName,
-    TimeSpan Time, int Keystrokes, int MouseClicks);
+    string Category, string? Client, string? TicketRef, string DetailName, TimeSpan Time);
 
 /// <summary>
 /// Builds the report rollup at per-activity granularity. Each distinct activity gets its own row:
@@ -23,9 +22,7 @@ public static class RollupBuilder
                 g.Key.Client,
                 g.Key.TicketRef,
                 DisplayName(g),
-                TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks)),
-                g.Sum(x => x.Activity.Keystrokes),
-                g.Sum(x => x.Activity.MouseClicks)))
+                TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks))))
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -43,7 +40,7 @@ public static class RollupBuilder
             .GroupBy(x => x.Label)
             .Select(g => new RollupRow(
                 CallCategory, g.Key.Client, null, g.Key.Name,
-                TimeSpan.FromTicks(g.Sum(x => x.Duration.Ticks)), 0, 0))
+                TimeSpan.FromTicks(g.Sum(x => x.Duration.Ticks))))
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
             .ToList();

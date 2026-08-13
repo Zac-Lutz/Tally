@@ -167,8 +167,6 @@ public static class HtmlReportWriter
         var active = TimeSpan.FromTicks(blocks.Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactive.Sum(p => p.Duration.Ticks));
-        var keys = blocks.Sum(b => b.Activity.Keystrokes);
-        var clicks = blocks.Sum(b => b.Activity.MouseClicks);
 
         if (blocks.Count > 0 || calls.Count > 0)
         {
@@ -181,8 +179,6 @@ public static class HtmlReportWriter
         Card(sb, "Active", ReportFormat.Duration(active));
         Card(sb, "Calls", ReportFormat.Duration(callTime));
         Card(sb, "Inactive", ReportFormat.Duration(inactiveTime));
-        Card(sb, "Keys", keys.ToString("N0"));
-        Card(sb, "Clicks", clicks.ToString("N0"));
         sb.Append("</div>\n");
     }
 
@@ -224,7 +220,7 @@ public static class HtmlReportWriter
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th><th class=\"num\">Keys/Clk</th></tr>\n");
+        sb.Append("<tr><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var row in rows)
         {
@@ -232,8 +228,7 @@ public static class HtmlReportWriter
             sb.Append("<tr><td>").Append(CategoryBadge(row.Category)).Append("</td>")
               .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
               .Append("<td>").Append(ticket).Append("</td>")
-              .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td>")
-              .Append("<td class=\"num\">").Append(Activity(row.Keystrokes, row.MouseClicks)).Append("</td></tr>\n");
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
@@ -265,7 +260,7 @@ public static class HtmlReportWriter
     private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
     {
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>Category</th><th class=\"num\">Keys/Clk</th><th>Title</th></tr>\n");
+        sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>Category</th><th>Title</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         // Newest first — most recent activity at the top.
         for (var i = blocks.Count - 1; i >= 0; i--)
@@ -275,7 +270,6 @@ public static class HtmlReportWriter
               .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td>")
               .Append("<td>").Append(CategoryBadge(b.Classification.Category)).Append("</td>")
-              .Append("<td class=\"num\">").Append(Activity(b.Activity.Keystrokes, b.Activity.MouseClicks)).Append("</td>")
               .Append("<td>").Append(Esc(b.Block.Title)).Append("</td></tr>\n");
         }
 
@@ -287,9 +281,6 @@ public static class HtmlReportWriter
 
     private static string CategoryBadge(string category)
         => $"<span class=\"cat\" style=\"background:{CategoryColor(category)}\">{Esc(category)}</span>";
-
-    private static string Activity(int keys, int clicks)
-        => keys == 0 && clicks == 0 ? "<span class=\"muted\">—</span>" : $"{keys}/{clicks}";
 
     // Translucent hue only — the pill text uses the theme foreground, so contrast holds in both themes.
     private static string CategoryColor(string category) => category switch

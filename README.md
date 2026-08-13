@@ -14,11 +14,14 @@ dotnet run --project src/Tally.App
 ```
 
 The app lives in the system tray as a tally-marks icon that shows its state at a glance:
-**green** while tracking, **red** when paused. Right-click it for:
+**green** while tracking, **red** when paused. **Left-click** it to open the live view;
+**right-click** for:
 
 - **Open live view** — a dashboard window that shows the current day and refreshes in place
 - **Pause/Resume tracking**
 - **Generate today's / yesterday's report** — writes and opens a snapshot
+- **Settings** — hotkeys and auto-report times
+- **Check for updates** — pull and apply the newest version right now (see Auto-update below)
 - **Open reports / data folder**
 - **Exit**
 
@@ -126,14 +129,6 @@ chats by name; everything else by window title, after stripping volatile browser
 ("and N more pages", the trailing browser name) so revisiting a tab rolls up instead of
 fragmenting.
 
-## Activity intensity
-
-Each report block carries a **Keys/Clk** count (`412/88` = 412 keystrokes, 88 mouse clicks),
-and the summary line totals the day. It's an intensity signal that separates active work
-from a window left open — a long block reading `0/0` is a candidate to reclassify or drop at
-time-entry. Only **counts** are recorded, sampled once a minute; which keys were pressed is
-never observed or stored, so the database can't become a keystroke log.
-
 ## Build an installer to give to someone else
 
 ```powershell
@@ -157,7 +152,8 @@ Authenticode code-signing certificate (`vpk pack --signParams ...`) to remove th
 Installed apps update themselves from GitHub Releases (`github.com/Zac-Lutz/Tally`): the tray
 app checks a few seconds after startup and every 4 hours, downloads any newer version in the
 background, and applies it on the next restart (a tray note says when one's ready). No files to
-send around.
+send around. To grab an update immediately instead of waiting, **right-click the tray →
+Check for updates** — it downloads the newest release and restarts Tally into it on the spot.
 
 **To publish a new version, double-click `Publish-Update.cmd`** (there's also a **"Publish Tally
 Update"** shortcut on the Desktop). That's the whole thing — it:

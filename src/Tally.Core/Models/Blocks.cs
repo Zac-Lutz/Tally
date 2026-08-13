@@ -41,15 +41,4 @@ public sealed record Classification(
     public bool IsUnclassified => Category == Unclassified;
 }
 
-/// <summary>
-/// Input-activity counts attributed to a block. Keystroke/click COUNTS only — never which
-/// keys — an intensity signal that separates active work from a window left open.
-/// </summary>
-public sealed record BlockActivity(int Keystrokes, int MouseClicks)
-{
-    public static readonly BlockActivity None = new(0, 0);
-
-    public int Total => Keystrokes + MouseClicks;
-}
-
-public sealed record ClassifiedBlock(Block Block, Classification Classification, BlockActivity Activity);
+public sealed record ClassifiedBlock(Block Block, Classification Classification);

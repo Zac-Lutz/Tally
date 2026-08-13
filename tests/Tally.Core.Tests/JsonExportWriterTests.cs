@@ -24,8 +24,7 @@ public class JsonExportWriterTests
         string? ticket = null, string? subject = null)
         => new(
             new Block(start, end, "proc", title),
-            new Classification(category, null, ticket, subject, "rule"),
-            BlockActivity.None);
+            new Classification(category, null, ticket, subject, "rule"));
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
 

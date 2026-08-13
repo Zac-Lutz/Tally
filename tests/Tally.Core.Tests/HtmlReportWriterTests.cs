@@ -12,11 +12,10 @@ public class HtmlReportWriterTests
     private static ClassifiedBlock CB(
         double startMinutes, double endMinutes, string category, string title,
         string? client = null, string? ticket = null, string? subject = null,
-        int keys = 0, int clicks = 0, string process = "chrome")
+        string process = "chrome")
         => new(
             new Block(T0.AddMinutes(startMinutes), T0.AddMinutes(endMinutes), process, title),
-            new Classification(category, client, ticket, subject, category == Classification.Unclassified ? null : "rule"),
-            keys == 0 && clicks == 0 ? BlockActivity.None : new BlockActivity(keys, clicks));
+            new Classification(category, client, ticket, subject, category == Classification.Unclassified ? null : "rule"));
 
     [Fact]
     public void ProducesSelfContainedHtmlDocument()
@@ -41,17 +40,16 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void RollupSeparatesTeamsChatsAndShowsActivity()
+    public void RollupSeparatesTeamsChatsBySubject()
     {
         var md = HtmlReportWriter.BuildHtml(Date,
         [
-            CB(0, 15, "Teams", "Chat | Matt Longenecker | Microsoft Teams", subject: "Matt Longenecker", process: "ms-teams", keys: 40),
+            CB(0, 15, "Teams", "Chat | Matt Longenecker | Microsoft Teams", subject: "Matt Longenecker", process: "ms-teams"),
             CB(15, 21, "Teams", "Chat | Service Family | Microsoft Teams", subject: "Service Family", process: "ms-teams"),
         ], [], []);
 
         Assert.Contains("Matt Longenecker", md);
         Assert.Contains("Service Family", md);
-        Assert.Contains("40/0", md);   // rollup activity cell for the 40-keystroke chat block
     }
 
     [Fact]
@@ -190,7 +188,7 @@ public class HtmlReportWriterTests
     public void MainInner_HasSectionsButNoPageShell_NorExportButton()
     {
         var inner = HtmlReportWriter.BuildMainInner(Date,
-            [CB(0, 30, "HaloPSA", "Ticket #1 - HaloPSA", ticket: "1", keys: 5)],
+            [CB(0, 30, "HaloPSA", "Ticket #1 - HaloPSA", ticket: "1")],
             [], []);
 
         Assert.Contains("Rollup", inner);
@@ -202,7 +200,7 @@ public class HtmlReportWriterTests
     [Fact]
     public void MainInner_OmitsTheHeader_ButKeepsTheTabbedSections()
     {
-        var blocks = new[] { CB(0, 30, "Email", "Inbox - Outlook", keys: 3) };
+        var blocks = new[] { CB(0, 30, "Email", "Inbox - Outlook") };
         var full = HtmlReportWriter.BuildHtml(Date, blocks, [], []);
         var inner = HtmlReportWriter.BuildMainInner(Date, blocks, [], []);
 

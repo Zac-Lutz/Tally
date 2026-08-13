@@ -13,14 +13,11 @@ Everything stays on this machine. No cloud, no telemetry.
 - **Window titles are kept verbatim, indefinitely** (in derived blocks). The block history
   is the searchable time-entry record; titles are the signal. Only raw events get a
   retention setting (not yet implemented — nothing is purged in v1).
-- **Activity intensity is counts, never content.** The keyboard hook counts key-downs but
-  deliberately never reads `KBDLLHOOKSTRUCT.vkCode`, so key identity is never observed or
-  stored — the DB cannot become a keystroke log. Samples aggregate once a minute and are
-  attributed to blocks by timestamp at report time (a sample straddling a block boundary is
-  credited whole to the block containing its timestamp — fine at minute granularity). A
-  low-level mouse hook fires on every move; the callback stays trivial (branch on button/wheel
-  messages, ignore moves) so it adds no perceptible input latency. Raw Input is the alternative
-  if the hook ever proves costly.
+- **No input-activity counting.** An earlier version counted key-downs/clicks per block as an
+  "intensity" signal (counts only, never key identity). It was removed: the signal was weak and
+  redundant with idle detection (reading, calls, and reviewing are low-input but real work), and
+  the low-level keyboard hook is the component most likely to trip endpoint-security/antivirus.
+  Idle/lock detection alone covers "was I actually at the machine."
 - **Classification `subject`** is a third capture field beside client/ticket, for a free-text
   what/who (Teams chat name today). The Teams title `Chat | <name> | Microsoft Teams` yields
   `<name>`; a channel `Chat | Team | Channel | Microsoft Teams` keeps `Team | Channel`.
@@ -58,8 +55,6 @@ src/
                                    IdleWatcher        GetLastInputInfo poll, IdleStart backdated
                                    SessionWatcher     SystemEvents.SessionSwitch → Lock/Unlock
                                    MicWatcher         WASAPI capture sessions → MicStart/MicEnd
-                                   ActivityWatcher    WH_KEYBOARD_LL + WH_MOUSE_LL, counts only,
-                                                      flushes an ActivitySample once a minute
   Tally.App       net10.0-windows  WinForms tray app (tally.exe)
                                    EventRecorder      Channel → SQLite, batched writes
                                    TallyDbContext     EF Core, timestamps stored as UTC ticks

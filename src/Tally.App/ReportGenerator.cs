@@ -25,7 +25,6 @@ public static class ReportGenerator
         var dayEnd = dayStart.AddDays(1);
 
         List<TrackedEvent> events;
-        List<ActivitySample> samples;
         List<ManualTimer> timers;
         await using (var db = new TallyDbContext(dbOptions))
         {
@@ -33,9 +32,6 @@ public static class ReportGenerator
             events = await db.Events.AsNoTracking()
                 .Where(e => e.Timestamp >= dayStart && e.Timestamp < dayEnd)
                 .OrderBy(e => e.Timestamp)
-                .ToListAsync();
-            samples = await db.ActivitySamples.AsNoTracking()
-                .Where(s => s.Timestamp >= dayStart && s.Timestamp < dayEnd)
                 .ToListAsync();
             timers = await db.ManualTimers.AsNoTracking()
                 .Where(t => t.Start >= dayStart && t.Start < dayEnd)
@@ -50,8 +46,7 @@ public static class ReportGenerator
         var sessions = Sessionizer.Build(events, endOfData);
         var classifier = new Classifier(LoadRules());
         var classified = sessions.Blocks
-            .Select(b => new ClassifiedBlock(
-                b, classifier.Classify(b.ProcessName, b.Title), ActivityAttribution.For(b, samples)))
+            .Select(b => new ClassifiedBlock(b, classifier.Classify(b.ProcessName, b.Title)))
             .ToList();
 
         return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods, timers);

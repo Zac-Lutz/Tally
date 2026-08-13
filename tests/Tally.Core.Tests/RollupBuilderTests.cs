@@ -13,8 +13,7 @@ public class RollupBuilderTests
         string? ticket = null, string? subject = null)
         => new(
             new Block(T0.AddMinutes(startMin), T0.AddMinutes(endMin), "proc", title),
-            new Classification(category, null, ticket, subject, "rule"),
-            BlockActivity.None);
+            new Classification(category, null, ticket, subject, "rule"));
 
     [Fact]
     public void DistinctBrowserTabs_EachBecomeTheirOwnRow()
