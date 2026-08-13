@@ -8,9 +8,11 @@ namespace Tally.Core;
 /// <summary>
 /// Serializes a day's sessions to the schema_version "2" export format. A "slot" is a run of
 /// consecutive same-category blocks; its hours are the summed active time (not wall-clock, so
-/// idle gaps inside the run are excluded). Fields Tally has no data for are honestly empty:
-/// <c>browser</c> (no URL capture), <c>sessions</c> (no structured repo/branch), and
-/// <c>summary</c> is omitted entirely (never emitted as null).
+/// idle gaps inside the run are excluded). Calls and manual timers overlay that time rather than
+/// adding to it, so they appear as <c>evidence</c> on the slots they overlap, never as slots of
+/// their own. Fields Tally has no data for are honestly empty: <c>browser</c> (no URL capture),
+/// <c>sessions</c> (no structured repo/branch), and <c>summary</c> is omitted entirely (never
+/// emitted as null).
 /// </summary>
 public static class JsonExportWriter
 {
@@ -27,9 +29,10 @@ public static class JsonExportWriter
         DateOnly date,
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
-        JsonExportContext context)
+        JsonExportContext context,
+        IReadOnlyList<ManualTimer>? timers = null)
     {
-        var slots = BuildSlots(blocks, calls, context.Machine);
+        var slots = BuildSlots(blocks, calls, timers ?? [], context.Machine);
         var rangeStart = slots.Count > 0 ? slots[0].Date : date.ToString("yyyy-MM-dd");
         var rangeEnd = slots.Count > 0 ? slots[^1].Date : date.ToString("yyyy-MM-dd");
 
@@ -43,7 +46,8 @@ public static class JsonExportWriter
     }
 
     private static List<JsonSlot> BuildSlots(
-        IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls, string machine)
+        IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers, string machine)
     {
         var slots = new List<JsonSlot>();
         var i = 0;
@@ -57,14 +61,15 @@ public static class JsonExportWriter
                 i++;
             }
 
-            slots.Add(BuildSlot(category, group, calls, machine));
+            slots.Add(BuildSlot(category, group, calls, timers, machine));
         }
 
         return slots;
     }
 
     private static JsonSlot BuildSlot(
-        string category, List<ClassifiedBlock> group, IReadOnlyList<CallSpan> calls, string machine)
+        string category, List<ClassifiedBlock> group, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers, string machine)
     {
         var startUtc = group[0].Block.Start;
         var endUtc = group[^1].Block.End;
@@ -94,7 +99,7 @@ public static class JsonExportWriter
             Hours: Math.Round(activeSeconds / 3600.0, 2),
             Bucket: bucket,
             Note: string.Empty,
-            Evidence: BuildEvidence(group, calls, startUtc, endUtc),
+            Evidence: BuildEvidence(group, calls, timers, startUtc, endUtc),
             WorkingToward: false,
             Summary: null,   // Tally has no per-slot summary; omitted from the output entirely
             Items: items,
@@ -105,7 +110,8 @@ public static class JsonExportWriter
     }
 
     private static List<string> BuildEvidence(
-        List<ClassifiedBlock> group, IReadOnlyList<CallSpan> calls, DateTimeOffset startUtc, DateTimeOffset endUtc)
+        List<ClassifiedBlock> group, IReadOnlyList<CallSpan> calls, IReadOnlyList<ManualTimer> timers,
+        DateTimeOffset startUtc, DateTimeOffset endUtc)
     {
         var evidence = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -126,6 +132,13 @@ public static class JsonExportWriter
         // A call whose mic span overlaps this slot's time range is meeting evidence.
         foreach (var call in calls.Where(c => c.Start < endUtc && c.End > startUtc))
             Add($"Call: {(call.Title.Length > 0 ? call.Title : call.ProcessName)}");
+
+        // A manual timer is the user saying outright what this stretch was, so an overlapping one
+        // is the strongest evidence there is. Like calls, timers overlay the slot's time rather
+        // than adding to it, so they're evidence rather than slots of their own — counting them
+        // twice would inflate the day. The duration rides along since nothing else carries it.
+        foreach (var timer in timers.Where(t => t.Start < endUtc && t.End > startUtc))
+            Add($"Timer: {timer.Name} ({ReportFormat.Duration(timer.Duration)})");
 
         return evidence;
     }

@@ -78,9 +78,9 @@ public static class ReportGenerator
                 ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive,
                     timers: data.Timers, ticketOverrides: data.TicketOverrides),
             ReportFileFormat.Json =>
-                JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
+                JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext, data.Timers),
             _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
-                embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
+                embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext, data.Timers),
                 timers: data.Timers, ticketOverrides: data.TicketOverrides),
         };
 

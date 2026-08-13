@@ -44,6 +44,22 @@ Everything stays on this machine. No cloud, no telemetry.
   5s. PID-based, so it joins directly onto recorded process names.
 - **Calls are an overlay lane**, not foreground blocks. During a Teams call you foreground
   other windows; the call span runs independently and the report gets a separate Calls section.
+  In the JSON export, calls and manual timers are `evidence` on the slots they overlap rather
+  than slots of their own — they overlay the day's hours, so counting them as slots would inflate
+  the total. (Cost: a timer that overlaps no block — a phone call with the screen idle — isn't
+  represented. Revisit if that turns up in practice.)
+- **A call ends when the mic goes quiet AND the window title changes.** Back-to-back meetings are
+  the hard case: leaving one and joining the next releases the mic for ~10s, inside the 30s gap
+  that stitches a momentary dropout back together, so two meetings became one span. The title
+  carries the meeting name, so a gap is bridged only when the titles match. Erring toward
+  splitting is deliberate — a wrong merge silently welds two meetings together, while a wrong
+  split leaves two rows the rollup still sums by title.
+- **A `Startup` event marks where the watchers' knowledge resumes.** `MicWatcher` holds its
+  active-process set in memory, so a restart loses it: if a call ended while Tally was down, no
+  `MicEnd` is ever recorded and the span would run to the end of the day, swallowing every later
+  meeting. `TrayAppContext` records `Startup` as the run's first event and the sessionizer closes
+  any open call span there. A call that really was still running gets a fresh `MicStart` seconds
+  later and the title-matching merge rejoins it, so a mid-meeting restart still reads as one call.
 - **An active mic suppresses idle.** Sitting hands-off on a meeting is working time.
   Lock is *not* suppressed by a call — the foreground lane stops, the call lane continues.
 - **UI stack (slice 2+):** WinForms shell + BlazorWebView + Radzen (Blazor Hybrid without
@@ -113,8 +129,9 @@ correctly; rendered in local time.
    serialize with event/sample writes). WinForms wires it up: `HotkeyListener` (global
    RegisterHotKey via a hidden message window), a timer bar in `LiveWindow`, and `TimerBubble`
    (borderless TopMost draggable window). `TrayAppContext` coordinates: the bubble shows only
-   while a timer runs AND the live window isn't shown normally. Follow-up: surface completed
-   `manual_timers` in the report/export.
+   while a timer runs AND the live window isn't shown normally. Completed timers surface in the
+   report's Timers tab, on the Rollup under a Timer category, and in the JSON export as slot
+   evidence.
 4. Unclassified triage UI → "save as rule" (done): an **Unclassified** tab (count badge on the tab)
    lists what matched no rule, one row per app+window (`UnclassifiedBuilder`). In the live view each
    row takes a category and a scope (any window of the app / only this window), and **Save rule**

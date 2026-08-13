@@ -123,6 +123,33 @@ public class JsonExportWriterTests
     }
 
     [Fact]
+    public void OverlappingManualTimer_BecomesEvidence_WithItsDuration()
+    {
+        var timer = new ManualTimer { Name = "Ticket #123 phone call", Start = At(13, 10), End = At(13, 28) };
+        var root = Parse(JsonExportWriter.BuildJson(Date,
+            [CB(At(13, 0), At(14, 0), "HaloPSA", "Ticket #123 - VPN", ticket: "123")],
+            [], Context, [timer]));
+
+        var slot = root.GetProperty("slots")[0];
+        var lines = slot.GetProperty("evidence").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("Timer: Ticket #123 phone call (18m)", lines);
+        // Timers overlay the slot rather than adding to it — the hours stay the block time.
+        Assert.Equal(1.0, slot.GetProperty("hours").GetDouble());
+    }
+
+    [Fact]
+    public void ATimerOutsideASlot_IsNotAttachedToIt()
+    {
+        var timer = new ManualTimer { Name = "Evening admin", Start = At(17, 0), End = At(17, 30) };
+        var root = Parse(JsonExportWriter.BuildJson(Date,
+            [CB(At(8, 0), At(9, 0), "Email", "Inbox")], [], Context, [timer]));
+
+        var lines = root.GetProperty("slots")[0].GetProperty("evidence")
+            .EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.DoesNotContain(lines, l => l!.StartsWith("Timer:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ScriptUnsafeCharactersInTitles_AreEscaped()
     {
         var json = JsonExportWriter.BuildJson(Date,

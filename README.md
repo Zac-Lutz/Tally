@@ -84,7 +84,9 @@ tab** (name, start, end, duration), and each also appears on the **Rollup** unde
 category (the detail is the timer name; timers sharing a name are summed). In the live view you
 can **rename a recorded timer** by editing its name in the Timers tab — the change persists and
 reflects on the Rollup. The running timer shows in the top bar / bubble; it joins the Timers tab
-once stopped. (Manual timers aren't in the JSON export yet.)
+once stopped. In the JSON export a timer appears as **evidence** (`Timer: <name> (18m)`) on the
+slots its time overlaps — like calls, a timer overlays your day rather than adding hours to it, so
+it isn't a slot of its own.
 
 ## Reports: on demand and automatic
 
@@ -119,7 +121,7 @@ data is produced headlessly with `--report today json` or `reportFormat: "json"`
 is the `schema_version: "2"` export: a `source`/`range`/`slots` envelope where each slot is a
 run of consecutive same-category blocks (bucket = the category slug, hours = summed active
 time, plus `window_titles`, `items` from tickets, `machines`, and `evidence` derived from
-tickets/Teams chats/overlapping calls). Fields Tally can't populate are honest: `browser` and
+tickets/Teams chats/overlapping calls and manual timers). Fields Tally can't populate are honest: `browser` and
 `sessions` are always empty (no URL or repo capture), and `summary` is omitted entirely.
 
 **Every run writes its own file** — `yyyy-MM-dd_HHmmss.<ext>` (report date + run time), so
@@ -155,9 +157,9 @@ conversation separately instead of one lumped "Teams" row.
 The **Rollup** is per-activity, not per-category: each distinct browser tab, editor window,
 email, or Teams chat is its own row with time summed across the whole day (so several Halo
 ticket tabs open at once each track separately). Halo tickets group by ticket number; Teams
-chats by name; everything else by window title, after stripping volatile browser noise
-("and N more pages", the trailing browser name) so revisiting a tab rolls up instead of
-fragmenting.
+chats by name; everything else by window title, after stripping volatile title noise
+("and N more pages", the trailing browser name, and an editor's leading unsaved-changes marker
+`*` or `●`) so revisiting a tab — or saving a file — rolls up instead of fragmenting.
 
 ## Build an installer to give to someone else
 
