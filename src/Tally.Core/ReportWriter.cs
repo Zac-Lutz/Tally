@@ -28,7 +28,7 @@ public static class ReportWriter
         }
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendRollup(sb, blocks);
+        AppendRollup(sb, blocks, calls);
         AppendCalls(sb, calls);
         AppendTimeline(sb, blocks);
         AppendTimers(sb, timerList);
@@ -72,14 +72,21 @@ public static class ReportWriter
         sb.AppendLine();
     }
 
-    private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
+    // Window activity AND calls, merged into one time-ordered rollup (calls carry the "Call"
+    // category), matching the HTML report's Rollup tab.
+    private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls)
     {
+        var rows = RollupBuilder.Build(blocks)
+            .Concat(RollupBuilder.BuildCalls(calls))
+            .OrderByDescending(r => r.Time)
+            .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
+
         sb.AppendLine("## Rollup");
         sb.AppendLine();
         sb.AppendLine("| Category | Detail | Ticket | Time | Keys/Clk |");
         sb.AppendLine("|---|---|---|---|---|");
 
-        foreach (var row in RollupBuilder.Build(blocks))
+        foreach (var row in rows)
         {
             var ticket = row.TicketRef is { } t ? $"#{t}" : string.Empty;
             sb.AppendLine(

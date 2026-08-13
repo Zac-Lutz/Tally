@@ -123,7 +123,7 @@ public static class HtmlReportWriter
         sb.Append("</div>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
-        AppendRollup(sb, blocks);
+        AppendRollup(sb, blocks, calls);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls);
@@ -213,12 +213,20 @@ public static class HtmlReportWriter
         sb.Append("</ul>\n</div>\n");
     }
 
-    private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
+    // Window activity AND calls, merged into one time-ordered table so the Rollup is a complete
+    // picture of the day. Calls carry the "Call" category badge; they overlay (don't replace) the
+    // focused-window rows, so a call and its underlying window can both appear.
+    private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls)
     {
+        var rows = RollupBuilder.Build(blocks)
+            .Concat(RollupBuilder.BuildCalls(calls))
+            .OrderByDescending(r => r.Time)
+            .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
+
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th><th class=\"num\">Keys/Clk</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
-        foreach (var row in RollupBuilder.Build(blocks))
+        foreach (var row in rows)
         {
             var ticket = row.TicketRef is { } t ? $"#{Esc(t)}" : string.Empty;
             sb.Append("<tr><td>").Append(CategoryBadge(row.Category)).Append("</td>")
@@ -292,6 +300,7 @@ public static class HtmlReportWriter
         "Development" => "rgba(34,197,94,.20)",
         "Browsing" => "rgba(234,179,8,.22)",
         "Remote Support" => "rgba(236,72,153,.20)",
+        "Call" => "rgba(249,115,22,.22)",
         _ => "rgba(148,163,184,.22)",
     };
 

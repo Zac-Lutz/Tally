@@ -55,6 +55,24 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void RollupPanelIncludesCalls_NotJustTheCallsTab()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Email", "Inbox - Outlook")],
+            [new CallSpan(T0, T0.AddMinutes(45), "Discord", "General")],
+            []);
+
+        // Scope to the rollup panel (the call also appears in the Calls panel that follows it).
+        var start = md.IndexOf("data-panel=\"rollup\"", StringComparison.Ordinal);
+        var end = md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal);
+        var rollup = md[start..end];
+
+        Assert.Contains(">Call<", rollup);      // the Call category badge is in the rollup
+        Assert.Contains("Discord", rollup);     // the app
+        Assert.Contains("General", rollup);     // ... and what the call was about
+    }
+
+    [Fact]
     public void GapsSectionAppearsForLongIdleAndUnclassified()
     {
         var md = HtmlReportWriter.BuildHtml(Date,

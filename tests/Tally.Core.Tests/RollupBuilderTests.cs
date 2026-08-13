@@ -97,4 +97,57 @@ public class RollupBuilderTests
 
         Assert.Equal("Big task - Visual Studio", rows[0].DetailName);   // 40m first
     }
+
+    private static CallSpan Call(double startMin, double endMin, string process, string title = "")
+        => new(T0.AddMinutes(startMin), T0.AddMinutes(endMin), process, title);
+
+    [Fact]
+    public void BuildCalls_SumsSameAppAcrossTheDay_UnderTheCallCategory()
+    {
+        var rows = RollupBuilder.BuildCalls(
+        [
+            Call(0, 20, "Discord"),
+            Call(120, 145, "Discord"),
+        ]);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("Call", row.Category);
+        Assert.Equal("Discord", row.DetailName);
+        Assert.Equal(TimeSpan.FromMinutes(45), row.Time);   // 20 + 25
+    }
+
+    [Fact]
+    public void BuildCalls_KeepsTheWindowTitleWhenItAddsDetail()
+    {
+        var rows = RollupBuilder.BuildCalls([Call(0, 30, "ms-teams", "Standup - Microsoft Teams")]);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("ms-teams", row.Client);                       // the app
+        Assert.Equal("Standup - Microsoft Teams", row.DetailName);  // ... plus what it was about
+    }
+
+    [Fact]
+    public void BuildCalls_DropsARedundantTitleThatJustRepeatsTheApp()
+    {
+        var rows = RollupBuilder.BuildCalls([Call(0, 30, "Discord", "Discord")]);
+
+        var row = Assert.Single(rows);
+        Assert.Null(row.Client);              // no "Discord / Discord"
+        Assert.Equal("Discord", row.DetailName);
+    }
+
+    [Fact]
+    public void BuildCalls_DistinctChannelsAreSeparateRows()
+    {
+        // Looking ahead to Discord channel detection: different call subjects stay separate.
+        var rows = RollupBuilder.BuildCalls(
+        [
+            Call(0, 15, "Discord", "General"),
+            Call(20, 35, "Discord", "Dev Team"),
+        ]);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, r => r.DetailName == "General");
+        Assert.Contains(rows, r => r.DetailName == "Dev Team");
+    }
 }
