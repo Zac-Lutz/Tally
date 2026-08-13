@@ -144,6 +144,18 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void LiveView_CallRow_HasAnEditableTicketInput()
+    {
+        // With only a call and no window blocks, the sole rollup row is the call — and it's editable.
+        var inner = HtmlReportWriter.BuildMainInner(Date, [],
+            [new CallSpan(T0, T0.AddMinutes(20), "ms-teams", "Standup")], []);
+
+        var rollup = inner[..inner.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal)];
+        Assert.Contains("Standup", rollup);        // the call row is in the rollup
+        Assert.Contains("class=\"tk\"", rollup);   // ... with an editable ticket input
+    }
+
+    [Fact]
     public void FileReport_RollupTicketCells_AreReadOnly()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Development", "Client Profiles")], [], []);

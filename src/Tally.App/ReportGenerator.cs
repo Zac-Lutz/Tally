@@ -10,7 +10,8 @@ public sealed record ReportData(
     IReadOnlyList<ClassifiedBlock> Blocks,
     IReadOnlyList<CallSpan> Calls,
     IReadOnlyList<InactivePeriod> Inactive,
-    IReadOnlyList<ManualTimer> Timers);
+    IReadOnlyList<ManualTimer> Timers,
+    IReadOnlyDictionary<string, string> TicketOverrides);
 
 public static class ReportGenerator
 {
@@ -57,7 +58,7 @@ public static class ReportGenerator
             })
             .ToList();
 
-        return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods, timers);
+        return new ReportData(date, classified, sessions.Calls, sessions.InactivePeriods, timers, overrides);
     }
 
     /// <summary>
@@ -74,12 +75,13 @@ public static class ReportGenerator
         var content = format switch
         {
             ReportFileFormat.Markdown =>
-                ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive, timers: data.Timers),
+                ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive,
+                    timers: data.Timers, ticketOverrides: data.TicketOverrides),
             ReportFileFormat.Json =>
                 JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
             _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
                 embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext),
-                timers: data.Timers),
+                timers: data.Timers, ticketOverrides: data.TicketOverrides),
         };
 
         Directory.CreateDirectory(reportsDirectory);

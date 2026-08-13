@@ -49,13 +49,23 @@ public static class RollupBuilder
     /// foreground blocks rather than replacing them, so these rows are additive: the same minute can
     /// appear both as a call and as whatever window was focused.
     /// </summary>
-    public static IReadOnlyList<RollupRow> BuildCalls(IReadOnlyList<CallSpan> calls)
+    public static IReadOnlyList<RollupRow> BuildCalls(
+        IReadOnlyList<CallSpan> calls, IReadOnlyDictionary<string, string>? ticketOverrides = null)
         => calls
             .Select(c => (Label: CallLabel(c), c.Duration))
             .GroupBy(x => x.Label)
-            .Select(g => new RollupRow(
-                CallCategory, g.Key.Client, null, g.Key.Name,
-                TimeSpan.FromTicks(g.Sum(x => x.Duration.Ticks))))
+            .Select(g =>
+            {
+                // Calls carry a per-day manual ticket like activity rows do — keyed by the call
+                // target (app + name) so a ticket typed on a call re-applies on recompute.
+                var activity = g.Key.Client is { } client ? $"{client} / {g.Key.Name}" : g.Key.Name;
+                var rowKey = TicketOverrideKey.ForRow(CallCategory, null, activity);
+                var ticket = ticketOverrides is not null && ticketOverrides.TryGetValue(rowKey, out var t) ? t : null;
+                return new RollupRow(
+                    CallCategory, g.Key.Client, ticket, g.Key.Name,
+                    TimeSpan.FromTicks(g.Sum(x => x.Duration.Ticks)),
+                    rowKey);
+            })
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
             .ToList();

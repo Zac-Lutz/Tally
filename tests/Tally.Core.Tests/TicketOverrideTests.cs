@@ -59,10 +59,32 @@ public class TicketOverrideTests
     }
 
     [Fact]
-    public void CallRows_HaveNoRowKey_SoTheyAreNotEditable()
+    public void CallRows_HaveARowKey_SoTheyAreTicketEditable()
     {
         var rows = RollupBuilder.BuildCalls([new CallSpan(T0, T0.AddMinutes(15), "Discord", "General")]);
 
-        Assert.All(rows, r => Assert.Null(r.RowKey));
+        Assert.All(rows, r => Assert.NotNull(r.RowKey));
+    }
+
+    [Fact]
+    public void BuildCalls_AppliesAManualTicketOverride()
+    {
+        var call = new CallSpan(T0, T0.AddMinutes(15), "Discord", "General");
+        var rowKey = Assert.Single(RollupBuilder.BuildCalls([call])).RowKey!;
+        var overrides = new Dictionary<string, string> { [rowKey] = "321" };
+
+        var row = Assert.Single(RollupBuilder.BuildCalls([call], overrides));
+
+        Assert.Equal("321", row.TicketRef);   // the manual ticket shows on the call row
+    }
+
+    [Fact]
+    public void CallRowKeys_DistinguishByApp_NotJustName()
+    {
+        // Two calls with the same title in different apps must not share one override.
+        var a = Assert.Single(RollupBuilder.BuildCalls([new CallSpan(T0, T0.AddMinutes(10), "Discord", "General")])).RowKey;
+        var b = Assert.Single(RollupBuilder.BuildCalls([new CallSpan(T0, T0.AddMinutes(10), "ms-teams", "General")])).RowKey;
+
+        Assert.NotEqual(a, b);
     }
 }

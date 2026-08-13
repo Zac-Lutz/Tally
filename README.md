@@ -30,8 +30,9 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 **Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
 window showing the same rollup / calls / timeline / timers as a report, for **today**, refreshing
 every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
-**Ticket** column is editable: click any activity row's Ticket cell and type a number — it's saved
-for that day (in `ticket-overrides.json`) and flows into your generated reports and the JSON export.
+**Ticket** column is editable: click any row's Ticket cell — a window activity *or a call* — and
+type a number. It's saved for that day (in `ticket-overrides.json`) and shows on the Rollup and in
+your generated reports (activity tickets also flow into the JSON export).
 It renders through the same `HtmlReportWriter` as the file report, so the live view and a snapshot
 always agree. A
 **Generate snapshot report** button on its toolbar writes a timestamped report when you want a

@@ -13,7 +13,8 @@ public static class HtmlReportWriter
         IReadOnlyList<InactivePeriod> inactivePeriods,
         string? embeddedJson = null,
         TimeSpan? gapThreshold = null,
-        IReadOnlyList<ManualTimer>? timers = null)
+        IReadOnlyList<ManualTimer>? timers = null,
+        IReadOnlyDictionary<string, string>? ticketOverrides = null)
     {
         var threshold = gapThreshold ?? TimeSpan.FromMinutes(5);
         var timerList = timers ?? [];
@@ -26,7 +27,7 @@ public static class HtmlReportWriter
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
 
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timerList, threshold, showExport,
-            includeHeader: true, editable: false);
+            includeHeader: true, editable: false, ticketOverrides: ticketOverrides);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -55,11 +56,13 @@ public static class HtmlReportWriter
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
         TimeSpan? gapThreshold = null,
-        IReadOnlyList<ManualTimer>? timers = null)
+        IReadOnlyList<ManualTimer>? timers = null,
+        IReadOnlyDictionary<string, string>? ticketOverrides = null)
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
-            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false, editable: true);
+            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false, editable: true,
+            ticketOverrides: ticketOverrides);
         return sb.ToString();
     }
 
@@ -93,7 +96,8 @@ public static class HtmlReportWriter
         TimeSpan threshold,
         bool showExport,
         bool includeHeader,
-        bool editable)
+        bool editable,
+        IReadOnlyDictionary<string, string>? ticketOverrides)
     {
         if (includeHeader)
         {
@@ -112,14 +116,14 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls, timers, editable);
+        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides);
     }
 
     // Rollup / Calls / Timeline / Timers as switchable tabs (Rollup active by default) instead of
     // stacked sections. Tab switching + preserving the choice across live refreshes is TabScript.
     private static void AppendTabs(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers, bool editable)
+        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides)
     {
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
@@ -129,7 +133,7 @@ public static class HtmlReportWriter
         sb.Append("</div>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
-        AppendRollup(sb, blocks, calls, timers, editable);
+        AppendRollup(sb, blocks, calls, timers, editable, ticketOverrides);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls);
@@ -228,10 +232,10 @@ public static class HtmlReportWriter
     // focused-window rows, so a call and its underlying window can both appear.
     private static void AppendRollup(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers, bool editable)
+        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides)
     {
         var rows = RollupBuilder.Build(blocks)
-            .Concat(RollupBuilder.BuildCalls(calls))
+            .Concat(RollupBuilder.BuildCalls(calls, ticketOverrides))
             .Concat(RollupBuilder.BuildTimers(timers))
             .Where(r => r.Time >= RollupBuilder.MinRollupDuration)   // hide sub-minute noise
             .OrderByDescending(r => r.Time)

@@ -260,7 +260,8 @@ public sealed class LiveWindow : Form
         try
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
-            var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive, timers: data.Timers);
+            var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
+                timers: data.Timers, ticketOverrides: data.TicketOverrides);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             _statusLabel.Text = $"Live · updated {DateTime.Now:h:mm:ss tt}";

@@ -12,7 +12,8 @@ public static class ReportWriter
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
         TimeSpan? gapThreshold = null,
-        IReadOnlyList<ManualTimer>? timers = null)
+        IReadOnlyList<ManualTimer>? timers = null,
+        IReadOnlyDictionary<string, string>? ticketOverrides = null)
     {
         var threshold = gapThreshold ?? TimeSpan.FromMinutes(5);
         var timerList = timers ?? [];
@@ -28,7 +29,7 @@ public static class ReportWriter
         }
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendRollup(sb, blocks, calls, timerList);
+        AppendRollup(sb, blocks, calls, timerList, ticketOverrides);
         AppendCalls(sb, calls);
         AppendTimeline(sb, blocks);
         AppendTimers(sb, timerList);
@@ -74,10 +75,10 @@ public static class ReportWriter
     // the "Call" category, timers the "Timer" category), matching the HTML report's Rollup tab.
     private static void AppendRollup(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers)
+        IReadOnlyList<ManualTimer> timers, IReadOnlyDictionary<string, string>? ticketOverrides)
     {
         var rows = RollupBuilder.Build(blocks)
-            .Concat(RollupBuilder.BuildCalls(calls))
+            .Concat(RollupBuilder.BuildCalls(calls, ticketOverrides))
             .Concat(RollupBuilder.BuildTimers(timers))
             .Where(r => r.Time >= RollupBuilder.MinRollupDuration)   // hide sub-minute noise
             .OrderByDescending(r => r.Time)
