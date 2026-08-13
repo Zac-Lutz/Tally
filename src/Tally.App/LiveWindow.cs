@@ -112,6 +112,10 @@ public sealed class LiveWindow : Form
         StyleButton(snapshot);
         snapshot.Click += (_, _) => GenerateSnapshot();
 
+        var export = new Button { Text = "Export timesheet", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
+        StyleButton(export);
+        export.Click += (_, _) => ExportTimesheet();
+
         var settings = new Button { Text = "Settings", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 0, 0), Cursor = Cursors.Hand };
         StyleButton(settings);
         settings.Click += (_, _) => SettingsDialog.Configure(this, _hotkeys, _onSettingsSaved);
@@ -156,6 +160,7 @@ public sealed class LiveWindow : Form
         right.Controls.Add(nameBox);
         right.Controls.Add(_timerButton);
         right.Controls.Add(_timerElapsed);
+        right.Controls.Add(export);
         right.Controls.Add(snapshot);
         right.Controls.Add(settings);
 
@@ -414,6 +419,51 @@ public sealed class LiveWindow : Form
         _note = text;
         _noteUntil = DateTime.Now.AddSeconds(NoteDuration);
         _statusLabel.Text = $"Live · {text}";
+    }
+
+    /// <summary>
+    /// Writes the day's Suggestion Export for upload to the att timesheet. The Timesheet tab is
+    /// brought up first: the file is only worth writing once it's been looked at, and that tab shows
+    /// exactly what it will contain. Nothing is written until a location is chosen.
+    /// </summary>
+    // async void: WinForms event handler; all awaited work is wrapped in try/catch.
+    private async void ExportTimesheet()
+    {
+        try
+        {
+            if (_ready)
+                await _webView.CoreWebView2.ExecuteScriptAsync("window.tallyShowTab && window.tallyShowTab('timesheet')");
+
+            var date = DateOnly.FromDateTime(DateTime.Now);
+            var data = await ReportGenerator.ComputeAsync(_dbOptions, date);
+            var slots = SuggestionSlotBuilder.Build(data.Blocks, data.Calls, data.Timers);
+            if (slots.Count == 0)
+            {
+                Note("nothing to export yet");
+                return;
+            }
+
+            using var dialog = new SaveFileDialog
+            {
+                Title = $"Export {slots.Count} timesheet {(slots.Count == 1 ? "entry" : "entries")} ({slots.Sum(s => s.Reported.TotalHours):0.00} h)",
+                FileName = $"tally-{date:yyyy-MM-dd}.json",
+                Filter = "Suggestion Export (*.json)|*.json",
+                InitialDirectory = _reportsDirectory,
+                OverwritePrompt = true,
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            await File.WriteAllTextAsync(dialog.FileName, ReportGenerator.BuildExportJson(data));
+            Log.Info($"Exported {slots.Count} timesheet slots to {dialog.FileName}");
+            Note($"exported {slots.Count} entries");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Timesheet export failed from the live view", ex);
+            Note("export failed — see the log");
+        }
     }
 
     private async void GenerateSnapshot()

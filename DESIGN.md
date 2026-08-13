@@ -31,15 +31,37 @@ Everything stays on this machine. No cloud, no telemetry.
 - **No EF migrations.** Single-writer personal app; `TallyDbContext.EnsureSchema` creates a
   fresh schema and additively `CREATE TABLE IF NOT EXISTS`es new tables on an older DB. If the
   schema grows more complex than additive tables, adopt EF migrations.
-- **JSON export (`schema_version` "2").** `JsonExportWriter` maps blocks to *slots* (runs of
-  consecutive same-category blocks; hours = summed active time). Environment fields (machine,
-  generated_at) arrive via `JsonExportContext` so Core stays deterministic/testable. The
-  in-page **Export JSON** button embeds the JSON in a `<script type="application/json">` and
-  downloads it client-side via a Blob — the default STJ encoder escapes `< > &`, so the
-  embedded copy can't break out of the script element. `browser`/`sessions` are always empty
-  (no URL/repo capture); `summary` is modeled nullable + `WhenWritingNull` so it's omitted,
-  never null. Slots can be numerous/fragmented on a switch-heavy day — acceptable and valid;
-  a future coalescing heuristic could merge short cross-category interruptions.
+- **The export's unit is a billing target, not a run of blocks.** The first cut mapped slots to
+  runs of consecutive same-category blocks; a real switch-heavy day produced **313 slots**, 110 of
+  them rounding to zero hours, against att's reference sample of 3 slots over 2 days. It was
+  rejected on upload and unusable if it hadn't been. `SuggestionSlotBuilder` builds what a
+  timesheet books instead: a ticket if detected, else the category, within one working session.
+- **Time is claimed in priority order so no minute is billed twice** — timer, then call, then
+  window activity, each clipped around the claims above it. Meetings were the motivating case: an
+  hour on a call while reading a ticket was credited to browsing/email/dev, and 2h53m of a real
+  day dissolved across ten unrelated lines. The window activity under a call/timer is retained as
+  that slot's detail (it's what makes the note writable) but contributes no time. A call below the
+  minimum claims nothing, so a mic blip doesn't strand time in a slot too small to keep.
+- **Short work is rescued, never dropped.** Ten two-minute visits are twenty real minutes. Sessions
+  under the minimum re-pool per target across the day, and the remainder combines into one visible
+  "odds and ends" slot. Pooled slots are drawn at their start for the time they earned, not spanning
+  the hours they were scattered across — they were never one stretch of time.
+- **Reported time rounds to the nearest 5 minutes with a floor of one multiple**, never to zero:
+  rounding an activity to nothing deletes work, and a zero-hour slot is rejected on import anyway.
+  `Measured` and `Reported` are separate fields so the Timesheet tab can show the rounding rather
+  than let the file do it quietly.
+- **Consumer bounds are enforced when writing, not hoped for.** The importer rejects the whole
+  document on any field error, so `JsonExportWriter` truncates and de-duplicates to the contract's
+  caps (unique ids in `[A-Za-z0-9._-]`, hours > 0, ≤10 non-empty window titles, ≤20 evidence items
+  of ≤64 chars, required item titles). Bucket slugs are sanitized because categories became free
+  text with the triage tab. Environment fields (machine, generated_at) arrive via
+  `JsonExportContext` so Core stays deterministic/testable. `browser`/`sessions` are always empty
+  (no URL/repo capture). `summary` is emitted only where it helps: omitted for a ticketed activity
+  slot so the consumer default-checks the work item, always supplied for a call/timer so the
+  meeting's own name isn't outranked in the note by a ticket that happened to be on screen.
+- **Exporting belongs to the live view, not the saved snapshot.** A snapshot is a frozen record;
+  an export embedded in it goes stale the moment the day moves on. The live window writes the file
+  after bringing up the Timesheet tab, so what uploads is reviewed first.
 - **Mic-in-use detection** via Core Audio capture-session enumeration (NAudio), polled every
   5s. PID-based, so it joins directly onto recorded process names.
 - **Calls are an overlay lane**, not foreground blocks. During a Teams call you foreground

@@ -71,16 +71,13 @@ public static class ReportGenerator
         ReportFileFormat format = ReportFileFormat.Html)
     {
         var data = await ComputeAsync(dbOptions, date);
-        var jsonContext = new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now);
         var content = format switch
         {
             ReportFileFormat.Markdown =>
                 ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive,
                     timers: data.Timers, ticketOverrides: data.TicketOverrides),
-            ReportFileFormat.Json =>
-                JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext, data.Timers),
+            ReportFileFormat.Json => BuildExportJson(data),
             _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
-                embeddedJson: JsonExportWriter.BuildJson(data.Date, data.Blocks, data.Calls, jsonContext, data.Timers),
                 timers: data.Timers, ticketOverrides: data.TicketOverrides),
         };
 
@@ -89,6 +86,17 @@ public static class ReportGenerator
         await File.WriteAllTextAsync(path, content);
         return path;
     }
+
+    /// <summary>
+    /// The Suggestion Export for a computed day — the file the att timesheet imports. Shared by the
+    /// headless <c>--report ... json</c> run and the live view's export button so both write the
+    /// same document.
+    /// </summary>
+    public static string BuildExportJson(ReportData data)
+        => JsonExportWriter.BuildJson(
+            data.Date, data.Blocks, data.Calls,
+            new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now),
+            data.Timers);
 
     private static IReadOnlyList<ClassificationRule> LoadRules()
     {

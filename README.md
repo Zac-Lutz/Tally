@@ -39,6 +39,60 @@ always agree. A
 frozen copy. The window uses the Microsoft Edge WebView2 runtime (preinstalled on Windows 11);
 if it's missing, the window says so and reports still work from the tray.
 
+## Timesheet export
+
+At the end of the day, **Export timesheet** in the live view writes a `.json` file you upload to
+the att timesheet (Time Entry → the calendar panel → **Import suggestions**). Each entry becomes a
+suggestion card sitting next to your meetings; click **Log Time** on one and the dialog opens
+prefilled. Nothing is entered automatically, re-uploading never touches entries you've already
+created, and once you log time from a suggestion it shows **Added**.
+
+**Check it before you send it.** The **Timesheet** tab shows exactly what the file will contain —
+entry count, hours to enter, and the time actually measured beside it, so the rounding is visible
+rather than something the file does quietly. The Export button brings that tab up first.
+
+### How a day becomes a handful of entries
+
+The unit is what you'd **bill it to** — a ticket if one was detected, otherwise the category —
+within one working session. A ticket worked morning and afternoon is two entries sitting where the
+work happened, not one card smeared across the day.
+
+**Time is only ever counted once**, in priority order:
+
+1. **A manual timer wins.** You started it deliberately, so it's the clearest statement of what
+   that time was.
+2. **Then a meeting.** An hour on a call is an hour of meeting even though you were reading a
+   ticket through it — otherwise meetings dissolve into whatever happened to be on screen. What
+   *was* on screen is kept as the entry's detail.
+3. **Then window activity**, for whatever's left.
+
+**Nothing is dropped for being short**, because ten two-minute visits are twenty real minutes.
+Anything under five minutes gets two rescues: leftovers are re-pooled per ticket across the day
+(six two-minute visits to one ticket become one twelve-minute entry), and whatever still can't
+stand alone is combined into a single **odds and ends** entry that carries all its detail. That
+row is highlighted — it's the one that needs a human.
+
+Hours round to the nearest five minutes and never to zero, so a short activity reports something.
+
+### The one thing you still do by hand
+
+If you already logged time against a ticket directly in Halo, Tally doesn't know. Its suggestion
+for that ticket will still appear. Both show on the same calendar, so you can see it — but that
+reconciliation is yours to make. Tally is deliberately offline and never talks to Halo.
+
+### Format details
+
+The file is the Suggestion Export `schema_version: "2"`: a `source`/`range`/`slots` envelope.
+Every bound the importer enforces is enforced when writing (unique ids, hours above zero, capped
+titles and evidence), so a rejected upload should mean a real bug, not a long day. Fields Tally
+can't populate are honest: `browser` and `sessions` are always empty (no URL or repo capture).
+`summary` is supplied only where it helps — a ticketed entry omits it so the ticket composes the
+note, a meeting always supplies it so its own name isn't outranked.
+
+The same file is produced headlessly with `--report today json`, or by setting
+`reportFormat: "json"`. Saved HTML snapshots deliberately carry **no** export: a frozen file's
+embedded copy would go stale the moment the day moved on.
+
 ## Unclassified: giving activities a rule
 
 Anything that didn't match a rule lands in the **Unclassified** tab, one row per app + window with
@@ -107,22 +161,15 @@ is a valid picture of the morning. Three triggers:
   fallback if `autoReportTimes` isn't set.)
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
-opens in the browser: stat cards up top, then **Rollup / Calls / Timeline / Timers / Unclassified
-as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
+opens in the browser: stat cards up top, then **Rollup / Timesheet / Calls / Timeline / Timers /
+Unclassified as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
 `settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
 is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
 so it's safe to keep or share as a single file. The live view uses the same tabs and keeps
 your selected tab across its refreshes.
 
-**JSON export** — the HTML report has an **Export JSON** button (top-right) that downloads a
-`tally-YYYY-MM-DD.json` file built entirely client-side (works offline, no server). The same
-data is produced headlessly with `--report today json` or `reportFormat: "json"`. The format
-is the `schema_version: "2"` export: a `source`/`range`/`slots` envelope where each slot is a
-run of consecutive same-category blocks (bucket = the category slug, hours = summed active
-time, plus `window_titles`, `items` from tickets, `machines`, and `evidence` derived from
-tickets/Teams chats/overlapping calls and manual timers). Fields Tally can't populate are honest: `browser` and
-`sessions` are always empty (no URL or repo capture), and `summary` is omitted entirely.
+See [Timesheet export](#timesheet-export) for getting the day into att.
 
 **Every run writes its own file** — `yyyy-MM-dd_HHmmss.<ext>` (report date + run time), so
 successive runs never overwrite and you can compare a 2pm snapshot with the 5:30pm final.

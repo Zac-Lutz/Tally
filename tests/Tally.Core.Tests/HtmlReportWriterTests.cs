@@ -192,24 +192,16 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void ExportButtonAndEmbeddedJson_AppearWhenJsonProvided()
+    public void SavedSnapshot_CarriesNoExport_ButStillShowsTheTimesheetPreview()
     {
-        var md = HtmlReportWriter.BuildHtml(Date,
-            [CB(0, 30, "Email", "Inbox - Outlook")], [], [],
-            embeddedJson: "{\"schema_version\":\"2\"}");
-
-        Assert.Contains("id=\"export-json\"", md);
-        Assert.Contains("data-filename=\"tally-2026-08-12.json\"", md);
-        Assert.Contains("id=\"tally-export\"", md);
-        Assert.Contains("{\"schema_version\":\"2\"}", md);
-    }
-
-    [Fact]
-    public void NoExportButton_WhenJsonNotProvided()
-    {
+        // Exporting moved to the live view; a frozen file's embedded export would go stale the
+        // moment the day moved on. The preview stays, because the record is still worth reading.
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
 
         Assert.DoesNotContain("id=\"export-json\"", md);
+        Assert.DoesNotContain("id=\"tally-export\"", md);
+        Assert.DoesNotContain("schema_version", md);
+        Assert.Contains("data-tab=\"timesheet\"", md);
     }
 
     [Fact]

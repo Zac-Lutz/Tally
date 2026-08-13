@@ -6,19 +6,21 @@ namespace Tally.Core;
 /// <summary>Renders a day's sessions as a self-contained, theme-aware HTML page for time entry.</summary>
 public static class HtmlReportWriter
 {
+    /// <summary>
+    /// A saved snapshot of the day: a self-contained record, deliberately without the timesheet
+    /// export. Exporting belongs to the live view, where the day can be reviewed and the file
+    /// written once — a snapshot on disk is a frozen copy whose embedded export would go stale the
+    /// moment the day moved on.
+    /// </summary>
     public static string BuildHtml(
         DateOnly date,
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods,
-        string? embeddedJson = null,
         TimeSpan? gapThreshold = null,
         IReadOnlyList<ManualTimer>? timers = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null)
     {
-        var threshold = gapThreshold ?? TimeSpan.FromMinutes(5);
-        var timerList = timers ?? [];
-        var showExport = embeddedJson is not null && (blocks.Count > 0 || calls.Count > 0 || timerList.Count > 0);
         var sb = new StringBuilder();
 
         sb.Append("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
@@ -26,19 +28,12 @@ public static class HtmlReportWriter
         sb.Append($"<title>Tally — {ReportFormat.DisplayDate(date)}</title>\n");
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
 
-        AppendMainInner(sb, date, blocks, calls, inactivePeriods, timerList, threshold, showExport,
-            includeHeader: true, editable: false, ticketOverrides: ticketOverrides);
+        AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
+            gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: true, editable: false,
+            ticketOverrides: ticketOverrides);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
-        if (showExport)
-        {
-            // The JSON is already default-encoder-escaped (< > & as \u00xx), so it can't break out
-            // of the script element. The download is built client-side from this embedded copy.
-            sb.Append("<script type=\"application/json\" id=\"tally-export\">").Append(embeddedJson).Append("</script>\n");
-            sb.Append("<script>").Append(ExportScript).Append("</script>\n");
-        }
-
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
@@ -61,7 +56,7 @@ public static class HtmlReportWriter
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
-            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false, editable: true,
+            gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: false, editable: true,
             ticketOverrides: ticketOverrides);
         return sb.ToString();
     }
@@ -95,7 +90,6 @@ public static class HtmlReportWriter
         IReadOnlyList<InactivePeriod> inactivePeriods,
         IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold,
-        bool showExport,
         bool includeHeader,
         bool editable,
         IReadOnlyDictionary<string, string>? ticketOverrides)
@@ -104,8 +98,6 @@ public static class HtmlReportWriter
         {
             sb.Append("<div class=\"head\">\n");
             sb.Append($"<h1>Tally <span class=\"date\">{ReportFormat.DisplayDate(date)} · {date.DayOfWeek}</span></h1>\n");
-            if (showExport)
-                sb.Append($"<button id=\"export-json\" type=\"button\" data-filename=\"tally-{date:yyyy-MM-dd}.json\">Export JSON</button>\n");
             sb.Append("</div>\n");
         }
 
@@ -131,6 +123,7 @@ public static class HtmlReportWriter
 
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timesheet\">Timesheet</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timers\">Timers</button>");
@@ -139,6 +132,10 @@ public static class HtmlReportWriter
             sb.Append($"<span class=\"badge\">{unclassified.Count}</span>");
         sb.Append("</button>");
         sb.Append("</div>\n");
+
+        sb.Append("<section class=\"panel\" data-panel=\"timesheet\">\n");
+        AppendTimesheet(sb, SuggestionSlotBuilder.Build(blocks, calls, timers));
+        sb.Append("</section>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
         AppendRollup(sb, blocks, calls, timers, editable, ticketOverrides);
@@ -155,6 +152,44 @@ public static class HtmlReportWriter
         sb.Append("<section class=\"panel\" data-panel=\"unclassified\">\n");
         AppendUnclassified(sb, unclassified, blocks, editable);
         sb.Append("</section>\n");
+    }
+
+    /// <summary>
+    /// The timesheet preview: exactly the entries the JSON export will contain, so what uploads can
+    /// be checked before it's uploaded. Measured time is shown beside the reported figure — the
+    /// rounding is visible rather than something the file does quietly.
+    /// </summary>
+    private static void AppendTimesheet(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots)
+    {
+        if (slots.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">Nothing to put on a timesheet yet.</p>\n");
+            return;
+        }
+
+        var total = slots.Sum(s => s.Reported.TotalHours);
+        var measured = TimeSpan.FromTicks(slots.Sum(s => s.Measured.Ticks));
+        sb.Append($"<p class=\"hint\">{slots.Count} {(slots.Count == 1 ? "entry" : "entries")} · <strong>{total:0.00} h</strong> to enter · {ReportFormat.Duration(measured)} actually measured. This is exactly what the export contains.</p>\n");
+
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
+        sb.Append("<tr><th>Time</th><th>What</th><th>Ticket</th><th class=\"num\">Measured</th><th class=\"num\">Enter</th></tr>\n");
+        sb.Append("</thead>\n<tbody>\n");
+
+        foreach (var slot in slots)
+        {
+            var rounded = slot.Reported != slot.Measured;
+            sb.Append(slot.Kind == SuggestionSlotKind.OddsAndEnds ? "<tr class=\"loose\">" : "<tr>")
+              .Append("<td class=\"when\">")
+              .Append($"{ReportFormat.Clock(slot.Start)}–{ReportFormat.Clock(slot.End)}").Append("</td>")
+              .Append("<td>").Append(CategoryBadge(slot.Category)).Append(' ').Append(Esc(slot.Label)).Append("</td>")
+              .Append("<td>").Append(slot.TicketRef is { } t ? $"#{Esc(t)}" : string.Empty).Append("</td>")
+              .Append("<td class=\"num muted\">").Append(ReportFormat.Duration(slot.Measured)).Append("</td>")
+              .Append(rounded ? "<td class=\"num rounded\">" : "<td class=\"num\">")
+              .Append($"{slot.Reported.TotalHours:0.00}").Append("</td></tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
+        sb.Append("<p class=\"hint\">Time is claimed once: a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” row rather than dropped.</p>\n");
     }
 
     // The triage list: everything that matched no rule, one row per app+window. In the live view each
@@ -437,9 +472,6 @@ public static class HtmlReportWriter
           font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
         main { max-width:1080px; margin:0 auto; padding:32px 24px 64px; }
         .head { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
-        button#export-json { background:var(--accent); color:var(--btn-fg); border:none; border-radius:8px;
-          padding:8px 14px; font:inherit; font-weight:600; cursor:pointer; }
-        button#export-json:hover { filter:brightness(1.06); }
         h1 { font-size:24px; margin:0 0 2px; }
         h1 .date { color:var(--muted); font-weight:500; font-size:18px; margin-left:8px; }
         h2 { font-size:13px; margin:32px 0 10px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
@@ -491,6 +523,9 @@ public static class HtmlReportWriter
           padding:4px 12px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
         .uc-save:hover { filter:brightness(1.06); }
         .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; filter:none; }
+        td.when { white-space:nowrap; }
+        td.rounded { color:var(--accent); font-weight:600; }
+        tr.loose td { background:var(--warn-bg); }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -506,6 +541,7 @@ public static class HtmlReportWriter
         document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-panel')===name);});
         }
         window.tallyApplyActiveTab=apply;
+        window.tallyShowTab=function(n){window.__tallyTab=n;apply();};
         document.addEventListener('click',function(e){var t=e.target.closest?e.target.closest('.tab'):null;if(!t)return;window.__tallyTab=t.getAttribute('data-tab');apply();});
         document.addEventListener('DOMContentLoaded',apply);
         })();
@@ -550,17 +586,4 @@ public static class HtmlReportWriter
         })();
         """;
 
-    // Builds the .json download client-side from the embedded copy — works offline, no server.
-    private const string ExportScript =
-        """
-        (function(){var b=document.getElementById('export-json');if(!b)return;
-        b.addEventListener('click',function(){
-        var t=document.getElementById('tally-export').textContent;
-        var blob=new Blob([t],{type:'application/json'});
-        var u=URL.createObjectURL(blob);
-        var a=document.createElement('a');
-        a.href=u;a.download=b.getAttribute('data-filename')||'tally.json';
-        document.body.appendChild(a);a.click();document.body.removeChild(a);
-        URL.revokeObjectURL(u);});})();
-        """;
 }
