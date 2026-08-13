@@ -60,14 +60,11 @@ public class HtmlReportWriterTests
             [new CallSpan(T0, T0.AddMinutes(45), "Discord", "General")],
             []);
 
-        // Scope to the rollup panel (the call also appears in the Calls panel that follows it).
-        var start = md.IndexOf("data-panel=\"rollup\"", StringComparison.Ordinal);
-        var end = md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal);
-        var rollup = md[start..end];
+        // Scope to the rollup panel (the call also appears in the Calls panel).
+        var rollup = Panel(md, "rollup");
 
-        Assert.Contains(">Call<", rollup);      // the Call category badge is in the rollup
-        Assert.Contains("Discord", rollup);     // the app
-        Assert.Contains("General", rollup);     // ... and what the call was about
+        Assert.Contains(">Discord<", rollup);   // a Discord call files under Discord, not "Call"
+        Assert.Contains("General", rollup);     // ... and says what the call was about
     }
 
     [Fact]

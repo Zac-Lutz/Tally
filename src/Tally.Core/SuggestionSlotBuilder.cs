@@ -126,7 +126,7 @@ public static class SuggestionSlotBuilder
                 continue;
 
             slots.Add(ToClaimSlot(
-                SuggestionSlotKind.Call, RollupBuilder.CallCategory,
+                SuggestionSlotKind.Call, RollupBuilder.CallCategoryFor(call.ProcessName),
                 call.Title.Length > 0 ? call.Title : call.ProcessName,
                 new Span(call.Start, call.End), measured, blocks, opts));
             claimed = Merge(claimed.Concat(remaining));

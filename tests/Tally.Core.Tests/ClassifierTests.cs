@@ -123,9 +123,19 @@ public class ClassifierTests
     {
         var c = DefaultClassifier().Classify("ms-teams", "Chat | Matt Longenecker | Microsoft Teams");
 
-        Assert.Equal("Teams", c.Category);
+        Assert.Equal("Teams - Chat", c.Category);   // reads apart from "Teams - Call" on a timesheet
         Assert.Equal("Matt Longenecker", c.Subject);
         Assert.Equal("teams-chat", c.RuleId);
+    }
+
+    [Fact]
+    public void TeamsWindow_WithNoConversationInTheTitle_StaysPlainTeams()
+    {
+        // Neither a chat nor a call — the activity feed, the calendar, a settings pane.
+        var c = DefaultClassifier().Classify("ms-teams", "Microsoft Teams");
+
+        Assert.Equal("Teams", c.Category);
+        Assert.Equal("teams", c.RuleId);
     }
 
     [Fact]

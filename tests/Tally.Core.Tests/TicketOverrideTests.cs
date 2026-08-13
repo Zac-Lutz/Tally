@@ -79,6 +79,18 @@ public class TicketOverrideTests
     }
 
     [Fact]
+    public void CallRowKey_IgnoresHowTheCallIsFiled_SoARenameCannotOrphanATicket()
+    {
+        // Teams calls are filed as "Teams - Call" rather than "Call", but the override key is an
+        // identity, not a label — a ticket typed against the row must survive the naming.
+        var call = new CallSpan(T0, T0.AddMinutes(30), "ms-teams", "Standup");
+        var row = Assert.Single(RollupBuilder.BuildCalls([call]));
+
+        Assert.Equal(RollupBuilder.TeamsCallCategory, row.Category);
+        Assert.Equal(TicketOverrideKey.ForRow(RollupBuilder.CallCategory, null, "ms-teams / Standup"), row.RowKey);
+    }
+
+    [Fact]
     public void CallRowKeys_DistinguishByApp_NotJustName()
     {
         // Two calls with the same title in different apps must not share one override.

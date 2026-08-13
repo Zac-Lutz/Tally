@@ -186,8 +186,10 @@ public static partial class RulesFile
             { "id": "screenconnect", "titlePattern": "ScreenConnect|ConnectWise Control", "category": "Remote Support" },
             { "id": "owa", "titlePattern": "Outlook", "category": "Email" },
             // Teams window titles carry the focused chat/channel: "Chat | <name> | Microsoft Teams".
-            // Capture that name as the subject so the rollup separates each conversation.
-            { "id": "teams-chat", "processPattern": "^(ms-teams|msteams|Teams)$", "titlePattern": "^(?:Chat \\| )?(?<subject>.+?)\\s*\\| Microsoft Teams", "category": "Teams" },
+            // Capture that name as the subject so the rollup separates each conversation. Filed as
+            // "Teams - Chat" so it reads apart from "Teams - Call" (which calls carry) on a
+            // timesheet; a Teams window with no conversation in its title stays plain "Teams".
+            { "id": "teams-chat", "processPattern": "^(ms-teams|msteams|Teams)$", "titlePattern": "^(?:Chat \\| )?(?<subject>.+?)\\s*\\| Microsoft Teams", "category": "Teams - Chat" },
             { "id": "teams", "processPattern": "^(ms-teams|msteams|Teams)$", "category": "Teams" },
             // Discord titles the focused channel, DM or view: "#channel | Server - Discord",
             // "@someone - Discord", "Friends - Discord". Capturing it as the subject separates each

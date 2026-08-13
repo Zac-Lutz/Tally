@@ -228,10 +228,16 @@ fields. Rules are re-read on every report generation, so edits apply immediately
 
 `subject` captures a free-text "what/who" — e.g. the shipped Teams rule pulls the focused
 chat/channel name out of `Chat | <name> | Microsoft Teams`, so the rollup lists each
-conversation separately instead of one lumped "Teams" row. The **Discord** rule does the same
+conversation separately instead of one lumped row. The **Discord** rule does the same
 with `#channel | Server - Discord`, `@someone - Discord` and `Friends - Discord`; a window with no
-channel in its title is still categorised as Discord. Discord *calls* stay in the Call lane, as
-every call does — the category covers time spent in the window.
+channel in its title is still categorised as Discord.
+
+**Calls from your day-to-day apps are named, not pooled.** A Teams call is filed as
+**Teams - Call**, a Teams conversation as **Teams - Chat**, and Discord time as **Discord**
+whether it went to a call or the window — so a timesheet can tell a meeting from a message thread.
+Calls from anything else stay a plain **Call**. Every call still appears in the Calls tab either
+way; this only changes the category it carries. (A Teams window showing neither a conversation nor
+a call — the activity feed, the calendar — stays plain **Teams**.)
 
 The **Rollup** is per-activity, not per-category: each distinct browser tab, editor window,
 email, or Teams chat is its own row with time summed across the whole day (so several Halo

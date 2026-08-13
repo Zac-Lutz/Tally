@@ -131,7 +131,7 @@ public class JsonExportWriterTests
             Context));
 
         var slot = Assert.Single(root.GetProperty("slots").EnumerateArray());
-        Assert.Equal("call", slot.GetProperty("bucket").GetString());
+        Assert.Equal("teams-call", slot.GetProperty("bucket").GetString());   // filed as the rollup files it
         Assert.Equal(1.0, slot.GetProperty("hours").GetDouble());   // the meeting's hour, once
         Assert.Contains("Sprint planning", slot.GetProperty("note").GetString());
         // The meeting names itself in the note panel rather than deferring to what was on screen.

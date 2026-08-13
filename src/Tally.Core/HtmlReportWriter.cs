@@ -546,14 +546,19 @@ public static class HtmlReportWriter
     private static string CategoryBadge(string category)
         => $"<span class=\"cat\" style=\"background:rgba({CategoryRgb(category)},.22)\">{Esc(category)}</span>";
 
+    /// <summary>The category the shipped Teams chat rule files a focused conversation under.</summary>
+    private const string TeamsChatCategory = "Teams - Chat";
+
     // The hue a category is drawn in, as bare RGB so callers can pick their own alpha — a pill wants
     // a wash, a calendar block's edge wants the full colour. Text always uses the theme foreground,
     // so contrast holds in both themes.
     private static string CategoryRgb(string category) => category switch
     {
         "HaloPSA" => "59,130,246",
-        "Teams" => "139,92,246",
-        "Discord" => "88,101,242",
+        // Teams keeps one hue whether the time was a call or a chat — the badge text draws the
+        // distinction, and the colour is there to say "this was Teams" at a glance.
+        "Teams" or RollupBuilder.TeamsCallCategory or TeamsChatCategory => "139,92,246",
+        RollupBuilder.DiscordCategory => "88,101,242",
         "Email" => "20,184,166",
         "Development" => "34,197,94",
         "Browsing" => "234,179,8",

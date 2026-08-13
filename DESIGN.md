@@ -77,6 +77,16 @@ Everything stays on this machine. No cloud, no telemetry.
   after bringing up the Timesheet tab, so what uploads is reviewed first.
 - **Mic-in-use detection** via Core Audio capture-session enumeration (NAudio), polled every
   5s. PID-based, so it joins directly onto recorded process names.
+- **Day-to-day apps name their own calls.** A Teams call files as `Teams - Call`, its chats as
+  `Teams - Chat`, and Discord as `Discord` whichever lane the time came from; everything else stays
+  a plain `Call`. This is a short list of tools used all day, not a taxonomy — the point is that a
+  timesheet can tell a meeting from a message thread without opening the Calls tab. The mapping is
+  an explicit switch (`RollupBuilder.CallCategoryFor`) rather than rule-driven, because the shape
+  is per-app preference — Teams wants splitting, Discord wants merging — and no general rule
+  produces both. The rollup and the timesheet export share it, so a call is filed the same way
+  wherever it's shown. The per-day ticket override key deliberately stays on the generic `Call`:
+  it's an identity, not a label, so renaming how a call is filed can't orphan a ticket typed
+  against it.
 - **Calls are an overlay lane**, not foreground blocks. During a Teams call you foreground
   other windows; the call span runs independently and the report gets a separate Calls section.
   In the JSON export, calls and manual timers are `evidence` on the slots they overlap rather

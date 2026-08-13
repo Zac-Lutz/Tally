@@ -4,6 +4,45 @@ using Xunit;
 
 namespace Tally.Core.Tests;
 
+public class CallCategoryTests
+{
+    private static readonly DateTimeOffset T0 = new(2026, 8, 13, 9, 0, 0, TimeSpan.FromHours(-5));
+
+    private static CallSpan Call(string process, string title = "Standup")
+        => new(T0, T0.AddMinutes(30), process, title);
+
+    [Theory]
+    [InlineData("ms-teams", "Teams - Call")]
+    [InlineData("msteams", "Teams - Call")]
+    [InlineData("Teams", "Teams - Call")]
+    [InlineData("Discord", "Discord")]
+    [InlineData("discord", "Discord")]
+    [InlineData("Zoom", "Call")]
+    [InlineData("slack", "Call")]
+    public void ADayToDayApp_FilesItsCallsUnderItsOwnName(string process, string expected)
+        => Assert.Equal(expected, Assert.Single(RollupBuilder.BuildCalls([Call(process)])).Category);
+
+    [Fact]
+    public void CallsFromDifferentApps_NeverMergeIntoOneRow()
+    {
+        // Same title, two apps: they must stay two rows even though the label matches.
+        var rows = RollupBuilder.BuildCalls([Call("ms-teams", "ms-teams"), Call("Discord", "Discord")]);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, r => r.Category == RollupBuilder.TeamsCallCategory);
+        Assert.Contains(rows, r => r.Category == RollupBuilder.DiscordCategory);
+    }
+
+    [Fact]
+    public void TheTimesheetFilesACallTheSameWayTheRollupDoes()
+    {
+        // One naming for a call, wherever it's shown — the export's bucket follows the rollup.
+        var slots = SuggestionSlotBuilder.Build([], [Call("ms-teams", "MSP Ops Meeting")]);
+
+        Assert.Equal(RollupBuilder.TeamsCallCategory, Assert.Single(slots).Category);
+    }
+}
+
 public class RollupBuilderTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 12, 9, 0, 0, TimeSpan.FromHours(-5));
@@ -101,7 +140,7 @@ public class RollupBuilderTests
         => new(T0.AddMinutes(startMin), T0.AddMinutes(endMin), process, title);
 
     [Fact]
-    public void BuildCalls_SumsSameAppAcrossTheDay_UnderTheCallCategory()
+    public void BuildCalls_SumsSameAppAcrossTheDay()
     {
         var rows = RollupBuilder.BuildCalls(
         [
@@ -110,9 +149,17 @@ public class RollupBuilderTests
         ]);
 
         var row = Assert.Single(rows);
-        Assert.Equal("Call", row.Category);
+        Assert.Equal("Discord", row.Category);   // a day-to-day app files under its own name
         Assert.Equal("Discord", row.DetailName);
         Assert.Equal(TimeSpan.FromMinutes(45), row.Time);   // 20 + 25
+    }
+
+    [Fact]
+    public void BuildCalls_UsesThePlainCallCategory_ForAnyOtherApp()
+    {
+        var row = Assert.Single(RollupBuilder.BuildCalls([Call(0, 20, "Zoom")]));
+
+        Assert.Equal(RollupBuilder.CallCategory, row.Category);
     }
 
     [Fact]
