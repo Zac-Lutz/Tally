@@ -46,6 +46,11 @@ public sealed class LiveWindow : Form
     private bool _ready;
     private bool _refreshing;
     private bool _syncingTimerUi;
+    private string? _note;
+    private DateTime _noteUntil;
+
+    /// <summary>How long a saved-edit note stays beside the live status before it fades out.</summary>
+    private const int NoteDuration = 8;
 
     /// <summary>When true (tray-hosted), closing hides the window to keep WebView2 warm. Standalone
     /// (`--live`) sets this false so closing exits the process. A field, not a property, to avoid
@@ -264,7 +269,8 @@ public sealed class LiveWindow : Form
                 timers: data.Timers, ticketOverrides: data.TicketOverrides);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
-            _statusLabel.Text = $"Live · updated {DateTime.Now:h:mm:ss tt}";
+            var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
+            _statusLabel.Text = $"Live · updated {DateTime.Now:h:mm:ss tt}{note}";
         }
         catch (Exception ex)
         {
@@ -296,10 +302,74 @@ public sealed class LiveWindow : Form
             {
                 _ = RenameTimerAsync(timerId, msg.Value);
             }
+            else if (msg.Type == "rule")
+            {
+                SaveRule(msg);
+            }
         }
         catch (Exception ex)
         {
             Log.Error("Failed to apply an edit from the live view", ex);
+        }
+    }
+
+    // "Save rule" from the Unclassified tab: draft a rule for that activity and add it to rules.json.
+    // Rules are re-read on every recompute, so the refresh right after already shows the day
+    // reclassified — the row leaves the triage list and joins the Rollup under its new category.
+    private void SaveRule(EditMessage msg)
+    {
+        var process = Decode(msg.Process) ?? string.Empty;
+        var title = Decode(msg.Title) ?? string.Empty;
+        var category = msg.Category?.Trim();
+        if (string.IsNullOrEmpty(category) || (process.Length == 0 && title.Length == 0))
+            return;
+
+        try
+        {
+            var match = string.Equals(msg.Scope, "window", StringComparison.OrdinalIgnoreCase)
+                ? RuleMatch.Window
+                : RuleMatch.App;
+            var rule = RuleDraft.Create(process, title, match, category, ExistingRuleIds());
+            RulesFile.AddRule(TallyPaths.RulesPath, rule);
+            Log.Info($"Saved classification rule '{rule.Id}' ({category}) from the live view");
+            Note($"rule saved — {category}");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to save a classification rule from the live view", ex);
+            Note("couldn't save that rule — see the log");
+        }
+    }
+
+    // Existing ids, so a new rule's generated id can't collide with one already in the file.
+    private static IReadOnlyList<string> ExistingRuleIds()
+    {
+        try
+        {
+            return File.Exists(TallyPaths.RulesPath)
+                ? RulesFile.Load(TallyPaths.RulesPath).Select(r => r.Id).ToList()
+                : [];
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to read existing rule ids — a generated id may need a suffix", ex);
+            return [];
+        }
+    }
+
+    private static string? Decode(string? base64)
+    {
+        if (string.IsNullOrEmpty(base64))
+            return null;
+
+        try
+        {
+            return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+        }
+        catch (FormatException)
+        {
+            return null;
         }
     }
 
@@ -331,7 +401,20 @@ public sealed class LiveWindow : Form
 
     private static readonly JsonSerializerOptions EditMessageOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private sealed record EditMessage(string? Type, string? Key, string? Id, string? Value);
+    // Every edit the live page can post: a ticket cell (Key/Value), a timer rename (Id/Value), or a
+    // rule saved from triage (Process/Title as base64, Scope, Category).
+    private sealed record EditMessage(
+        string? Type, string? Key, string? Id, string? Value,
+        string? Process, string? Title, string? Scope, string? Category);
+
+    /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
+    /// acknowledged instead of being erased by the next refresh a moment later.</summary>
+    private void Note(string text)
+    {
+        _note = text;
+        _noteUntil = DateTime.Now.AddSeconds(NoteDuration);
+        _statusLabel.Text = $"Live · {text}";
+    }
 
     private async void GenerateSnapshot()
     {

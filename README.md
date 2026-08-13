@@ -28,8 +28,8 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 ## Live view
 
 **Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
-window showing the same rollup / calls / timeline / timers as a report, for **today**, refreshing
-every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
+window showing the same rollup / calls / timeline / timers / unclassified as a report, for **today**,
+refreshing every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
 **Ticket** column is editable: click any row's Ticket cell — a window activity *or a call* — and
 type a number. It's saved for that day (in `ticket-overrides.json`) and shows on the Rollup and in
 your generated reports (activity tickets also flow into the JSON export).
@@ -38,6 +38,28 @@ always agree. A
 **Generate snapshot report** button on its toolbar writes a timestamped report when you want a
 frozen copy. The window uses the Microsoft Edge WebView2 runtime (preinstalled on Windows 11);
 if it's missing, the window says so and reports still work from the tray.
+
+## Unclassified: giving activities a rule
+
+Anything that didn't match a rule lands in the **Unclassified** tab, one row per app + window with
+the time it took today (the tab shows a count, so a day needing attention says so). This is the
+place to teach Tally, instead of hand-editing `rules.json`:
+
+1. Type a **Category** (the box suggests the ones you already use — any text is fine).
+2. Pick what it **applies to** — *any window of that app*, or *only this window*.
+3. Click **Save rule**.
+
+The rule is written to `rules.json` straight away, and the next refresh (a few seconds) reclassifies
+the whole day: the row leaves Unclassified and shows up in the Rollup under its new category. Every
+later day and report uses it too. Nothing is guessed — the app name and window title are matched
+exactly as shown.
+
+Where the rule lands in the file depends on how specific it is, because the first matching rule
+wins: a **window** rule goes to the **top** (it names one thing, so it should beat anything
+generic), and an **app** rule goes to the **bottom** (it covers everything that app does, so it
+must not swallow rules you already had). Your comments and existing rules are left untouched.
+
+Saved reports show the same Unclassified list read-only — a record of what still needs a rule.
 
 ## Manual timers
 
@@ -83,8 +105,8 @@ is a valid picture of the morning. Three triggers:
   fallback if `autoReportTimes` isn't set.)
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
-opens in the browser: stat cards up top, then **Rollup / Calls / Timeline / Timers as tabs** —
-Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
+opens in the browser: stat cards up top, then **Rollup / Calls / Timeline / Timers / Unclassified
+as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
 `settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
 is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
@@ -119,7 +141,8 @@ dotnet test tests/Tally.Core.Tests
 
 ## Classification rules
 
-Edit `%USERPROFILE%\.tally\rules.json` (created with starter rules on first run; comments
+Most rules are easiest to add from the live view's **Unclassified** tab (above). To write one by
+hand, edit `%USERPROFILE%\.tally\rules.json` (created with starter rules on first run; comments
 allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
 regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
 fields. Rules are re-read on every report generation, so edits apply immediately — check the

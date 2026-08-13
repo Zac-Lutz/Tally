@@ -82,6 +82,7 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
         sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
+        sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
@@ -119,17 +120,24 @@ public static class HtmlReportWriter
         AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides);
     }
 
-    // Rollup / Calls / Timeline / Timers as switchable tabs (Rollup active by default) instead of
-    // stacked sections. Tab switching + preserving the choice across live refreshes is TabScript.
+    // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
+    // instead of stacked sections. Tab switching + preserving the choice across live refreshes is
+    // TabScript. The Unclassified tab carries a count so a day needing triage announces itself.
     private static void AppendTabs(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
         IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides)
     {
+        var unclassified = UnclassifiedBuilder.Build(blocks);
+
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timers\">Timers</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"unclassified\">Unclassified");
+        if (unclassified.Count > 0)
+            sb.Append($"<span class=\"badge\">{unclassified.Count}</span>");
+        sb.Append("</button>");
         sb.Append("</div>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
@@ -144,7 +152,78 @@ public static class HtmlReportWriter
         sb.Append("<section class=\"panel\" data-panel=\"timers\">\n");
         AppendTimers(sb, timers, editable);
         sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"unclassified\">\n");
+        AppendUnclassified(sb, unclassified, blocks, editable);
+        sb.Append("</section>\n");
     }
+
+    // The triage list: everything that matched no rule, one row per app+window. In the live view each
+    // row can be given a category and saved as a rule on the spot (the C# host writes rules.json and
+    // the next refresh reclassifies the day). The saved file report lists them read-only.
+    private static void AppendUnclassified(
+        StringBuilder sb, IReadOnlyList<UnclassifiedRow> rows, IReadOnlyList<ClassifiedBlock> blocks, bool editable)
+    {
+        if (rows.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">Nothing unclassified — every activity today matched a rule.</p>\n");
+            return;
+        }
+
+        if (editable)
+            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to today straight away, and to every day from here.</p>\n");
+
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n<tr><th>App</th><th>Window</th><th class=\"num\">Time</th>");
+        if (editable)
+            sb.Append("<th>Category</th><th>Applies to</th><th></th>");
+        sb.Append("</tr>\n</thead>\n<tbody>\n");
+
+        foreach (var row in rows)
+        {
+            sb.Append($"<tr data-p=\"{B64(row.ProcessName)}\" data-t=\"{B64(row.Title)}\">")
+              .Append("<td>").Append(Esc(row.ProcessName)).Append("</td>")
+              .Append("<td>").Append(Esc(row.Title)).Append("</td>")
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td>");
+            if (editable)
+            {
+                sb.Append("<td><input class=\"uc-cat\" type=\"text\" list=\"uc-cats\" placeholder=\"Category\" aria-label=\"Category\"></td>")
+                  .Append("<td><select class=\"uc-scope\" aria-label=\"Applies to\">")
+                  .Append($"<option value=\"app\">Any {Esc(row.ProcessName)} window</option>")
+                  .Append("<option value=\"window\">Only this window</option></select></td>")
+                  .Append("<td class=\"num\"><button class=\"uc-save\" type=\"button\">Save rule</button></td>");
+            }
+
+            sb.Append("</tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
+
+        if (!editable)
+            return;
+
+        // Suggests the categories already in use so the day's naming stays consistent (free text
+        // still wins — a datalist only proposes).
+        sb.Append("<datalist id=\"uc-cats\">");
+        foreach (var category in KnownCategories(blocks))
+            sb.Append($"<option value=\"{Esc(category)}\"></option>");
+        sb.Append("</datalist>\n");
+    }
+
+    // Categories seen today, plus the shipped defaults so a fresh day still offers sensible names.
+    private static readonly string[] BaselineCategories =
+        ["Admin", "Browsing", "Development", "Email", "HaloPSA", "Meetings", "Remote Support", "Teams"];
+
+    private static IReadOnlyList<string> KnownCategories(IReadOnlyList<ClassifiedBlock> blocks)
+        => blocks
+            .Select(b => b.Classification.Category)
+            .Where(c => c != Classification.Unclassified)
+            .Concat(BaselineCategories)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    // Process names and titles travel to the host as base64 so no quoting or escaping can mangle
+    // them on the way through an HTML attribute and a JSON message.
+    private static string B64(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
 
     // The Timers tab. In the live view the name is editable (renaming a recorded timer); the change
     // persists and reflects on the Rollup. The saved file report shows names read-only.
@@ -261,7 +340,7 @@ public static class HtmlReportWriter
     {
         if (editable && row.RowKey is { } rowKey)
         {
-            var key = Convert.ToBase64String(Encoding.UTF8.GetBytes(rowKey));
+            var key = B64(rowKey);
             var value = row.TicketRef is { } t ? Esc(t) : string.Empty;
             return $"<input class=\"tk\" type=\"text\" inputmode=\"numeric\" data-k=\"{key}\" value=\"{value}\" placeholder=\"—\" aria-label=\"Ticket number\">";
         }
@@ -399,6 +478,19 @@ public static class HtmlReportWriter
         .tk::placeholder { color:var(--muted); }
         .tk:hover,.tn:hover { border-color:var(--border); }
         .tk:focus,.tn:focus { outline:none; border-color:var(--accent); background:var(--bg); }
+        .badge { display:inline-block; margin-left:7px; padding:0 7px; border-radius:999px;
+          background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--fg);
+          font-size:11px; font-weight:600; }
+        .hint { color:var(--muted); margin:0 0 12px; }
+        .uc-cat,.uc-scope { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+          color:var(--fg); font:inherit; font-size:13px; padding:3px 6px; }
+        .uc-cat { width:150px; }
+        .uc-cat::placeholder { color:var(--muted); }
+        .uc-cat:focus,.uc-scope:focus { outline:none; border-color:var(--accent); }
+        .uc-save { background:var(--accent); color:var(--btn-fg); border:none; border-radius:6px;
+          padding:4px 12px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+        .uc-save:hover { filter:brightness(1.06); }
+        .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; filter:none; }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -420,10 +512,10 @@ public static class HtmlReportWriter
         """;
 
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
-    // Skips the swap while a ticket cell OR timer-name cell is being edited so a refresh never wipes
-    // an in-progress edit.
+    // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category) so a
+    // refresh never wipes an in-progress edit; the next tick lands once focus moves on.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&a.classList&&(a.classList.contains('tk')||a.classList.contains('tn')))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
 
     // Editable cells: a ticket cell (.tk) posts {type:'ticket', key, value}; a timer-name cell (.tn)
     // posts {type:'timerName', id, value}. Committed on blur or Enter (which blurs). Delegated so the
@@ -437,6 +529,24 @@ public static class HtmlReportWriter
         function isEdit(t){return t&&t.classList&&(t.classList.contains('tk')||t.classList.contains('tn'));}
         document.addEventListener('change',function(e){if(isEdit(e.target))post(e.target);});
         document.addEventListener('keydown',function(e){if(e.key==='Enter'&&isEdit(e.target)){e.preventDefault();e.target.blur();}});
+        })();
+        """;
+
+    // "Save rule" in the Unclassified tab: posts {type:'rule', process, title, scope, category} to the
+    // host, which writes it into rules.json. The app + window travel as the base64 the row carries, so
+    // nothing is re-derived from display text. An empty category focuses the field instead of posting.
+    private const string RuleSaveScript =
+        """
+        (function(){
+        document.addEventListener('click',function(e){
+        var b=e.target.closest?e.target.closest('.uc-save'):null;if(!b||b.disabled)return;
+        var r=b.closest('tr');if(!r)return;
+        var c=r.querySelector('.uc-cat');var s=r.querySelector('.uc-scope');
+        var v=c?c.value.trim():'';
+        if(!v){if(c)c.focus();return;}
+        if(!window.chrome||!window.chrome.webview)return;
+        b.disabled=true;b.textContent='Saved';
+        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),scope:s?s.value:'app',category:v});});
         })();
         """;
 

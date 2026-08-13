@@ -21,6 +21,13 @@ Everything stays on this machine. No cloud, no telemetry.
 - **Classification `subject`** is a third capture field beside client/ticket, for a free-text
   what/who (Teams chat name today). The Teams title `Chat | <name> | Microsoft Teams` yields
   `<name>`; a channel `Chat | Team | Channel | Microsoft Teams` keeps `Team | Channel`.
+- **Saved rules are placed by specificity, not appended blindly.** Rules are first-match-wins, so
+  a rule written from the Unclassified tab lands where its breadth earns: a *window* rule (app +
+  exact title) goes first — it names one thing and should beat the generic rules — while an *app*
+  rule goes last, so it can't shadow the specific rules already in the file. Both are written as a
+  text edit (`RulesFile.WithRule` scans for the `rules` array with a string/comment-aware pass), so
+  the user's comments and formatting survive. Patterns are literal: only regex metacharacters are
+  escaped, not whitespace, so a generated rule stays readable and hand-editable.
 - **No EF migrations.** Single-writer personal app; `TallyDbContext.EnsureSchema` creates a
   fresh schema and additively `CREATE TABLE IF NOT EXISTS`es new tables on an older DB. If the
   schema grows more complex than additive tables, adopt EF migrations.
@@ -108,9 +115,14 @@ correctly; rendered in local time.
    (borderless TopMost draggable window). `TrayAppContext` coordinates: the bubble shows only
    while a timer runs AND the live window isn't shown normally. Follow-up: surface completed
    `manual_timers` in the report/export.
-4. Unclassified triage UI → "save as rule".
-4. Persist classified blocks + manual block edits; raw-event retention/purge.
-5. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),
+4. Unclassified triage UI → "save as rule" (done): an **Unclassified** tab (count badge on the tab)
+   lists what matched no rule, one row per app+window (`UnclassifiedBuilder`). In the live view each
+   row takes a category and a scope (any window of the app / only this window), and **Save rule**
+   posts to the host, which drafts the rule (`RuleDraft`) and writes it (`RulesFile.AddRule`). Rules
+   are re-read every recompute, so the next ~5s refresh reclassifies the day in place. The file
+   report renders the same list read-only.
+5. Persist classified blocks + manual block edits; raw-event retention/purge.
+6. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),
    Velopack installer (done — `Package-Tally.ps1`).
 
 ## Packaging

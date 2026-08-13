@@ -311,4 +311,70 @@ public class HtmlReportWriterTests
         Assert.Contains("No activity recorded.", md);
         Assert.Contains("</html>", md);
     }
+
+    [Fact]
+    public void UnclassifiedTab_ListsWhatMatchedNoRule_WithACount()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 30, "Email", "Inbox - Outlook"),
+            CB(30, 55, Classification.Unclassified, "Runbook.txt - Notepad", process: "notepad"),
+        ], [], []);
+
+        Assert.Contains("data-tab=\"unclassified\"", md);
+        Assert.Contains("<span class=\"badge\">1</span>", md);   // the tab announces the backlog
+
+        var panel = md[md.IndexOf("data-panel=\"unclassified\"", StringComparison.Ordinal)..];
+        Assert.Contains("notepad", panel);
+        Assert.Contains("Runbook.txt - Notepad", panel);
+        Assert.Contains("25m", panel);
+    }
+
+    [Fact]
+    public void UnclassifiedTab_SaysSoWhenEverythingMatched()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        Assert.Contains("data-tab=\"unclassified\"", md);
+        Assert.DoesNotContain("<span class=\"badge\">", md);     // nothing to announce
+        Assert.Contains("Nothing unclassified", md);
+    }
+
+    [Fact]
+    public void UnclassifiedTab_IsSaveableInTheLiveViewOnly()
+    {
+        var blocks = new[] { CB(0, 25, Classification.Unclassified, "Runbook.txt - Notepad", process: "notepad") };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, blocks, [], []);
+        var file = HtmlReportWriter.BuildHtml(Date, blocks, [], []);
+
+        // Live: a category box, a scope choice, and a save button per row, plus category suggestions.
+        Assert.Contains("class=\"uc-cat\"", inner);
+        Assert.Contains("class=\"uc-scope\"", inner);
+        Assert.Contains("class=\"uc-save\"", inner);
+        Assert.Contains("<option value=\"window\">Only this window</option>", inner);
+        Assert.Contains("<datalist id=\"uc-cats\">", inner);
+        // The saved file report is a record, not a working surface (the shared stylesheet still
+        // carries the .uc-* rules, so look for the controls themselves).
+        Assert.DoesNotContain("class=\"uc-save\"", file);
+        Assert.DoesNotContain("class=\"uc-cat\"", file);
+        Assert.Contains("Runbook.txt - Notepad", file);   // ... but the row is still listed
+    }
+
+    [Fact]
+    public void UnclassifiedRow_CarriesTheAppAndTitleAsBase64_ForTheHostToDecode()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date,
+            [CB(0, 25, Classification.Unclassified, "Runbook.txt - Notepad", process: "notepad")], [], []);
+
+        Assert.Contains($"data-p=\"{B64("notepad")}\"", inner);
+        Assert.Contains($"data-t=\"{B64("Runbook.txt - Notepad")}\"", inner);
+    }
+
+    [Fact]
+    public void LiveShell_CarriesTheSaveRuleHandler()
+        => Assert.Contains("type:'rule'", HtmlReportWriter.BuildLiveShell());
+
+    private static string B64(string value)
+        => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
 }
