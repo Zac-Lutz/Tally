@@ -52,7 +52,7 @@ public static class RollupBuilder
     public static IReadOnlyList<RollupRow> BuildCalls(
         IReadOnlyList<CallSpan> calls, IReadOnlyDictionary<string, string>? ticketOverrides = null)
         => calls
-            .Select(c => (Category: CallCategoryFor(c.ProcessName), Label: CallLabel(c), c.Duration))
+            .Select(c => (Category: CallApps.CategoryFor(c.ProcessName), Label: CallLabel(c), c.Duration))
             .GroupBy(x => (x.Category, x.Label))
             .Select(g =>
             {
@@ -87,27 +87,9 @@ public static class RollupBuilder
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    /// <summary>The category label a call carries when nothing more specific applies.</summary>
-    public const string CallCategory = "Call";
-
-    /// <summary>A Teams call — worth separating from a Teams chat when entering time.</summary>
-    public const string TeamsCallCategory = "Teams - Call";
-
-    /// <summary>Discord, whether the time went to a call or the window.</summary>
-    public const string DiscordCategory = "Discord";
-
-    /// <summary>
-    /// The category a call is filed under. Teams and Discord are day-to-day tools whose time is
-    /// worth naming rather than pooling into one "Call" row: a Teams call reads differently from a
-    /// Teams chat on a timesheet, and Discord is one line however the time was spent there. Every
-    /// other app stays a plain call — this is a short list of tools used all day, not a taxonomy.
-    /// </summary>
-    public static string CallCategoryFor(string processName) => processName.ToLowerInvariant() switch
-    {
-        "ms-teams" or "msteams" or "teams" => TeamsCallCategory,
-        "discord" => DiscordCategory,
-        _ => CallCategory,
-    };
+    /// <summary>The category label a call carries when nothing more specific applies.
+    /// See <see cref="CallApps"/> for the per-app naming.</summary>
+    public const string CallCategory = CallApps.DefaultCategory;
 
     /// <summary>The category label manual timers carry in the rollup.</summary>
     public const string TimerCategory = "Timer";

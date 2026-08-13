@@ -186,6 +186,63 @@ public class SuggestionSlotBuilderTests
     }
 
     [Fact]
+    public void SittingInADiscordCallWhileWorking_LeavesTheWorkAlone()
+    {
+        // People park in a voice channel for hours. The mic being live says nothing about what the
+        // hour was for, so the focused window keeps every minute of it.
+        var slots = SuggestionSlotBuilder.Build(
+            [CB(0, 60, "HaloPSA", "Ticket #4867 - mailbox rules", ticket: "4867")],
+            [new CallSpan(T0, T0.AddMinutes(60), "Discord", "General | Lutz Tech")]);
+
+        var slot = Assert.Single(slots);
+        Assert.Equal(SuggestionSlotKind.Activity, slot.Kind);
+        Assert.Equal("4867", slot.TicketRef);
+        Assert.Equal(TimeSpan.FromHours(1), slot.Measured);
+    }
+
+    [Fact]
+    public void TimeReallySpentInDiscord_StillCountsAsDiscord()
+    {
+        // ... because the Discord window is what's focused when it is. No call slot needed.
+        var slots = SuggestionSlotBuilder.Build(
+            [CB(0, 45, CallApps.DiscordCategory, "General | Lutz Tech - Discord")],
+            [new CallSpan(T0, T0.AddMinutes(45), "Discord", "General | Lutz Tech")]);
+
+        var slot = Assert.Single(slots);
+        Assert.Equal(CallApps.DiscordCategory, slot.Category);
+        Assert.Equal(TimeSpan.FromMinutes(45), slot.Measured);
+    }
+
+    [Fact]
+    public void ATeamsMeetingStillOutranksTheWindowsUnderIt()
+    {
+        // The exception is Discord's alone — a meeting is still a meeting.
+        var slots = SuggestionSlotBuilder.Build(
+            [CB(0, 60, "HaloPSA", "Ticket #4867", ticket: "4867")],
+            [new CallSpan(T0, T0.AddMinutes(60), "ms-teams", "Standup | Microsoft Teams")]);
+
+        var slot = Assert.Single(slots);
+        Assert.Equal(SuggestionSlotKind.Call, slot.Kind);
+        Assert.Equal(CallApps.TeamsCallCategory, slot.Category);
+    }
+
+    [Fact]
+    public void ADiscordCallOverAMeeting_DoesNotStealTheMeetingsTime()
+    {
+        // Both mics live at once: the meeting keeps its hour, Discord takes nothing.
+        var slots = SuggestionSlotBuilder.Build(
+            [CB(0, 60, "Browsing", "Tickets - Halo")],
+            [
+                new CallSpan(T0, T0.AddMinutes(60), "ms-teams", "Standup | Microsoft Teams"),
+                new CallSpan(T0, T0.AddMinutes(60), "Discord", "General"),
+            ]);
+
+        var slot = Assert.Single(slots);
+        Assert.Equal(CallApps.TeamsCallCategory, slot.Category);
+        Assert.Equal(TimeSpan.FromHours(1), slot.Measured);
+    }
+
+    [Fact]
     public void AMomentaryMicBlip_DoesNotClaimTimeFromTheWindowLane()
     {
         // Two minutes isn't a meeting; letting it claim would strand the time in a slot too small

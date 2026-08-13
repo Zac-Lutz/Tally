@@ -86,7 +86,7 @@ public class TicketOverrideTests
         var call = new CallSpan(T0, T0.AddMinutes(30), "ms-teams", "Standup");
         var row = Assert.Single(RollupBuilder.BuildCalls([call]));
 
-        Assert.Equal(RollupBuilder.TeamsCallCategory, row.Category);
+        Assert.Equal(CallApps.TeamsCallCategory, row.Category);
         Assert.Equal(TicketOverrideKey.ForRow(RollupBuilder.CallCategory, null, "ms-teams / Standup"), row.RowKey);
     }
 

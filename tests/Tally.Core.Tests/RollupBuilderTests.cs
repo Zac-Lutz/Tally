@@ -29,8 +29,8 @@ public class CallCategoryTests
         var rows = RollupBuilder.BuildCalls([Call("ms-teams", "ms-teams"), Call("Discord", "Discord")]);
 
         Assert.Equal(2, rows.Count);
-        Assert.Contains(rows, r => r.Category == RollupBuilder.TeamsCallCategory);
-        Assert.Contains(rows, r => r.Category == RollupBuilder.DiscordCategory);
+        Assert.Contains(rows, r => r.Category == CallApps.TeamsCallCategory);
+        Assert.Contains(rows, r => r.Category == CallApps.DiscordCategory);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class CallCategoryTests
         // One naming for a call, wherever it's shown — the export's bucket follows the rollup.
         var slots = SuggestionSlotBuilder.Build([], [Call("ms-teams", "MSP Ops Meeting")]);
 
-        Assert.Equal(RollupBuilder.TeamsCallCategory, Assert.Single(slots).Category);
+        Assert.Equal(CallApps.TeamsCallCategory, Assert.Single(slots).Category);
     }
 }
 

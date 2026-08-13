@@ -589,8 +589,8 @@ public static class HtmlReportWriter
         "HaloPSA" => "59,130,246",
         // Teams keeps one hue whether the time was a call or a chat — the badge text draws the
         // distinction, and the colour is there to say "this was Teams" at a glance.
-        "Teams" or RollupBuilder.TeamsCallCategory or TeamsChatCategory => "139,92,246",
-        RollupBuilder.DiscordCategory => "88,101,242",
+        "Teams" or CallApps.TeamsCallCategory or TeamsChatCategory => "139,92,246",
+        CallApps.DiscordCategory => "88,101,242",
         "Email" => "20,184,166",
         "Development" => "34,197,94",
         "Browsing" => "234,179,8",

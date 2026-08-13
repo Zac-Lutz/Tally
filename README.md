@@ -81,6 +81,12 @@ work happened, not one card smeared across the day.
    *was* on screen is kept as the entry's detail.
 3. **Then window activity**, for whatever's left.
 
+**Discord is the exception.** People sit in a voice channel for hours while working, so a live
+Discord mic says nothing about what the time was for — it never takes time from the window you
+were actually using. It still shows as evidence on those entries, so you can see you were in
+Discord. Time genuinely spent *in* Discord still counts as Discord, because the Discord window is
+what you're looking at when it is.
+
 **Nothing is dropped for being short**, because ten two-minute visits are twenty real minutes.
 Anything under five minutes gets two rescues: leftovers are re-pooled per ticket across the day
 (six two-minute visits to one ticket become one twelve-minute entry), and whatever still can't

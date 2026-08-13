@@ -115,18 +115,24 @@ public static class SuggestionSlotBuilder
                 new Span(timer.Start, timer.End), timer.End - timer.Start, blocks, opts));
         }
 
-        // 2. Calls claim what the timers left. A call reduced below the minimum claims nothing —
-        //    its handful of seconds isn't worth a line, and leaving the time to the window lane
-        //    keeps it counted.
+        // 2. Calls claim what the timers left — but only those whose app means a call is the work.
+        //    Sitting in a Discord voice channel while working isn't Discord time, so those don't
+        //    claim and don't take a line; the focused window keeps counting, and Discord time that
+        //    really was Discord arrives through the Discord window instead. A call reduced below
+        //    the minimum also claims nothing — its handful of seconds isn't worth a line, and
+        //    leaving the time to the window lane keeps it counted.
         foreach (var call in (calls ?? []).Where(c => c.End > c.Start))
         {
+            if (!CallApps.OutranksWindowActivity(call.ProcessName))
+                continue;
+
             var remaining = Subtract(new Span(call.Start, call.End), claimed);
             var measured = Total(remaining);
             if (measured < opts.MinimumSlot)
                 continue;
 
             slots.Add(ToClaimSlot(
-                SuggestionSlotKind.Call, RollupBuilder.CallCategoryFor(call.ProcessName),
+                SuggestionSlotKind.Call, CallApps.CategoryFor(call.ProcessName),
                 call.Title.Length > 0 ? call.Title : call.ProcessName,
                 new Span(call.Start, call.End), measured, blocks, opts));
             claimed = Merge(claimed.Concat(remaining));

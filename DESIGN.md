@@ -42,7 +42,13 @@ Everything stays on this machine. No cloud, no telemetry.
 - **Time is claimed in priority order so no minute is billed twice** — timer, then call, then
   window activity, each clipped around the claims above it. Meetings were the motivating case: an
   hour on a call while reading a ticket was credited to browsing/email/dev, and 2h53m of a real
-  day dissolved across ten unrelated lines. The window activity under a call/timer is retained as
+  day dissolved across ten unrelated lines.
+- **A live mic doesn't always mean the time is the call's.** Discord is parked in for hours while
+  working, so it claims nothing and takes no slot: the focused window is the better witness, and
+  Discord time that really was Discord arrives through the Discord *window*. The call is still
+  attached as evidence to whatever it overlapped, so the fact isn't lost — only its claim on the
+  hour is. `CallApps` holds this and the per-app naming together: two facts about one short list,
+  which would drift if they lived apart. The window activity under a call/timer is retained as
   that slot's detail (it's what makes the note writable) but contributes no time. A call below the
   minimum claims nothing, so a mic blip doesn't strand time in a slot too small to keep.
 - **Short work is rescued, never dropped.** Ten two-minute visits are twenty real minutes. Sessions
