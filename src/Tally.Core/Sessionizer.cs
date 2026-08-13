@@ -10,7 +10,11 @@ public sealed record SessionizerOptions
     /// <summary>Adjacent blocks with the same process+title separated by at most this gap are merged.</summary>
     public TimeSpan SameKeyMergeGap { get; init; } = TimeSpan.FromSeconds(10);
 
-    /// <summary>Mic spans from the same process separated by at most this gap are merged into one call.</summary>
+    /// <summary>
+    /// Mic spans from the same process separated by at most this gap are merged into one call —
+    /// but only when they're the same call. See <see cref="Sessionizer"/> for why the window title
+    /// has to agree too.
+    /// </summary>
     public TimeSpan CallGapMerge { get; init; } = TimeSpan.FromSeconds(30);
 }
 
@@ -19,7 +23,16 @@ public sealed record DaySessions(
     IReadOnlyList<CallSpan> Calls,
     IReadOnlyList<InactivePeriod> InactivePeriods);
 
-/// <summary>Turns a day's raw event stream into foreground blocks, call spans, and inactive periods.</summary>
+/// <summary>
+/// Turns a day's raw event stream into foreground blocks, call spans, and inactive periods.
+/// <para>
+/// Calls come from mic-in-use transitions, polled every few seconds, which makes back-to-back
+/// meetings the hard case: leaving one and joining the next releases the mic for only a handful of
+/// seconds, well inside the gap that stitches a momentary dropout back together. So a gap is
+/// bridged only when the window title on both sides agrees — the app's title carries the meeting
+/// name, which is the one signal that says whether it's still the same call.
+/// </para>
+/// </summary>
 public static class Sessionizer
 {
     public static DaySessions Build(
@@ -167,13 +180,25 @@ public static class Sessionizer
                 raw.Add(new CallSpan(start, endOfData, openProcess, string.Empty));
         }
 
+        // Title each span BEFORE merging: the title is what tells one call from the next, so it has
+        // to be resolved while the spans are still separate.
+        var titled = raw
+            .Select(c => c with { Title = FindCallTitle(ordered, c) ?? string.Empty })
+            .ToList();
+
         var merged = new List<CallSpan>();
-        foreach (var group in raw.GroupBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
+        foreach (var group in titled.GroupBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
         {
             CallSpan? current = null;
             foreach (var span in group.OrderBy(c => c.Start))
             {
-                if (current is not null && span.Start - current.End <= gapMerge)
+                // A short gap alone doesn't make two spans one call: leaving a meeting and joining
+                // the next takes seconds, so the window title has to agree as well. Getting this
+                // wrong in the merging direction is unrecoverable (two meetings become one row);
+                // getting it wrong the other way leaves two rows the rollup still sums by title.
+                if (current is not null
+                    && span.Start - current.End <= gapMerge
+                    && string.Equals(current.Title, span.Title, StringComparison.OrdinalIgnoreCase))
                 {
                     current = current with { End = span.End > current.End ? span.End : current.End };
                 }
@@ -189,10 +214,7 @@ public static class Sessionizer
                 merged.Add(current);
         }
 
-        return merged
-            .OrderBy(c => c.Start)
-            .Select(c => c with { Title = FindCallTitle(ordered, c) ?? string.Empty })
-            .ToList();
+        return merged.OrderBy(c => c.Start).ToList();
     }
 
     private static string? FindCallTitle(List<TrackedEvent> ordered, CallSpan call)

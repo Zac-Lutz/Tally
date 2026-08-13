@@ -130,15 +130,56 @@ public class SessionizerTests
     {
         var result = Sessionizer.Build(
         [
+            Ev(EventKind.Focus, 0, "ms-teams", "Standup | Microsoft Teams"),
             Ev(EventKind.MicStart, 0, "ms-teams"),
             Ev(EventKind.MicEnd, 300, "ms-teams"),
-            Ev(EventKind.MicStart, 315, "ms-teams"),   // 15-second blip
+            Ev(EventKind.MicStart, 315, "ms-teams"),   // 15-second blip, same meeting
             Ev(EventKind.MicEnd, 600, "ms-teams"),
         ], T0.AddSeconds(900));
 
         var call = Assert.Single(result.Calls);
         Assert.Equal(T0, call.Start);
         Assert.Equal(T0.AddSeconds(600), call.End);
+    }
+
+    [Fact]
+    public void BackToBackMeetings_StayTwoCalls_EvenThoughTheMicGapIsSeconds()
+    {
+        // Real shape of leaving one Teams meeting and joining the next: the mic drops for ten
+        // seconds — well inside the merge gap — and only the window title says it's a new call.
+        var result = Sessionizer.Build(
+        [
+            Ev(EventKind.Focus, 0, "ms-teams", "MSP Ops Meeting | Microsoft Teams"),
+            Ev(EventKind.MicStart, 0, "ms-teams"),
+            Ev(EventKind.MicEnd, 3600, "ms-teams"),
+            Ev(EventKind.Focus, 3607, "ms-teams", "Microsoft Teams"),
+            Ev(EventKind.TitleChange, 3609, "ms-teams", "Security Advisory Committee | Microsoft Teams"),
+            Ev(EventKind.MicStart, 3610, "ms-teams"),
+            Ev(EventKind.MicEnd, 5400, "ms-teams"),
+        ], T0.AddSeconds(6000));
+
+        Assert.Equal(2, result.Calls.Count);
+        Assert.Equal(TimeSpan.FromHours(1), result.Calls[0].Duration);
+        Assert.Equal("MSP Ops Meeting | Microsoft Teams", result.Calls[0].Title);
+        Assert.Equal(T0.AddSeconds(3610), result.Calls[1].Start);
+        Assert.Equal("Security Advisory Committee | Microsoft Teams", result.Calls[1].Title);
+    }
+
+    [Fact]
+    public void ADroppedMicRejoiningTheSameMeeting_IsStillOneCall()
+    {
+        // The other side of the same coin: same title across the gap, so it's one meeting.
+        var result = Sessionizer.Build(
+        [
+            Ev(EventKind.Focus, 0, "ms-teams", "MSP Ops Meeting | Microsoft Teams"),
+            Ev(EventKind.MicStart, 0, "ms-teams"),
+            Ev(EventKind.MicEnd, 1800, "ms-teams"),
+            Ev(EventKind.Focus, 1805, "ms-teams", "MSP Ops Meeting | Microsoft Teams"),
+            Ev(EventKind.MicStart, 1810, "ms-teams"),
+            Ev(EventKind.MicEnd, 3600, "ms-teams"),
+        ], T0.AddSeconds(4000));
+
+        Assert.Equal(TimeSpan.FromHours(1), Assert.Single(result.Calls).Duration);
     }
 
     [Fact]
