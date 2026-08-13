@@ -97,12 +97,26 @@ public class JsonExportWriterTests
     }
 
     [Fact]
-    public void SummaryKeyIsOmitted_NotNull()
+    public void SummaryIsOmittedWhenTheSlotHasWorkItems_SoTheTicketComposesTheNote()
+    {
+        // The consumer default-checks the summary when present, otherwise every work item. A
+        // ticketed slot wants the ticket checked, so it must not ship a summary that outranks it.
+        var root = Parse(JsonExportWriter.BuildJson(Date,
+            [CB(At(8, 0), At(9, 0), "HaloPSA", "Ticket #123 - VPN", ticket: "123")], [], Context));
+
+        var slot = root.GetProperty("slots")[0];
+        Assert.False(slot.TryGetProperty("summary", out _), "summary must be absent, not null");
+        Assert.Equal(1, slot.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public void SummaryIsSuppliedWhenThereAreNoWorkItems_SoTheNotePanelIsNeverBlank()
     {
         var root = Parse(JsonExportWriter.BuildJson(Date, [CB(At(8, 0), At(9, 0), "Email", "Inbox")], [], Context));
 
         var slot = root.GetProperty("slots")[0];
-        Assert.False(slot.TryGetProperty("summary", out _), "summary must be absent, not null");
+        Assert.Equal(0, slot.GetProperty("items").GetArrayLength());
+        Assert.False(string.IsNullOrWhiteSpace(slot.GetProperty("summary").GetString()));
         // Fields with no data are still present as empty arrays.
         Assert.Equal(0, slot.GetProperty("browser").GetArrayLength());
         Assert.Equal(0, slot.GetProperty("sessions").GetArrayLength());
