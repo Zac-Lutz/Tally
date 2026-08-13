@@ -45,6 +45,15 @@ public sealed class TrayAppContext : ApplicationContext
             TallyDbContext.EnsureSchema(db);
 
         _recorder = new EventRecorder(_dbOptions);
+
+        // First event of the run: marks where the watchers' knowledge resumes, so a call that
+        // ended while Tally was down can't be left open across everything that follows.
+        _recorder.Record(new Tally.Core.Models.TrackedEvent
+        {
+            Timestamp = DateTimeOffset.Now,
+            Kind = Tally.Core.Models.EventKind.Startup,
+        });
+
         _timerService = new ManualTimerService(_recorder.RecordTimer);
 
         _foreground = new ForegroundWatcher();

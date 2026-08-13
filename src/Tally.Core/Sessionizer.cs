@@ -164,6 +164,8 @@ public static class Sessionizer
         {
             if (e.Kind == EventKind.MicStart)
             {
+                // A repeat for an already-open process is a restart's first poll re-reporting a
+                // call that's still running; the span it belongs to is already open.
                 open.TryAdd(e.ProcessName, e.Timestamp);
             }
             else if (e.Kind == EventKind.MicEnd
@@ -171,6 +173,20 @@ public static class Sessionizer
                 && e.Timestamp > start)
             {
                 raw.Add(new CallSpan(start, e.Timestamp, e.ProcessName, string.Empty));
+            }
+            else if (e.Kind == EventKind.Startup)
+            {
+                // Tally restarted. If a call ended while it was down, no MicEnd was ever recorded,
+                // so an open span would otherwise run to the end of the day and swallow every
+                // meeting after it. Close them here instead: a call that really was still running
+                // gets a fresh MicStart seconds later, and the title-matching merge rejoins it.
+                foreach (var (openProcess, openedAt) in open)
+                {
+                    if (e.Timestamp > openedAt)
+                        raw.Add(new CallSpan(openedAt, e.Timestamp, openProcess, string.Empty));
+                }
+
+                open.Clear();
             }
         }
 

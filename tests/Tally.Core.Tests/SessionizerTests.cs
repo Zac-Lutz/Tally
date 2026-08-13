@@ -183,6 +183,44 @@ public class SessionizerTests
     }
 
     [Fact]
+    public void ARestartBetweenMeetings_DoesNotLeaveTheFirstCallRunning()
+    {
+        // Tally was down when the first meeting ended, so its MicEnd was never recorded. Without
+        // the startup marker the span would run to the end of the day and swallow the second call.
+        var result = Sessionizer.Build(
+        [
+            Ev(EventKind.Focus, 0, "ms-teams", "MSP Ops Meeting | Microsoft Teams"),
+            Ev(EventKind.MicStart, 0, "ms-teams"),
+            Ev(EventKind.Startup, 3600),                 // restarted; first meeting already over
+            Ev(EventKind.Focus, 3900, "ms-teams", "Security Advisory Committee | Microsoft Teams"),
+            Ev(EventKind.MicStart, 3910, "ms-teams"),
+            Ev(EventKind.MicEnd, 5400, "ms-teams"),
+        ], T0.AddSeconds(6000));
+
+        Assert.Equal(2, result.Calls.Count);
+        Assert.Equal(T0.AddSeconds(3600), result.Calls[0].End);   // closed at the restart
+        Assert.Equal("Security Advisory Committee | Microsoft Teams", result.Calls[1].Title);
+    }
+
+    [Fact]
+    public void ARestartDuringAMeeting_LeavesItAsOneCall()
+    {
+        // The common case — Tally restarts mid-meeting and the mic is still live seconds later.
+        // The span is closed and reopened, then merged back by the matching title.
+        var result = Sessionizer.Build(
+        [
+            Ev(EventKind.Focus, 0, "ms-teams", "MSP Ops Meeting | Microsoft Teams"),
+            Ev(EventKind.MicStart, 0, "ms-teams"),
+            Ev(EventKind.Startup, 1800),
+            Ev(EventKind.MicStart, 1803, "ms-teams"),
+            Ev(EventKind.MicEnd, 3600, "ms-teams"),
+        ], T0.AddSeconds(4000));
+
+        var call = Assert.Single(result.Calls);
+        Assert.Equal(TimeSpan.FromHours(1), call.Duration);
+    }
+
+    [Fact]
     public void CallSpan_TakesTitleFromProcessWindowDuringSpan()
     {
         var result = Sessionizer.Build(

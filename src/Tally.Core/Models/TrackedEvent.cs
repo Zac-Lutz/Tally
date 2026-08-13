@@ -28,6 +28,13 @@ public enum EventKind
 
     /// <summary>A process stopped actively capturing from a microphone.</summary>
     MicEnd,
+
+    /// <summary>
+    /// Tally started recording. Marks where the watchers' knowledge begins again after a restart:
+    /// anything they believed was in progress before it (a live mic span) can no longer be vouched
+    /// for, because whatever happened while the app was down went unobserved.
+    /// </summary>
+    Startup,
 }
 
 /// <summary>One raw captured event. Window titles are stored verbatim.</summary>
