@@ -420,47 +420,17 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void TimesheetTab_OffersAnExportWindow_BlankByDefault()
+    public void TimesheetTab_AlwaysShowsTheWholeDay()
     {
-        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 60, "Development", "Tally")], [], []);
+        // Choosing a slice belongs to the export dialog; the tab stays the one honest picture of
+        // the day, so nothing here narrows it.
+        var inner = HtmlReportWriter.BuildMainInner(Date,
+            [CB(0, 60, "Development", "Morning"), CB(360, 420, "Browsing", "Afternoon")], [], []);
 
         var panel = Panel(inner, "timesheet");
-        Assert.Contains("class=\"win-from\" type=\"time\" value=\"\"", panel);   // blank = whole day
-        Assert.Contains("class=\"win-to\" type=\"time\" value=\"\"", panel);
-        Assert.DoesNotContain("win-all", panel);                                // nothing to reset yet
-    }
-
-    [Fact]
-    public void TimesheetTab_ShowsTheChosenWindow_AndHowToClearIt()
-    {
-        var options = new SuggestionSlotOptions { WindowEnd = new TimeOnly(12, 0) };
-        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 60, "Development", "Tally")], [], [],
-            slotOptions: options);
-
-        var panel = Panel(inner, "timesheet");
-        Assert.Contains("class=\"win-to\" type=\"time\" value=\"12:00\"", panel);
-        Assert.Contains("Whole day", panel);
-        // The consequence of slicing is stated where the slicing happens.
-        Assert.Contains("replaces that day&#39;s suggestions", panel.Replace("'", "&#39;"));
-    }
-
-    [Fact]
-    public void TimesheetTab_SaysSo_WhenTheWindowCatchesNothing()
-    {
-        // Blocks run 9:00-10:00 local; the window asks for the afternoon.
-        var options = new SuggestionSlotOptions { WindowStart = new TimeOnly(13, 0) };
-        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 60, "Development", "Tally")], [], [],
-            slotOptions: options);
-
-        Assert.Contains("Nothing started inside that window", Panel(inner, "timesheet"));
-    }
-
-    [Fact]
-    public void SavedSnapshot_HasNoExportWindowControl()
-    {
-        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 60, "Development", "Tally")], [], []);
-
-        Assert.DoesNotContain("win-from", Panel(md, "timesheet"));
+        Assert.Contains("Morning", panel);
+        Assert.Contains("Afternoon", panel);
+        Assert.DoesNotContain("win-from", panel);   // no range controls on the tab
     }
 
     [Fact]

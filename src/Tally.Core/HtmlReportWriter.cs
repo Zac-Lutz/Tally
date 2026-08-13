@@ -31,7 +31,7 @@ public static class HtmlReportWriter
 
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: true, editable: false,
-            ticketOverrides: ticketOverrides, timerPanel: null, slotOptions: null);
+            ticketOverrides: ticketOverrides, timerPanel: null);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -54,13 +54,12 @@ public static class HtmlReportWriter
         TimeSpan? gapThreshold = null,
         IReadOnlyList<ManualTimer>? timers = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null,
-        TimerPanelState? timerPanel = null,
-        SuggestionSlotOptions? slotOptions = null)
+        TimerPanelState? timerPanel = null)
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: false, editable: true,
-            ticketOverrides: ticketOverrides, timerPanel: timerPanel, slotOptions: slotOptions);
+            ticketOverrides: ticketOverrides, timerPanel: timerPanel);
         return sb.ToString();
     }
 
@@ -82,7 +81,6 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
         sb.Append("<script>").Append(TimerControlScript).Append("</script>\n");
-        sb.Append("<script>").Append(ExportWindowScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
@@ -98,8 +96,7 @@ public static class HtmlReportWriter
         bool includeHeader,
         bool editable,
         IReadOnlyDictionary<string, string>? ticketOverrides,
-        TimerPanelState? timerPanel = null,
-        SuggestionSlotOptions? slotOptions = null)
+        TimerPanelState? timerPanel = null)
     {
         if (includeHeader)
         {
@@ -116,7 +113,7 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides, timerPanel, slotOptions);
+        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides, timerPanel);
     }
 
     // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
@@ -125,7 +122,7 @@ public static class HtmlReportWriter
     private static void AppendTabs(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
         IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
-        TimerPanelState? timerPanel, SuggestionSlotOptions? slotOptions)
+        TimerPanelState? timerPanel)
     {
         var unclassified = UnclassifiedBuilder.Build(blocks);
 
@@ -141,9 +138,10 @@ public static class HtmlReportWriter
         sb.Append("</button>");
         sb.Append("</div>\n");
 
-        var slotOpts = slotOptions ?? new SuggestionSlotOptions();
+        // Always the whole day: choosing a slice belongs to the export itself, so this stays the
+        // one honest picture of what happened rather than a filtered one.
         sb.Append("<section class=\"panel\" data-panel=\"timesheet\">\n");
-        AppendTimesheet(sb, SuggestionSlotBuilder.Build(blocks, calls, timers, slotOpts), editable, slotOpts);
+        AppendTimesheet(sb, SuggestionSlotBuilder.Build(blocks, calls, timers));
         sb.Append("</section>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
@@ -168,17 +166,11 @@ public static class HtmlReportWriter
     /// be checked before it's uploaded. Measured time is shown beside the reported figure — the
     /// rounding is visible rather than something the file does quietly.
     /// </summary>
-    private static void AppendTimesheet(
-        StringBuilder sb, IReadOnlyList<SuggestionSlot> slots, bool editable, SuggestionSlotOptions options)
+    private static void AppendTimesheet(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots)
     {
-        if (editable)
-            AppendExportWindow(sb, options);
-
         if (slots.Count == 0)
         {
-            sb.Append(options.WindowStart is null && options.WindowEnd is null
-                ? "<p class=\"empty\">Nothing to put on a timesheet yet.</p>\n"
-                : "<p class=\"empty\">Nothing started inside that window.</p>\n");
+            sb.Append("<p class=\"empty\">Nothing to put on a timesheet yet.</p>\n");
             return;
         }
 
@@ -188,27 +180,6 @@ public static class HtmlReportWriter
 
         AppendCalendar(sb, slots);
         sb.Append("<p class=\"hint\">Blocks sit where the work happened and are as tall as the time they span; the number on each is the hours to enter. Time is claimed once — a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” block rather than dropped.</p>\n");
-    }
-
-    // Which slice of the day the export covers. Blank on both sides means the whole day, which is
-    // the default — narrowing it is for splitting a day, e.g. filing the morning at lunch.
-    private static void AppendExportWindow(StringBuilder sb, SuggestionSlotOptions options)
-    {
-        var from = options.WindowStart is { } s ? s.ToString("HH:mm", CultureInfo.InvariantCulture) : string.Empty;
-        var to = options.WindowEnd is { } e ? e.ToString("HH:mm", CultureInfo.InvariantCulture) : string.Empty;
-
-        sb.Append("<div class=\"win\"><span class=\"win-l\">Export</span>");
-        sb.Append($"<input class=\"win-from\" type=\"time\" value=\"{from}\" aria-label=\"Export from\">");
-        sb.Append("<span class=\"win-l\">to</span>");
-        sb.Append($"<input class=\"win-to\" type=\"time\" value=\"{to}\" aria-label=\"Export to\">");
-        if (from.Length > 0 || to.Length > 0)
-            sb.Append("<button class=\"win-all\" type=\"button\">Whole day</button>");
-        sb.Append("</div>\n");
-
-        // Worth saying plainly: att replaces a day's suggestions on import, so a second slice
-        // uploaded later clears the first slice's un-logged cards (logged time is never touched).
-        if (from.Length > 0 || to.Length > 0)
-            sb.Append("<p class=\"hint\">An entry belongs to the window it <em>started</em> in, so slices never double-count. Importing replaces that day's suggestions in att — log the ones you want before uploading the next slice.</p>\n");
     }
 
     /// <summary>How many pixels one minute of the day is drawn as.</summary>
@@ -669,14 +640,6 @@ public static class HtmlReportWriter
         .tm-go:hover { filter:brightness(1.06); }
         .tm-go.stop { background:#e05252; color:#fff; }
         .tm-elapsed { font-size:20px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
-        .win { display:flex; align-items:center; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
-        .win-l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
-        .win input { background:var(--bg); border:1px solid var(--border); border-radius:6px;
-          color:var(--fg); font:inherit; font-size:13px; padding:4px 8px; }
-        .win input:focus { outline:none; border-color:var(--accent); }
-        .win-all { background:none; border:1px solid var(--border); border-radius:6px; color:var(--muted);
-          font:inherit; font-size:12px; padding:4px 10px; cursor:pointer; }
-        .win-all:hover { color:var(--fg); border-color:var(--accent); }
         .tm-del { background:none; border:1px solid transparent; border-radius:6px; color:var(--muted);
           font:inherit; font-size:12px; padding:2px 10px; cursor:pointer; }
         .tm-del:hover { color:#fff; background:#c04141; border-color:#c04141; }
@@ -719,24 +682,6 @@ public static class HtmlReportWriter
         function isEdit(t){return t&&t.classList&&(t.classList.contains('tk')||t.classList.contains('tn'));}
         document.addEventListener('change',function(e){if(isEdit(e.target))post(e.target);});
         document.addEventListener('keydown',function(e){if(e.key==='Enter'&&isEdit(e.target)){e.preventDefault();e.target.blur();}});
-        })();
-        """;
-
-    // The Timesheet tab's export window. Either side posts {type:'exportWindow', from, to} with
-    // "HH:mm" or "" for unbounded; "Whole day" clears both. The host holds the range and re-renders,
-    // so the calendar above always shows precisely what Export will write.
-    private const string ExportWindowScript =
-        """
-        (function(){
-        function post(){if(!window.chrome||!window.chrome.webview)return;
-        var f=document.querySelector('.win-from'),t=document.querySelector('.win-to');
-        window.chrome.webview.postMessage({type:'exportWindow',from:f?f.value:'',to:t?t.value:''});}
-        document.addEventListener('change',function(e){
-        var c=e.target.classList;if(c&&(c.contains('win-from')||c.contains('win-to')))post();});
-        document.addEventListener('click',function(e){
-        var b=e.target.closest?e.target.closest('.win-all'):null;if(!b)return;
-        var f=document.querySelector('.win-from'),t=document.querySelector('.win-to');
-        if(f)f.value='';if(t)t.value='';post();});
         })();
         """;
 

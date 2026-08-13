@@ -45,8 +45,6 @@ public sealed class LiveWindow : Form
     private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 4, 14, 0) };
     private bool _ready;
     private bool _refreshing;
-    private TimeOnly? _windowFrom;
-    private TimeOnly? _windowTo;
     private string? _note;
     private DateTime _noteUntil;
 
@@ -246,8 +244,7 @@ public sealed class LiveWindow : Form
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
             var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
-                timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel(),
-                slotOptions: SlotOptions());
+                timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel());
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
@@ -303,12 +300,6 @@ public sealed class LiveWindow : Form
             else if (msg.Type == "timerRename")
             {
                 _timer.Rename(msg.Value ?? string.Empty);
-            }
-            else if (msg.Type == "exportWindow")
-            {
-                _windowFrom = ParseTime(msg.From);
-                _windowTo = ParseTime(msg.To);
-                _ = RefreshAsync();
             }
         }
         catch (Exception ex)
@@ -450,16 +441,7 @@ public sealed class LiveWindow : Form
     // rule saved from triage (Process/Title as base64, Scope, Category).
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
-        string? Process, string? Title, string? Scope, string? Category,
-        string? From, string? To);
-
-    /// <summary>An "HH:mm" from a time input; blank or unparseable means that side is unbounded.</summary>
-    private static TimeOnly? ParseTime(string? value)
-        => TimeOnly.TryParse(value, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
-
-    /// <summary>The slice of the day the Timesheet tab previews and Export writes.</summary>
-    private SuggestionSlotOptions SlotOptions()
-        => new() { WindowStart = _windowFrom, WindowEnd = _windowTo };
+        string? Process, string? Title, string? Scope, string? Category);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>
@@ -484,20 +466,24 @@ public sealed class LiveWindow : Form
                 await _webView.CoreWebView2.ExecuteScriptAsync("window.tallyShowTab && window.tallyShowTab('timesheet')");
 
             var date = DateOnly.FromDateTime(DateTime.Now);
-            var options = SlotOptions();
             var data = await ReportGenerator.ComputeAsync(_dbOptions, date);
-            var slots = SuggestionSlotBuilder.Build(data.Blocks, data.Calls, data.Timers, options);
-            if (slots.Count == 0)
+            var wholeDay = SuggestionSlotBuilder.Build(data.Blocks, data.Calls, data.Timers);
+            if (wholeDay.Count == 0)
             {
-                Note(_windowFrom is null && _windowTo is null
-                    ? "nothing to export yet"
-                    : "nothing started inside that window");
+                Note("nothing to export yet");
                 return;
             }
 
+            // Ask which slice of the day this file covers before writing anything. Cancelling —
+            // or narrowing it down to nothing — leaves no file behind.
+            if (ExportRangeDialog.Ask(this, wholeDay) is not { } options)
+                return;
+
+            var slots = SuggestionSlotBuilder.Build(data.Blocks, data.Calls, data.Timers, options);
+
             // The window rides in the filename so two slices of one day don't overwrite each other
             // and it's obvious afterwards which is which.
-            var slice = (_windowFrom, _windowTo) switch
+            var slice = (options.WindowStart, options.WindowEnd) switch
             {
                 (null, null) => string.Empty,
                 ({ } f, null) => $"-from{f:HHmm}",

@@ -62,10 +62,13 @@ Everything stays on this machine. No cloud, no telemetry.
 - **An export window partitions by slot START, never by overlap.** Splitting a day (file the
   morning at lunch, the afternoon at close) has to cover the day exactly once; a meeting running
   through the cut-off would otherwise be billed in both halves. Start-membership makes the slices
-  disjoint and exhaustive. The window lives in `SuggestionSlotOptions`, so the Timesheet tab's
-  preview and the written file are the same query — the calendar is never showing something the
-  export won't contain. Note the consumer replaces a whole day's suggestions on import, so a second
-  slice clears the first's un-logged cards; the tab says so where the slicing happens.
+  disjoint and exhaustive. The window lives in `SuggestionSlotOptions` and is chosen in
+  `ExportRangeDialog` at export time rather than on the Timesheet tab: the tab stays the day's one
+  honest picture, where a range control would leave the calendar showing a filtered day long after
+  the export that needed it. The dialog recomputes its entry count and hours against the real slots
+  as the range changes, so the choice is made against what it produces, not against the clock alone.
+  Note the consumer replaces a whole day's suggestions on import, so a second slice clears the
+  first's un-logged cards; the dialog says so once a custom range is set.
 - **Exporting belongs to the live view, not the saved snapshot.** A snapshot is a frozen record;
   an export embedded in it goes stale the moment the day moves on. The live window writes the file
   after bringing up the Timesheet tab, so what uploads is reviewed first.
