@@ -159,16 +159,28 @@ app checks a few seconds after startup and every 4 hours, downloads any newer ve
 background, and applies it on the next restart (a tray note says when one's ready). No files to
 send around.
 
-To publish a new version:
+**To publish a new version, double-click `Publish-Update.cmd`** (there's also a **"Publish Tally
+Update"** shortcut on the Desktop). That's the whole thing — it:
+
+1. asks for your GitHub token **the first time only**, then stores it **encrypted** for your
+   Windows user (under `%USERPROFILE%\.tally`, never in the repo) and reuses it every run after;
+2. **auto-picks the next version** by bumping the patch of the latest release (1.2.0 -> 1.2.1);
+3. asks you to confirm (`Publish Tally 1.2.1? [Y/n]` — Enter = yes), then builds, packs, and
+   uploads the GitHub release.
+
+So a routine update is: double-click, press Enter. Nothing to remember.
+
+Prefer the terminal, or need a bigger version jump? The script still takes arguments:
 
 ```powershell
-$env:GITHUB_TOKEN = 'ghp_...'        # once per shell — needs repo / Contents: read-write. Never commit it.
-./Publish-Tally.ps1 -Version 1.2.0   # must be higher than the last published version
+./Publish-Tally.ps1                  # auto-bump the patch (same as the double-click)
+./Publish-Tally.ps1 -Version 1.3.0   # pin an exact version for a minor/major jump
 ```
 
-That builds the release, pulls prior releases to compute deltas, and uploads + publishes the
-GitHub release. The token is read from the environment only — never stored in the repo or the
-app (the app fetches updates anonymously, which is why the repo must be **public**).
+The token is only ever read from your environment or the encrypted per-user file — never stored
+in the repo or the app (the app fetches updates anonymously, which is why the repo must be
+**public**). To change or clear the saved token, delete `%USERPROFILE%\.tally\publish-token.dat`
+and you'll be asked for it again on the next publish.
 
 **One-time bootstrap:** a version that predates this auto-update code can't check GitHub, so the
 *first* time, hand each person `dist/Tally-win-Setup.exe` from a publish run (or the `Setup.exe`
