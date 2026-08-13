@@ -36,8 +36,8 @@ public sealed class LiveWindow : Form
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = ChromeBg };
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
-    private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 0, 8, 0) };
-    private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9f), Margin = new Padding(0, 9, 0, 0) };
+    private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 0, 4, 0) };
+    private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9f), Margin = new Padding(0, 8, 18, 0) };
     private readonly Label _dateLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(0, 5, 12, 0) };
     private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 6, 0, 0) };
     private readonly TextBox _timerName = new() { BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), PlaceholderText = "Timer name" };
