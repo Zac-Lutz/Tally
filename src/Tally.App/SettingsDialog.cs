@@ -65,12 +65,12 @@ public sealed class SettingsDialog : Form
         _timePicker.SetBounds(238, 164, 110, 24);
         Controls.Add(_timePicker);
 
-        var add = FlatButton("Add time", Accent, AccentFg);
+        var add = MakeButton("Add time");
         add.SetBounds(238, 196, 110, 28);
         add.Click += (_, _) => AddTime();
         Controls.Add(add);
 
-        var remove = FlatButton("Remove", InputBg, Fg);
+        var remove = MakeButton("Remove");
         remove.SetBounds(238, 230, 110, 28);
         remove.Click += (_, _) => RemoveSelected();
         Controls.Add(remove);
@@ -87,10 +87,10 @@ public sealed class SettingsDialog : Form
         _error = new Label { ForeColor = Color.FromArgb(0xff, 0x8a, 0x8a), AutoSize = false, Location = new Point(20, 336), Size = new Size(360, 18) };
         Controls.Add(_error);
 
-        var save = FlatButton("Save", Accent, AccentFg);
+        var save = MakeButton("Save");
         save.SetBounds(238, 408, 72, 30);
         save.Click += OnSave;
-        var cancel = FlatButton("Cancel", InputBg, Fg);
+        var cancel = MakeButton("Cancel");
         cancel.SetBounds(316, 408, 64, 30);
         cancel.DialogResult = DialogResult.Cancel;
         Controls.Add(save);
@@ -101,6 +101,12 @@ public sealed class SettingsDialog : Form
         foreach (var t in settings.ResolveAutoReportTimes())
             _times.Add(t);
         RefreshTimes();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        DarkTitleBar.Apply(Handle);   // dark title bar, matching the live window
     }
 
     private void AddTime()
@@ -154,10 +160,15 @@ public sealed class SettingsDialog : Form
     private static Label Field(string text, int y)
         => new() { Text = text, ForeColor = MutedFg, AutoSize = true, Location = new Point(20, y) };
 
-    private static Button FlatButton(string text, Color back, Color fore)
+    // Dark by default, accent on hover (dark text for contrast) — matching the live window.
+    private static Button MakeButton(string text)
     {
-        var b = new Button { Text = text, FlatStyle = FlatStyle.Flat, BackColor = back, ForeColor = fore, UseVisualStyleBackColor = false, Cursor = Cursors.Hand };
+        var b = new Button { Text = text, FlatStyle = FlatStyle.Flat, BackColor = InputBg, ForeColor = Fg, UseVisualStyleBackColor = false, Cursor = Cursors.Hand };
         b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.MouseOverBackColor = Accent;
+        b.FlatAppearance.MouseDownBackColor = Accent;
+        b.MouseEnter += (_, _) => b.ForeColor = AccentFg;
+        b.MouseLeave += (_, _) => b.ForeColor = Fg;
         return b;
     }
 
