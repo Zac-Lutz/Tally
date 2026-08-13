@@ -149,7 +149,10 @@ correctly; rendered in local time.
 3. Manual timers (done): `ManualTimerService` (Core, deterministic + unit-tested) holds the
    single active timer; persistence is a callback (the EventRecorder channel, so timer writes
    serialize with event/sample writes). WinForms wires it up: `HotkeyListener` (global
-   RegisterHotKey via a hidden message window), a timer bar in `LiveWindow`, and `TimerBubble`
+   RegisterHotKey via a hidden message window), the Timers tab's HTML control posting
+   `timerToggle`/`timerRename` to the host (the name field and Start/Stop sit under the recorded
+   list, so a finished timer files in above where it was started; only the elapsed figure stays in
+   the top bar, visible from any tab), and `TimerBubble`
    (borderless TopMost draggable window). `TrayAppContext` coordinates: the bubble shows only
    while a timer runs AND the live window isn't shown normally. Completed timers surface in the
    report's Timers tab, on the Rollup under a Timer category, and in the JSON export as slot

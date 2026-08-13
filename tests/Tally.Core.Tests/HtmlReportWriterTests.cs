@@ -125,9 +125,9 @@ public class HtmlReportWriterTests
             CB(20, 20.5, "Browsing", "Quick glance tab"),   // 30 sec - hidden as noise
         ], [], []);
 
-        // Scope to the rollup panel (all titles still appear in the Timeline panel below it).
-        var rollup = md[md.IndexOf("data-panel=\"rollup\"", StringComparison.Ordinal)
-            ..md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal)];
+        // Scope to the rollup panel (all titles still appear in the Timeline panel). Bounded by its
+        // own closing tag rather than the next panel's name, so reordering the tabs can't break it.
+        var rollup = Panel(md, "rollup");
 
         Assert.Contains("Real work", rollup);
         Assert.Contains("Exactly one minute", rollup);
@@ -367,6 +367,79 @@ public class HtmlReportWriterTests
     public void LiveShell_CarriesTheSaveRuleHandler()
         => Assert.Contains("type:'rule'", HtmlReportWriter.BuildLiveShell());
 
+    [Fact]
+    public void TabsRunRollupTimesheetTimelineCalls()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        var order = new[] { "rollup", "timesheet", "timeline", "calls", "timers", "unclassified" }
+            .Select(t => md.IndexOf($"data-tab=\"{t}\"", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.DoesNotContain(-1, order);
+        Assert.Equal(order.Order(), order);
+    }
+
+    [Fact]
+    public void TimersTab_PutsTheRecordedListAboveTheStartControl()
+    {
+        var timers = new[] { new ManualTimer { Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) } };
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Email", "Inbox")], [], [],
+            timers: timers, timerPanel: new TimerPanelState("Next one", null));
+
+        var panel = Panel(inner, "timers");
+        Assert.True(panel.IndexOf("Ticket #123 call", StringComparison.Ordinal)
+                    < panel.IndexOf("class=\"tm-name\"", StringComparison.Ordinal),
+            "a finished timer should file above the field it was started from");
+    }
+
+    [Fact]
+    public void TimersTab_ShowsStart_WhenNothingIsRunning()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Email", "Inbox")], [], [],
+            timerPanel: new TimerPanelState("Ticket #99 call", null));
+
+        var panel = Panel(inner, "timers");
+        Assert.Contains("value=\"Ticket #99 call\"", panel);   // the pending name is kept in the field
+        Assert.Contains(">Start</button>", panel);
+        Assert.DoesNotContain("tm-elapsed", panel);
+    }
+
+    [Fact]
+    public void TimersTab_ShowsStopAndATickingElapsed_WhileRunning()
+    {
+        var started = T0.AddMinutes(-3);
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Email", "Inbox")], [], [],
+            timerPanel: new TimerPanelState("Ticket #99 call", started, TimeSpan.FromMinutes(3)));
+
+        var panel = Panel(inner, "timers");
+        Assert.Contains(">Stop</button>", panel);
+        Assert.Contains("03:00", panel);
+        // The script ticks between refreshes from this, so it has to be a parseable instant.
+        Assert.Contains($"data-started=\"{started:o}\"", panel);
+    }
+
+    [Fact]
+    public void SavedSnapshot_HasNoTimerControl()
+    {
+        var timers = new[] { new ManualTimer { Name = "Ticket #123 call", Start = T0, End = T0.AddMinutes(18) } };
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox")], [], [], timers: timers);
+
+        var panel = Panel(md, "timers");
+        Assert.Contains("Ticket #123 call", panel);      // the record is still there
+        Assert.DoesNotContain("tm-name", panel);         // ... but nothing to start
+        Assert.DoesNotContain("tm-go", panel);
+    }
+
     private static string B64(string value)
         => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
+
+    /// <summary>Just one tab's panel, so an assertion can't be satisfied by another tab's content.</summary>
+    private static string Panel(string html, string name)
+    {
+        var start = html.IndexOf($"data-panel=\"{name}\"", StringComparison.Ordinal);
+        Assert.True(start >= 0, $"no panel named '{name}'");
+        var end = html.IndexOf("</section>", start, StringComparison.Ordinal);
+        return end < 0 ? html[start..] : html[start..end];
+    }
 }

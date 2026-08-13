@@ -28,8 +28,8 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 ## Live view
 
 **Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
-window showing the same rollup / calls / timeline / timers / unclassified as a report, for **today**,
-refreshing every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
+window showing the same rollup / timesheet / timeline / calls / timers / unclassified as a report, for
+**today**, refreshing every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
 **Ticket** column is editable: click any row's Ticket cell — a window activity *or a call* — and
 type a number. It's saved for that day (in `ticket-overrides.json`) and shows on the Rollup and in
 your generated reports (activity tickets also flow into the JSON export).
@@ -130,7 +130,10 @@ yourself (e.g. "Ticket #123 — phone call"):
   press the combo you want; it saves to `settings.json` and rebinds immediately. You can still
   hand-edit `timerStartHotkey` / `timerStopHotkey` in `settings.json` (Ctrl/Alt/Shift/Win + a
   letter or F-key; the in-app picker captures Ctrl/Alt/Shift combos).
-- **Name** the timer in the field at the top of the live view; editing while it runs renames it live.
+- **Name and start** a timer in the live view's **Timers** tab: the field and Start/Stop button sit
+  under the list of what you've already recorded, so a finished timer files in above the field you
+  started it from. Editing the name while it runs renames it live. However a timer was started, its
+  elapsed time also shows in the top bar, so it stays visible from any tab.
 - **Tray menu** has a Start/Stop timer item too.
 - When a timer runs and the main window isn't visible (minimized or closed to tray), a small
   **floating bubble** appears at the bottom-right showing the name + elapsed time, with a stop
@@ -165,7 +168,7 @@ is a valid picture of the morning. Three triggers:
   fallback if `autoReportTimes` isn't set.)
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
-opens in the browser: stat cards up top, then **Rollup / Timesheet / Calls / Timeline / Timers /
+opens in the browser: stat cards up top, then **Rollup / Timesheet / Timeline / Calls / Timers /
 Unclassified as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
 `settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page

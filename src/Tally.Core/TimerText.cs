@@ -1,6 +1,11 @@
-namespace Tally.App;
+namespace Tally.Core;
 
-internal static class TimerText
+/// <summary>
+/// How a running timer's elapsed time reads. Lives in Core because it's shown in three places that
+/// must agree — the live view's top bar, the floating bubble, and the Timers tab (whose script
+/// ticks between refreshes and reproduces this same format).
+/// </summary>
+public static class TimerText
 {
     /// <summary>Formats a running elapsed time as a stopwatch: MM:SS, or H:MM:SS past an hour.</summary>
     public static string Elapsed(TimeSpan t)

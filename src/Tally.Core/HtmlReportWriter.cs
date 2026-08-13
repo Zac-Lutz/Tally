@@ -31,7 +31,7 @@ public static class HtmlReportWriter
 
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: true, editable: false,
-            ticketOverrides: ticketOverrides);
+            ticketOverrides: ticketOverrides, timerPanel: null);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -53,12 +53,13 @@ public static class HtmlReportWriter
         IReadOnlyList<InactivePeriod> inactivePeriods,
         TimeSpan? gapThreshold = null,
         IReadOnlyList<ManualTimer>? timers = null,
-        IReadOnlyDictionary<string, string>? ticketOverrides = null)
+        IReadOnlyDictionary<string, string>? ticketOverrides = null,
+        TimerPanelState? timerPanel = null)
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: false, editable: true,
-            ticketOverrides: ticketOverrides);
+            ticketOverrides: ticketOverrides, timerPanel: timerPanel);
         return sb.ToString();
     }
 
@@ -79,6 +80,7 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
+        sb.Append("<script>").Append(TimerControlScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
     }
@@ -93,7 +95,8 @@ public static class HtmlReportWriter
         TimeSpan threshold,
         bool includeHeader,
         bool editable,
-        IReadOnlyDictionary<string, string>? ticketOverrides)
+        IReadOnlyDictionary<string, string>? ticketOverrides,
+        TimerPanelState? timerPanel = null)
     {
         if (includeHeader)
         {
@@ -110,7 +113,7 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides);
+        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides, timerPanel);
     }
 
     // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
@@ -118,15 +121,16 @@ public static class HtmlReportWriter
     // TabScript. The Unclassified tab carries a count so a day needing triage announces itself.
     private static void AppendTabs(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides)
+        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
+        TimerPanelState? timerPanel)
     {
         var unclassified = UnclassifiedBuilder.Build(blocks);
 
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timesheet\">Timesheet</button>");
-        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timers\">Timers</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"unclassified\">Unclassified");
         if (unclassified.Count > 0)
@@ -141,14 +145,14 @@ public static class HtmlReportWriter
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
         AppendRollup(sb, blocks, calls, timers, editable, ticketOverrides);
         sb.Append("</section>\n");
-        sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
-        AppendCalls(sb, calls);
-        sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"timeline\">\n");
         AppendTimeline(sb, blocks);
         sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
+        AppendCalls(sb, calls);
+        sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"timers\">\n");
-        AppendTimers(sb, timers, editable);
+        AppendTimers(sb, timers, editable, timerPanel);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"unclassified\">\n");
         AppendUnclassified(sb, unclassified, blocks, editable);
@@ -310,31 +314,60 @@ public static class HtmlReportWriter
     // them on the way through an HTML attribute and a JSON message.
     private static string B64(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
 
-    // The Timers tab. In the live view the name is editable (renaming a recorded timer); the change
-    // persists and reflects on the Rollup. The saved file report shows names read-only.
-    private static void AppendTimers(StringBuilder sb, IReadOnlyList<ManualTimer> timers, bool editable)
+    // The Timers tab: what's already recorded on top, and the control to run the next one below it,
+    // so a finished timer joins the list right above the field you started it from. In the live view
+    // a recorded name is editable (the change persists and reflects on the Rollup); the saved file
+    // report shows names read-only and has no control at all.
+    private static void AppendTimers(
+        StringBuilder sb, IReadOnlyList<ManualTimer> timers, bool editable, TimerPanelState? panel)
     {
         if (timers.Count == 0)
         {
             sb.Append("<p class=\"empty\">No timers recorded today.</p>\n");
-            return;
         }
-
-        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Timer</th><th>Start</th><th>End</th><th class=\"num\">Duration</th></tr>\n");
-        sb.Append("</thead>\n<tbody>\n");
-        foreach (var t in timers.OrderByDescending(t => t.Start))
+        else
         {
-            var nameCell = editable
-                ? $"<input class=\"tn\" type=\"text\" data-timer-id=\"{t.Id}\" value=\"{Esc(t.Name)}\" aria-label=\"Timer name\">"
-                : Esc(t.Name);
-            sb.Append("<tr><td>").Append(nameCell).Append("</td>")
-              .Append("<td>").Append(ReportFormat.Clock(t.Start)).Append("</td>")
-              .Append("<td>").Append(ReportFormat.Clock(t.End)).Append("</td>")
-              .Append("<td class=\"num\">").Append(ReportFormat.Duration(t.Duration)).Append("</td></tr>\n");
+            sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
+            sb.Append("<tr><th>Timer</th><th>Start</th><th>End</th><th class=\"num\">Duration</th></tr>\n");
+            sb.Append("</thead>\n<tbody>\n");
+            foreach (var t in timers.OrderByDescending(t => t.Start))
+            {
+                var nameCell = editable
+                    ? $"<input class=\"tn\" type=\"text\" data-timer-id=\"{t.Id}\" value=\"{Esc(t.Name)}\" aria-label=\"Timer name\">"
+                    : Esc(t.Name);
+                sb.Append("<tr><td>").Append(nameCell).Append("</td>")
+                  .Append("<td>").Append(ReportFormat.Clock(t.Start)).Append("</td>")
+                  .Append("<td>").Append(ReportFormat.Clock(t.End)).Append("</td>")
+                  .Append("<td class=\"num\">").Append(ReportFormat.Duration(t.Duration)).Append("</td></tr>\n");
+            }
+
+            sb.Append("</tbody>\n</table>\n</div>\n");
         }
 
-        sb.Append("</tbody>\n</table>\n</div>\n");
+        if (editable && panel is not null)
+            AppendTimerControl(sb, panel);
+    }
+
+    private static void AppendTimerControl(StringBuilder sb, TimerPanelState panel)
+    {
+        sb.Append("<div class=\"tmbar\">");
+        sb.Append($"<input class=\"tm-name\" type=\"text\" placeholder=\"Timer name\" value=\"{Esc(panel.Name)}\" aria-label=\"Timer name\">");
+        sb.Append(panel.StartedAt is not null
+            ? "<button class=\"tm-go stop\" type=\"button\">Stop</button>"
+            : "<button class=\"tm-go\" type=\"button\">Start</button>");
+
+        // The elapsed figure is rendered here and re-rendered on every refresh; between refreshes a
+        // script ticks it from data-started so the seconds move like a stopwatch should.
+        if (panel.StartedAt is { } started)
+        {
+            var iso = started.ToString("o", CultureInfo.InvariantCulture);
+            sb.Append($"<span class=\"tm-elapsed\" data-started=\"{iso}\">{TimerText.Elapsed(panel.Elapsed)}</span>");
+        }
+
+        sb.Append("</div>\n");
+        sb.Append(panel.StartedAt is not null
+            ? "<p class=\"hint\">Renaming while it runs renames the timer; stopping files it above.</p>\n"
+            : "<p class=\"hint\">Name it and press Start — or use the hotkeys, which work from anywhere.</p>\n");
     }
 
     private static void AppendSummary(
@@ -590,6 +623,16 @@ public static class HtmlReportWriter
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .ev b { font-variant-numeric:tabular-nums; margin-right:4px; }
         .ev:hover { filter:brightness(1.3); }
+        .tmbar { display:flex; align-items:center; gap:10px; margin:18px 0 8px; flex-wrap:wrap; }
+        .tm-name { flex:0 1 300px; background:var(--bg); border:1px solid var(--border); border-radius:8px;
+          color:var(--fg); font:inherit; font-size:14px; padding:7px 11px; }
+        .tm-name::placeholder { color:var(--muted); }
+        .tm-name:focus { outline:none; border-color:var(--accent); }
+        .tm-go { background:var(--accent); color:var(--btn-fg); border:none; border-radius:8px;
+          padding:8px 22px; font:inherit; font-weight:600; cursor:pointer; }
+        .tm-go:hover { filter:brightness(1.06); }
+        .tm-go.stop { background:#e05252; color:#fff; }
+        .tm-elapsed { font-size:20px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -629,6 +672,33 @@ public static class HtmlReportWriter
         function isEdit(t){return t&&t.classList&&(t.classList.contains('tk')||t.classList.contains('tn'));}
         document.addEventListener('change',function(e){if(isEdit(e.target))post(e.target);});
         document.addEventListener('keydown',function(e){if(e.key==='Enter'&&isEdit(e.target)){e.preventDefault();e.target.blur();}});
+        })();
+        """;
+
+    // The Timers tab's start/stop control. Start/Stop posts {type:'timerToggle', value:<name>};
+    // editing the name posts {type:'timerRename', value}. The host owns the timer, so the button's
+    // new state arrives with the refresh that follows rather than being guessed here. Between
+    // refreshes the elapsed figure ticks locally from data-started, matching TimerText.Elapsed.
+    private const string TimerControlScript =
+        """
+        (function(){
+        function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
+        function name(){var n=document.querySelector('.tm-name');return n?n.value:'';}
+        document.addEventListener('click',function(e){
+        var b=e.target.closest?e.target.closest('.tm-go'):null;if(!b)return;
+        post({type:'timerToggle',value:name()});});
+        document.addEventListener('change',function(e){
+        if(e.target.classList&&e.target.classList.contains('tm-name'))post({type:'timerRename',value:e.target.value});});
+        document.addEventListener('keydown',function(e){
+        if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('tm-name')){
+        e.preventDefault();var v=e.target.value;e.target.blur();post({type:'timerToggle',value:v});}});
+        function pad(v){return v<10?'0'+v:''+v;}
+        setInterval(function(){
+        var el=document.querySelector('.tm-elapsed[data-started]');if(!el)return;
+        var s=Date.parse(el.getAttribute('data-started'));if(isNaN(s))return;
+        var d=Math.max(0,Math.floor((Date.now()-s)/1000));
+        var h=Math.floor(d/3600),m=Math.floor(d/60)%60,x=d%60;
+        el.textContent=h>0?h+':'+pad(m)+':'+pad(x):pad(m)+':'+pad(x);},1000);
         })();
         """;
 

@@ -40,12 +40,9 @@ public sealed class LiveWindow : Form
     private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9f), Margin = new Padding(0, 8, 18, 0) };
     private readonly Label _dateLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(0, 5, 12, 0) };
     private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 6, 0, 0) };
-    private readonly TextBox _timerName = new() { BackColor = InputBg, ForeColor = Fg, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10.5f), PlaceholderText = "Timer name" };
-    private readonly Button _timerButton = new() { AutoSize = true, Margin = new Padding(0, 1, 10, 0), Padding = new Padding(8, 3, 8, 3), Cursor = Cursors.Hand };
     private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 4, 14, 0) };
     private bool _ready;
     private bool _refreshing;
-    private bool _syncingTimerUi;
     private string? _note;
     private DateTime _noteUntil;
 
@@ -91,23 +88,12 @@ public sealed class LiveWindow : Form
         Load += (_, _) => InitializeWebViewAsync();
     }
 
-    // One top bar: "Tally", the date, and the live-updated status on the LEFT; the timer controls,
-    // snapshot, and settings on the RIGHT.
+    // One top bar: "Tally", the date, and the live-updated status on the LEFT; the running timer's
+    // elapsed time, then export/snapshot/settings on the RIGHT. Starting and naming a timer lives in
+    // the Timers tab; only the elapsed figure stays up here, so a running timer is visible from
+    // whichever tab you're on.
     private Panel BuildTopBar()
     {
-        _timerName.TextChanged += (_, _) =>
-        {
-            if (!_syncingTimerUi)
-                _timer.Rename(_timerName.Text);
-        };
-        _timerButton.Click += (_, _) =>
-        {
-            if (_timer.IsActive)
-                _timer.Stop();
-            else
-                _timer.Start(_timerName.Text);
-        };
-
         var snapshot = new Button { Text = "Generate snapshot", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
         StyleButton(snapshot);
         snapshot.Click += (_, _) => GenerateSnapshot();
@@ -119,16 +105,6 @@ public sealed class LiveWindow : Form
         var settings = new Button { Text = "Settings", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 0, 0), Cursor = Cursors.Hand };
         StyleButton(settings);
         settings.Click += (_, _) => SettingsDialog.Configure(this, _hotkeys, _onSettingsSaved);
-
-        StyleButton(_timerButton);
-
-        // Wrap the borderless name box in a bordered panel so the placeholder is left-padded and
-        // vertically centered (a bare single-line TextBox pins it to the top-left).
-        var nameBox = new Panel { Size = new Size(186, 28), BackColor = InputBg, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(0, 1, 8, 0) };
-        nameBox.Controls.Add(_timerName);
-        _timerName.Left = 8;
-        _timerName.Width = nameBox.ClientSize.Width - 16;
-        _timerName.Top = Math.Max(0, (nameBox.ClientSize.Height - _timerName.Height) / 2);
 
         // "Tally" (in the accent color) with the running version to its right, so the current
         // version is always visible at a glance (e.g. "v1.2.3", or "dev" for a from-source build).
@@ -157,8 +133,6 @@ public sealed class LiveWindow : Form
             BackColor = ChromeBg,
             Padding = new Padding(0, 10, 14, 0),
         };
-        right.Controls.Add(nameBox);
-        right.Controls.Add(_timerButton);
         right.Controls.Add(_timerElapsed);
         right.Controls.Add(export);
         right.Controls.Add(snapshot);
@@ -187,33 +161,30 @@ public sealed class LiveWindow : Form
         b.MouseLeave += (_, _) => b.ForeColor = b.Tag is Color c ? c : Fg;
     }
 
+    // The timer changed — from the Timers tab, a hotkey, the tray, or the bubble. The top bar's
+    // elapsed figure updates here; the tab's control is HTML, so it comes back with a refresh.
     private void SyncTimerUi()
     {
         if (IsDisposed)
             return;
 
-        _syncingTimerUi = true;
-        var active = _timer.IsActive;
-        _timerButton.Text = active ? "Stop" : "Start";
-        // Stays dark (styled by StyleButton); "Stop" is signalled by red text, not a filled color.
-        var restingFg = active ? StopColor : Fg;
-        _timerButton.Tag = restingFg;
-        _timerButton.ForeColor = restingFg;
-
-        // Don't fight the user mid-type; otherwise reflect the authoritative name.
-        if (!_timerName.Focused)
-            _timerName.Text = active ? _timer.Active!.Name : _timer.PendingName;
-        _syncingTimerUi = false;
-
         UpdateElapsed();
-        if (active)
+        if (_timer.IsActive)
             _timerTick.Start();
         else
             _timerTick.Stop();
+
+        _ = RefreshAsync();
     }
 
     private void UpdateElapsed()
         => _timerElapsed.Text = _timer.IsActive ? TimerText.Elapsed(_timer.Elapsed) : string.Empty;
+
+    /// <summary>The Timers tab's control state: the running timer, or the name waiting on Start.</summary>
+    private TimerPanelState TimerPanel()
+        => _timer.Active is { } active
+            ? new TimerPanelState(active.Name, active.StartedAt, _timer.Elapsed)
+            : new TimerPanelState(_timer.PendingName, null);
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -271,7 +242,7 @@ public sealed class LiveWindow : Form
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
             var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
-                timers: data.Timers, ticketOverrides: data.TicketOverrides);
+                timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel());
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
@@ -310,6 +281,19 @@ public sealed class LiveWindow : Form
             else if (msg.Type == "rule")
             {
                 SaveRule(msg);
+            }
+            else if (msg.Type == "timerToggle")
+            {
+                // Start takes the name straight from the field; Stop ignores it, since the running
+                // timer's name was already applied by the rename that any edit posts.
+                if (_timer.IsActive)
+                    _timer.Stop();
+                else
+                    _timer.Start(msg.Value ?? string.Empty);
+            }
+            else if (msg.Type == "timerRename")
+            {
+                _timer.Rename(msg.Value ?? string.Empty);
             }
         }
         catch (Exception ex)

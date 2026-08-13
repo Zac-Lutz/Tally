@@ -5,6 +5,7 @@ namespace Tally.Core;
 /// <summary>Formatting shared by the Markdown and HTML report writers.</summary>
 internal static class ReportFormat
 {
+
     public static string Duration(TimeSpan t) => t.TotalHours >= 1
         ? $"{(int)t.TotalHours}h {t.Minutes:D2}m"
         : t.TotalMinutes >= 1
