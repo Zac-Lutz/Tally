@@ -15,11 +15,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Some machines have a runtime-only dotnet on PATH ahead of the SDK install; pick one with an SDK.
+function Get-SdkDotnet {
+    foreach ($c in @('dotnet', (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'), (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'))) {
+        try { $sdks = & $c --list-sdks 2>$null; if ($LASTEXITCODE -eq 0 -and $sdks) { return $c } } catch { }
+    }
+    throw 'No .NET SDK found. Install the .NET 10 SDK: https://aka.ms/dotnet/download'
+}
+$dotnet = Get-SdkDotnet
+
 # Velopack's CLI (vpk) is a global dotnet tool. Install on first run.
 $vpk = Join-Path $env:USERPROFILE '.dotnet\tools\vpk.exe'
 if (-not (Test-Path $vpk)) {
     Write-Host 'Installing the Velopack CLI (vpk)...'
-    dotnet tool install -g vpk
+    & $dotnet tool install -g vpk
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install vpk' }
 }
 
@@ -32,7 +41,7 @@ Remove-Item $publish -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $OutDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "Publishing self-contained ($Runtime)..."
-dotnet publish (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj') `
+& $dotnet publish (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj') `
     -c Release -r $Runtime --self-contained -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 

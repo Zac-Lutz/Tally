@@ -20,10 +20,19 @@ if ([string]::IsNullOrWhiteSpace($Token)) {
     throw "No GitHub token found. Set it in your shell first:  `$env:GITHUB_TOKEN = 'ghp_...'  (needs repo / Contents: read-write). Never commit it."
 }
 
+# Some machines have a runtime-only dotnet on PATH ahead of the SDK install; pick one with an SDK.
+function Get-SdkDotnet {
+    foreach ($c in @('dotnet', (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'), (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'))) {
+        try { $sdks = & $c --list-sdks 2>$null; if ($LASTEXITCODE -eq 0 -and $sdks) { return $c } } catch { }
+    }
+    throw 'No .NET SDK found. Install the .NET 10 SDK: https://aka.ms/dotnet/download'
+}
+$dotnet = Get-SdkDotnet
+
 $vpk = Join-Path $env:USERPROFILE '.dotnet\tools\vpk.exe'
 if (-not (Test-Path $vpk)) {
     Write-Host 'Installing the Velopack CLI (vpk)...'
-    dotnet tool install -g vpk
+    & $dotnet tool install -g vpk
     if ($LASTEXITCODE -ne 0) { throw 'Failed to install vpk' }
 }
 
@@ -34,7 +43,7 @@ Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $dist | Out-Null
 
 Write-Host "Publishing self-contained ($Runtime)..."
-dotnet publish (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj') -c Release -r $Runtime --self-contained -o $publish
+& $dotnet publish (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj') -c Release -r $Runtime --self-contained -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 # Pull existing releases so vpk can build small delta updates. Empty/no-op on the first publish.
