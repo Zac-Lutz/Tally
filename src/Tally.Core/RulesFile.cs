@@ -196,6 +196,9 @@ public static partial class RulesFile
             // conversation on the rollup; a bare "Discord" falls through to the rule below.
             { "id": "discord-channel", "processPattern": "^Discord$", "titlePattern": "^(?<subject>.+?)\\s*-\\s*Discord$", "category": "Discord" },
             { "id": "discord", "processPattern": "^Discord$", "category": "Discord" },
+            // RingCentral ships under several executable names (the app, the older phone client,
+            // meetings), so this matches the prefix rather than one exact name.
+            { "id": "ringcentral", "processPattern": "^RingCentral", "category": "RingCentral" },
             { "id": "terminal", "processPattern": "^(WindowsTerminal|wt|OpenConsole|conhost|powershell|pwsh|cmd)$", "category": "Development" },
             { "id": "vscode", "processPattern": "^Code$", "category": "Development" },
             { "id": "visual-studio", "processPattern": "^devenv$", "category": "Development" },

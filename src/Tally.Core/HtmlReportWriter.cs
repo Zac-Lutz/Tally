@@ -343,7 +343,10 @@ public static class HtmlReportWriter
 
     // Categories seen today, plus the shipped defaults so a fresh day still offers sensible names.
     private static readonly string[] BaselineCategories =
-        ["Admin", "Browsing", "Development", "Discord", "Email", "HaloPSA", "Meetings", "Remote Support", "Teams"];
+    [
+        "Admin", "Browsing", "Development", "Discord", "Email", "HaloPSA", "Meetings",
+        "Remote Support", "RingCentral", "Teams",
+    ];
 
     private static IReadOnlyList<string> KnownCategories(IReadOnlyList<ClassifiedBlock> blocks)
         => blocks
@@ -591,6 +594,7 @@ public static class HtmlReportWriter
         // distinction, and the colour is there to say "this was Teams" at a glance.
         "Teams" or CallApps.TeamsCallCategory or TeamsChatCategory => "139,92,246",
         CallApps.DiscordCategory => "88,101,242",
+        CallApps.RingCentralCategory => "6,182,212",
         "Email" => "20,184,166",
         "Development" => "34,197,94",
         "Browsing" => "234,179,8",

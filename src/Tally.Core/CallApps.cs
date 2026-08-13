@@ -16,17 +16,27 @@ public static class CallApps
     /// <summary>Discord, whether the time went to a call or the window.</summary>
     public const string DiscordCategory = "Discord";
 
+    /// <summary>RingCentral — the phone system, so a call there is simply the work.</summary>
+    public const string RingCentralCategory = "RingCentral";
+
     /// <summary>
-    /// The category a call is filed under. Teams and Discord are day-to-day tools whose time is
-    /// worth naming rather than pooling into one "Call" row: a Teams call reads differently from a
-    /// Teams chat on a timesheet, and Discord is one line however the time was spent there.
+    /// The category a call is filed under. These are day-to-day tools whose time is worth naming
+    /// rather than pooling into one "Call" row: a Teams call reads differently from a Teams chat on
+    /// a timesheet, while Discord and RingCentral each want one line however the time was spent.
     /// </summary>
-    public static string CategoryFor(string processName) => processName.ToLowerInvariant() switch
+    public static string CategoryFor(string processName)
     {
-        "ms-teams" or "msteams" or "teams" => TeamsCallCategory,
-        "discord" => DiscordCategory,
-        _ => DefaultCategory,
-    };
+        var app = processName.ToLowerInvariant();
+        return app switch
+        {
+            "ms-teams" or "msteams" or "teams" => TeamsCallCategory,
+            "discord" => DiscordCategory,
+            // Matched on the prefix: RingCentral ships under several executable names over the
+            // years (the app, the older phone client, meetings) and they're all RingCentral.
+            _ when app.StartsWith("ringcentral", StringComparison.Ordinal) => RingCentralCategory,
+            _ => DefaultCategory,
+        };
+    }
 
     /// <summary>
     /// Whether a call in this app should outrank the window activity underneath it on a timesheet.

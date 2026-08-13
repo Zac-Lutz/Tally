@@ -83,7 +83,8 @@ work happened, not one card smeared across the day.
 
 **Discord is the exception.** People sit in a voice channel for hours while working, so a live
 Discord mic says nothing about what the time was for — it never takes time from the window you
-were actually using. It still shows as evidence on those entries, so you can see you were in
+were actually using. (A RingCentral call is the opposite: it's the phone system, so being on one
+*is* the work, and it outranks like a meeting does.) It still shows as evidence on those entries, so you can see you were in
 Discord. Time genuinely spent *in* Discord still counts as Discord, because the Discord window is
 what you're looking at when it is.
 
@@ -243,9 +244,9 @@ with `#channel | Server - Discord`, `@someone - Discord` and `Friends - Discord`
 channel in its title is still categorised as Discord.
 
 **Calls from your day-to-day apps are named, not pooled.** A Teams call is filed as
-**Teams - Call**, a Teams conversation as **Teams - Chat**, and Discord time as **Discord**
-whether it went to a call or the window — so a timesheet can tell a meeting from a message thread.
-Calls from anything else stay a plain **Call**. Every call still appears in the Calls tab either
+**Teams - Call**, a Teams conversation as **Teams - Chat**, and Discord and **RingCentral** time
+each under their own name whether it went to a call or the window — so a timesheet can tell a
+meeting from a message thread from a phone call. Calls from anything else stay a plain **Call**. Every call still appears in the Calls tab either
 way; this only changes the category it carries. (A Teams window showing neither a conversation nor
 a call — the activity feed, the calendar — stays plain **Teams**.)
 

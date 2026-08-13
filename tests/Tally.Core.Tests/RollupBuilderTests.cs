@@ -17,10 +17,28 @@ public class CallCategoryTests
     [InlineData("Teams", "Teams - Call")]
     [InlineData("Discord", "Discord")]
     [InlineData("discord", "Discord")]
+    [InlineData("RingCentral", "RingCentral")]
+    [InlineData("RingCentralPhone", "RingCentral")]
     [InlineData("Zoom", "Call")]
     [InlineData("slack", "Call")]
     public void ADayToDayApp_FilesItsCallsUnderItsOwnName(string process, string expected)
         => Assert.Equal(expected, Assert.Single(RollupBuilder.BuildCalls([Call(process)])).Category);
+
+    [Fact]
+    public void ARingCentralCall_IsTheWork_SoItOutranksTheWindowsUnderIt()
+    {
+        // It's the phone system: unlike sitting in a Discord voice channel, being on a
+        // RingCentral call is the thing you were doing.
+        var slots = SuggestionSlotBuilder.Build(
+            [new ClassifiedBlock(
+                new Block(T0, T0.AddMinutes(30), "chrome", "Tickets - Halo"),
+                new Classification("Browsing", null, null, null, "rule"))],
+            [Call("RingCentral", "Acme Corp")]);
+
+        var slot = Assert.Single(slots);
+        Assert.Equal(CallApps.RingCentralCategory, slot.Category);
+        Assert.Equal(TimeSpan.FromMinutes(30), slot.Measured);
+    }
 
     [Fact]
     public void CallsFromDifferentApps_NeverMergeIntoOneRow()

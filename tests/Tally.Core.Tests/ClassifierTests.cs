@@ -54,6 +54,19 @@ public class ClassifierTests
         Assert.Null(c.Subject);
     }
 
+    // RingCentral has shipped under several executable names, so the rule matches the prefix.
+    [Theory]
+    [InlineData("RingCentral")]
+    [InlineData("RingCentralPhone")]
+    [InlineData("RingCentralMeetings")]
+    public void RingCentral_IsMatchedWhicheverClientIsInstalled(string process)
+        => Assert.Equal("RingCentral", DefaultClassifier().Classify(process, "RingCentral").Category);
+
+    [Fact]
+    public void RingCentral_DoesNotClaimABrowserTabAboutIt()
+        => Assert.Equal("Browsing",
+            DefaultClassifier().Classify("msedge", "ringcentral - Google Search - Work").Category);
+
     [Fact]
     public void Discord_DoesNotClaimOtherAppsThatMentionIt()
     {
