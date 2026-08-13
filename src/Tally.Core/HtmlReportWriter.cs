@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Tally.Core.Models;
 
@@ -171,26 +172,75 @@ public static class HtmlReportWriter
         var measured = TimeSpan.FromTicks(slots.Sum(s => s.Measured.Ticks));
         sb.Append($"<p class=\"hint\">{slots.Count} {(slots.Count == 1 ? "entry" : "entries")} · <strong>{total:0.00} h</strong> to enter · {ReportFormat.Duration(measured)} actually measured. This is exactly what the export contains.</p>\n");
 
-        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Time</th><th>What</th><th>Ticket</th><th class=\"num\">Measured</th><th class=\"num\">Enter</th></tr>\n");
-        sb.Append("</thead>\n<tbody>\n");
+        AppendCalendar(sb, slots);
+        sb.Append("<p class=\"hint\">Blocks sit where the work happened and are as tall as the time they span; the number on each is the hours to enter. Time is claimed once — a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” block rather than dropped.</p>\n");
+    }
 
-        foreach (var slot in slots)
+    /// <summary>How many pixels one minute of the day is drawn as.</summary>
+    private const double MinuteHeight = 1.35;
+
+    /// <summary>Floor height for a block, so a five-minute entry still shows its label.</summary>
+    private const double MinEventHeight = 19;
+
+    // The day as a calendar grid: an hour ruler down the left and each slot placed against it.
+    // Blocks are drawn over their real span (the shape att's own calendar will show them in), with
+    // the billable hours on the block — the two differ whenever short gaps were bridged, and the
+    // gaps between blocks are the point: unaccounted time is visible as empty space.
+    private static void AppendCalendar(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots)
+    {
+        if (TimesheetCalendar.Bounds(slots) is not { } bounds)
+            return;
+
+        var totalMinutes = (bounds.End - bounds.Start).TotalMinutes;
+        sb.Append($"<div class=\"cal\" style=\"height:{Px(totalMinutes * MinuteHeight)}px\">\n");
+
+        for (var line = bounds.Start; line < bounds.End; line += TimesheetCalendar.GridStep)
         {
-            var rounded = slot.Reported != slot.Measured;
-            sb.Append(slot.Kind == SuggestionSlotKind.OddsAndEnds ? "<tr class=\"loose\">" : "<tr>")
-              .Append("<td class=\"when\">")
-              .Append($"{ReportFormat.Clock(slot.Start)}–{ReportFormat.Clock(slot.End)}").Append("</td>")
-              .Append("<td>").Append(CategoryBadge(slot.Category)).Append(' ').Append(Esc(slot.Label)).Append("</td>")
-              .Append("<td>").Append(slot.TicketRef is { } t ? $"#{Esc(t)}" : string.Empty).Append("</td>")
-              .Append("<td class=\"num muted\">").Append(ReportFormat.Duration(slot.Measured)).Append("</td>")
-              .Append(rounded ? "<td class=\"num rounded\">" : "<td class=\"num\">")
-              .Append($"{slot.Reported.TotalHours:0.00}").Append("</td></tr>\n");
+            var top = (line - bounds.Start).TotalMinutes * MinuteHeight;
+            // Labelled on the hour; the half hours rule faintly so a block's length is readable
+            // without crowding the gutter with numbers.
+            sb.Append(line.Minute == 0
+                ? $"<div class=\"cal-hr\" style=\"top:{Px(top)}px\"><span>{ReportFormat.Clock(line)}</span></div>\n"
+                : $"<div class=\"cal-hr half\" style=\"top:{Px(top)}px\"></div>\n");
         }
 
-        sb.Append("</tbody>\n</table>\n</div>\n");
-        sb.Append("<p class=\"hint\">Time is claimed once: a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” row rather than dropped.</p>\n");
+        sb.Append("<div class=\"cal-ev\">\n");
+        foreach (var entry in TimesheetCalendar.Lay(slots))
+        {
+            var slot = entry.Slot;
+            var span = slot.End - slot.Start;
+            var top = (slot.Start - bounds.Start).TotalMinutes * MinuteHeight;
+            var height = Math.Max(MinEventHeight, span.TotalMinutes * MinuteHeight);
+            var width = 100d / entry.Columns;
+            var left = entry.Column * width;
+
+            var rgb = CategoryRgb(slot.Category);
+            var ticket = slot.TicketRef is { } t ? $"#{t} " : string.Empty;
+            var tip = $"{ReportFormat.Clock(slot.Start)}–{ReportFormat.Clock(slot.End)} · {ticket}{slot.Label} · "
+                      + $"{ReportFormat.Duration(slot.Measured)} measured → {slot.Reported.TotalHours:0.00} h to enter";
+
+            sb.Append($"<div class=\"ev\" style=\"top:{Px(top)}px;height:{Px(height - 2)}px;")
+              .Append($"left:calc({Px(left)}% + 1px);width:calc({Px(width)}% - 3px);")
+              .Append($"background:rgba({rgb},.10);border-left-color:rgba({rgb},.9)\" title=\"{Esc(tip)}\">");
+
+            // Blocks are drawn over the stretch they cover, but the billable time can be less when
+            // short gaps were bridged. The solid part is the time actually measured, so a block
+            // that's mostly empty reads as mostly empty instead of as a full hour of work.
+            var fill = span > TimeSpan.Zero
+                ? Math.Clamp(slot.Measured.TotalMinutes / span.TotalMinutes * 100, 0, 100)
+                : 100;
+            sb.Append($"<i class=\"ev-fill\" style=\"height:{Px(fill)}%;background:rgba({rgb},.22)\"></i>");
+
+            sb.Append("<span class=\"ev-txt\">")
+              .Append($"<b>{slot.Reported.TotalHours:0.00}</b> ")
+              .Append(Esc(ticket + slot.Label))
+              .Append("</span></div>\n");
+        }
+
+        sb.Append("</div>\n</div>\n");
     }
+
+    private static string Px(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 
     // The triage list: everything that matched no rule, one row per app+window. In the live view each
     // row can be given a category and saved as a rule on the spot (the C# host writes rules.json and
@@ -429,20 +479,24 @@ public static class HtmlReportWriter
         => sb.Append($"<div class=\"card\"><div class=\"v\">{value}</div><div class=\"l\">{label}</div></div>\n");
 
     private static string CategoryBadge(string category)
-        => $"<span class=\"cat\" style=\"background:{CategoryColor(category)}\">{Esc(category)}</span>";
+        => $"<span class=\"cat\" style=\"background:rgba({CategoryRgb(category)},.22)\">{Esc(category)}</span>";
 
-    // Translucent hue only — the pill text uses the theme foreground, so contrast holds in both themes.
-    private static string CategoryColor(string category) => category switch
+    // The hue a category is drawn in, as bare RGB so callers can pick their own alpha — a pill wants
+    // a wash, a calendar block's edge wants the full colour. Text always uses the theme foreground,
+    // so contrast holds in both themes.
+    private static string CategoryRgb(string category) => category switch
     {
-        "HaloPSA" => "rgba(59,130,246,.20)",
-        "Teams" => "rgba(139,92,246,.20)",
-        "Email" => "rgba(20,184,166,.20)",
-        "Development" => "rgba(34,197,94,.20)",
-        "Browsing" => "rgba(234,179,8,.22)",
-        "Remote Support" => "rgba(236,72,153,.20)",
-        "Call" => "rgba(249,115,22,.22)",
-        "Timer" => "rgba(99,102,241,.24)",
-        _ => "rgba(148,163,184,.22)",
+        "HaloPSA" => "59,130,246",
+        "Teams" => "139,92,246",
+        "Email" => "20,184,166",
+        "Development" => "34,197,94",
+        "Browsing" => "234,179,8",
+        "Remote Support" => "236,72,153",
+        RollupBuilder.CallCategory => "249,115,22",
+        RollupBuilder.TimerCategory => "99,102,241",
+        // The one row that needs a human gets the same amber the gaps panel uses.
+        SuggestionSlotBuilder.OddsAndEndsCategory => "214,158,46",
+        _ => "148,163,184",
     };
 
     private static string Esc(string s) => s
@@ -523,9 +577,19 @@ public static class HtmlReportWriter
           padding:4px 12px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
         .uc-save:hover { filter:brightness(1.06); }
         .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; filter:none; }
-        td.when { white-space:nowrap; }
-        td.rounded { color:var(--accent); font-weight:600; }
-        tr.loose td { background:var(--warn-bg); }
+        .cal { position:relative; margin:14px 0 4px; }
+        .cal-hr { position:absolute; left:0; right:0; border-top:1px solid var(--border); }
+        .cal-hr.half { border-top-style:dotted; opacity:.55; }
+        .cal-hr span { position:absolute; top:-8px; left:0; width:52px; text-align:right;
+          padding-right:8px; background:var(--bg); color:var(--muted); font-size:11px; white-space:nowrap; }
+        .cal-ev { position:absolute; left:60px; right:0; top:0; bottom:0; }
+        .ev { position:absolute; box-sizing:border-box; overflow:hidden; border-radius:5px;
+          border-left:3px solid; font-size:12px; line-height:17px; cursor:default; }
+        .ev-fill { position:absolute; left:0; right:0; top:0; display:block; }
+        .ev-txt { position:relative; display:block; padding:1px 8px;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .ev b { font-variant-numeric:tabular-nums; margin-right:4px; }
+        .ev:hover { filter:brightness(1.3); }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
