@@ -29,6 +29,8 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly HotkeyListener _hotkeys;
     private readonly TimerBubble _bubble;
     private readonly ToolStripMenuItem _timerMenuItem;
+    private readonly System.Windows.Forms.Timer _updateTimer;
+    private bool _firstUpdateCheck = true;
 
     public TrayAppContext()
     {
@@ -103,7 +105,26 @@ public sealed class TrayAppContext : ApplicationContext
         _session.Start();
         _mic.Start();
         _activity.Start();
+
+        // First auto-update check ~8s after startup (once the message loop is running, so the
+        // async continuation resumes on the UI thread), then every 4 hours.
+        _updateTimer = new System.Windows.Forms.Timer { Interval = 8_000 };
+        _updateTimer.Tick += (_, _) => RunUpdateCheck();
+        _updateTimer.Start();
+
         Log.Info("Tally started");
+    }
+
+    private void RunUpdateCheck()
+    {
+        if (_firstUpdateCheck)
+        {
+            _firstUpdateCheck = false;
+            _updateTimer.Interval = (int)TimeSpan.FromHours(4).TotalMilliseconds;
+        }
+
+        _ = AppUpdater.CheckAndStageAsync(version =>
+            _trayIcon.ShowBalloonTip(10_000, "Tally", $"Update {version} downloaded — it applies next time you restart Tally.", ToolTipIcon.Info));
     }
 
     private static System.Drawing.Icon LoadTrayIcon(string fileName)
@@ -247,6 +268,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void ExitApplication()
     {
         _trayIcon.Visible = false;
+        _updateTimer.Dispose();
         _hotkeys.Dispose();
         _bubble.Dispose();
         _liveWindow?.Dispose();

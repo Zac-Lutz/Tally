@@ -152,6 +152,30 @@ The installer is **unsigned**, so Windows SmartScreen shows "Windows protected y
 first run — the recipient clicks **More info -> Run anyway**. For wider distribution, add an
 Authenticode code-signing certificate (`vpk pack --signParams ...`) to remove that prompt.
 
+## Auto-update (GitHub Releases)
+
+Installed apps update themselves from GitHub Releases (`github.com/Zac-Lutz/Tally`): the tray
+app checks a few seconds after startup and every 4 hours, downloads any newer version in the
+background, and applies it on the next restart (a tray note says when one's ready). No files to
+send around.
+
+To publish a new version:
+
+```powershell
+$env:GITHUB_TOKEN = 'ghp_...'        # once per shell — needs repo / Contents: read-write. Never commit it.
+./Publish-Tally.ps1 -Version 1.2.0   # must be higher than the last published version
+```
+
+That builds the release, pulls prior releases to compute deltas, and uploads + publishes the
+GitHub release. The token is read from the environment only — never stored in the repo or the
+app (the app fetches updates anonymously, which is why the repo must be **public**).
+
+**One-time bootstrap:** a version that predates this auto-update code can't check GitHub, so the
+*first* time, hand each person `dist/Tally-win-Setup.exe` from a publish run (or the `Setup.exe`
+attached to the GitHub release). After they're on an auto-updating build, every later version is
+automatic. (Note: auto-update only runs for a **Velopack-installed** app — not the dev
+`Install-Tally.ps1` build, which you rebuild locally.)
+
 ## Install for local development (autostart)
 
 ```powershell
