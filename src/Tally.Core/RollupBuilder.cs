@@ -63,6 +63,10 @@ public static class RollupBuilder
     /// <summary>The category label calls carry in the rollup (and its badge color in the writers).</summary>
     public const string CallCategory = "Call";
 
+    /// <summary>Rollup rows shorter than this are hidden as noise. The time still counts in the
+    /// summary totals, the Timeline, and the JSON export — only the Rollup table drops them.</summary>
+    public static readonly TimeSpan MinRollupDuration = TimeSpan.FromMinutes(1);
+
     // A call's rollup label: the app on its own when the title adds nothing (empty, or just the app
     // name again), otherwise app + the cleaned window title (e.g. a Teams meeting or Discord channel).
     private static (string? Client, string Name) CallLabel(CallSpan c)

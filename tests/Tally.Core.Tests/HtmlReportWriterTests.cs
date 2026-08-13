@@ -71,6 +71,25 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void Rollup_HidesActivitiesUnderOneMinute_ButKeepsExactlyOneMinute()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 5, "Development", "Real work"),           // 5 min - shown
+            CB(10, 11, "Email", "Exactly one minute"),      // 1 min - shown (>= 1m boundary)
+            CB(20, 20.5, "Browsing", "Quick glance tab"),   // 30 sec - hidden as noise
+        ], [], []);
+
+        // Scope to the rollup panel (all titles still appear in the Timeline panel below it).
+        var rollup = md[md.IndexOf("data-panel=\"rollup\"", StringComparison.Ordinal)
+            ..md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal)];
+
+        Assert.Contains("Real work", rollup);
+        Assert.Contains("Exactly one minute", rollup);
+        Assert.DoesNotContain("Quick glance tab", rollup);
+    }
+
+    [Fact]
     public void LiveView_RollupTicketCells_AreEditableInputs()
     {
         var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Development", "Client Profiles")], [], []);

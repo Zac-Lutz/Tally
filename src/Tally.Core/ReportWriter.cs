@@ -76,6 +76,7 @@ public static class ReportWriter
     {
         var rows = RollupBuilder.Build(blocks)
             .Concat(RollupBuilder.BuildCalls(calls))
+            .Where(r => r.Time >= RollupBuilder.MinRollupDuration)   // hide sub-minute noise
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
 
