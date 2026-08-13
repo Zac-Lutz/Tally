@@ -71,6 +71,51 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void Summary_HasTotalCard_EqualToActivePlusInactive()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 120, "Development", "work")],   // 2h active
+            [],
+            [new InactivePeriod(T0.AddMinutes(120), T0.AddMinutes(150), InactiveReasons.Idle)]);   // 30m inactive
+
+        Assert.Contains(">Total<", md);      // a Total card exists
+        Assert.Contains("2h 30m", md);       // 2h active + 30m inactive
+    }
+
+    [Fact]
+    public void Rollup_IncludesTimers_UnderTheTimerCategory()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Email", "Inbox - Outlook")], [], [],
+            timers: new[] { new ManualTimer { Name = "Ticket 123 call", Start = T0, End = T0.AddMinutes(18) } });
+
+        var rollup = md[md.IndexOf("data-panel=\"rollup\"", StringComparison.Ordinal)
+            ..md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal)];
+
+        Assert.Contains(">Timer<", rollup);           // Timer category badge in the rollup
+        Assert.Contains("Ticket 123 call", rollup);   // ... with the timer name as the detail
+    }
+
+    [Fact]
+    public void LiveView_TimerNames_AreEditableInputs()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Email", "Inbox")], [], [],
+            timers: new[] { new ManualTimer { Id = 7, Name = "Standup", Start = T0, End = T0.AddMinutes(12) } });
+
+        Assert.Contains("class=\"tn\"", inner);           // editable timer-name input
+        Assert.Contains("data-timer-id=\"7\"", inner);    // carrying the timer id
+    }
+
+    [Fact]
+    public void FileReport_TimerNames_AreReadOnly()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox")], [], [],
+            timers: new[] { new ManualTimer { Id = 7, Name = "Standup", Start = T0, End = T0.AddMinutes(12) } });
+
+        Assert.DoesNotContain("class=\"tn\"", md);   // the saved report is static
+    }
+
+    [Fact]
     public void Rollup_HidesActivitiesUnderOneMinute_ButKeepsExactlyOneMinute()
     {
         var md = HtmlReportWriter.BuildHtml(Date,

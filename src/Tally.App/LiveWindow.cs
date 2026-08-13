@@ -222,8 +222,8 @@ public sealed class LiveWindow : Form
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
             await _webView.EnsureCoreWebView2Async(environment);
 
-            // Receives ticket-override edits posted from the Rollup's editable cells.
-            _webView.CoreWebView2.WebMessageReceived += OnTicketWebMessage;
+            // Receives edits posted from the live view: ticket overrides and timer renames.
+            _webView.CoreWebView2.WebMessageReceived += OnEditWebMessage;
 
             // Force the page's theme to dark regardless of the OS setting, so the live view is
             // always dark to match the window chrome.
@@ -275,29 +275,62 @@ public sealed class LiveWindow : Form
         }
     }
 
-    // A Rollup ticket cell was committed in the live view. Save it as an override for today (the
-    // live view always shows today) and refresh so the rollup + JSON export reflect it.
-    private void OnTicketWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    // An edit was committed in the live view: a Rollup ticket cell (save as today's override) or a
+    // Timers-tab name (rename the recorded timer in the DB). Either way, refresh so it reflects.
+    private void OnEditWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         try
         {
-            var msg = JsonSerializer.Deserialize<TicketMessage>(e.WebMessageAsJson, TicketMessageOptions);
-            if (msg is null || msg.Type != "ticket" || string.IsNullOrEmpty(msg.Key))
+            var msg = JsonSerializer.Deserialize<EditMessage>(e.WebMessageAsJson, EditMessageOptions);
+            if (msg is null)
                 return;
 
-            var rowKey = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(msg.Key));
-            TicketOverrideStore.Set(DateOnly.FromDateTime(DateTime.Now), rowKey, msg.Value);
-            _ = RefreshAsync();
+            if (msg.Type == "ticket" && !string.IsNullOrEmpty(msg.Key))
+            {
+                var rowKey = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(msg.Key));
+                TicketOverrideStore.Set(DateOnly.FromDateTime(DateTime.Now), rowKey, msg.Value);
+                _ = RefreshAsync();
+            }
+            else if (msg.Type == "timerName" && long.TryParse(msg.Id, out var timerId))
+            {
+                _ = RenameTimerAsync(timerId, msg.Value);
+            }
         }
         catch (Exception ex)
         {
-            Log.Error("Failed to apply a ticket override from the live view", ex);
+            Log.Error("Failed to apply an edit from the live view", ex);
         }
     }
 
-    private static readonly JsonSerializerOptions TicketMessageOptions = new() { PropertyNameCaseInsensitive = true };
+    // Renames a recorded timer. A blank name is ignored (keeps the existing one).
+    private async Task RenameTimerAsync(long id, string? name)
+    {
+        var trimmed = name?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return;
 
-    private sealed record TicketMessage(string? Type, string? Key, string? Value);
+        try
+        {
+            await using (var db = new TallyDbContext(_dbOptions))
+            {
+                var timer = await db.ManualTimers.FirstOrDefaultAsync(t => t.Id == id);
+                if (timer is null || timer.Name == trimmed)
+                    return;
+                timer.Name = trimmed;
+                await db.SaveChangesAsync();
+            }
+
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to rename timer {id}", ex);
+        }
+    }
+
+    private static readonly JsonSerializerOptions EditMessageOptions = new() { PropertyNameCaseInsensitive = true };
+
+    private sealed record EditMessage(string? Type, string? Key, string? Id, string? Value);
 
     private async void GenerateSnapshot()
     {

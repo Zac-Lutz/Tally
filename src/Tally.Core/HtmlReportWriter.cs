@@ -26,7 +26,7 @@ public static class HtmlReportWriter
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n<main>\n");
 
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timerList, threshold, showExport,
-            includeHeader: true, editableTickets: false);
+            includeHeader: true, editable: false);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -59,7 +59,7 @@ public static class HtmlReportWriter
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
-            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false, editableTickets: true);
+            gapThreshold ?? TimeSpan.FromMinutes(5), showExport: false, includeHeader: false, editable: true);
         return sb.ToString();
     }
 
@@ -93,7 +93,7 @@ public static class HtmlReportWriter
         TimeSpan threshold,
         bool showExport,
         bool includeHeader,
-        bool editableTickets)
+        bool editable)
     {
         if (includeHeader)
         {
@@ -112,14 +112,14 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls, timers, editableTickets);
+        AppendTabs(sb, blocks, calls, timers, editable);
     }
 
     // Rollup / Calls / Timeline / Timers as switchable tabs (Rollup active by default) instead of
     // stacked sections. Tab switching + preserving the choice across live refreshes is TabScript.
     private static void AppendTabs(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers, bool editableTickets)
+        IReadOnlyList<ManualTimer> timers, bool editable)
     {
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
@@ -129,7 +129,7 @@ public static class HtmlReportWriter
         sb.Append("</div>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
-        AppendRollup(sb, blocks, calls, editableTickets);
+        AppendRollup(sb, blocks, calls, timers, editable);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls);
@@ -138,11 +138,13 @@ public static class HtmlReportWriter
         AppendTimeline(sb, blocks);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"timers\">\n");
-        AppendTimers(sb, timers);
+        AppendTimers(sb, timers, editable);
         sb.Append("</section>\n");
     }
 
-    private static void AppendTimers(StringBuilder sb, IReadOnlyList<ManualTimer> timers)
+    // The Timers tab. In the live view the name is editable (renaming a recorded timer); the change
+    // persists and reflects on the Rollup. The saved file report shows names read-only.
+    private static void AppendTimers(StringBuilder sb, IReadOnlyList<ManualTimer> timers, bool editable)
     {
         if (timers.Count == 0)
         {
@@ -155,7 +157,10 @@ public static class HtmlReportWriter
         sb.Append("</thead>\n<tbody>\n");
         foreach (var t in timers.OrderByDescending(t => t.Start))
         {
-            sb.Append("<tr><td>").Append(Esc(t.Name)).Append("</td>")
+            var nameCell = editable
+                ? $"<input class=\"tn\" type=\"text\" data-timer-id=\"{t.Id}\" value=\"{Esc(t.Name)}\" aria-label=\"Timer name\">"
+                : Esc(t.Name);
+            sb.Append("<tr><td>").Append(nameCell).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(t.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(t.End)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(t.Duration)).Append("</td></tr>\n");
@@ -181,7 +186,10 @@ public static class HtmlReportWriter
             sb.Append($"<p class=\"tracked\">Tracked {ReportFormat.Clock(first)}–{ReportFormat.Clock(last)}</p>\n");
         }
 
+        // Total = all recorded wall-clock (active work + idle/locked). Calls and manual timers
+        // overlay that time rather than adding to it, so they're not summed in.
         sb.Append("<div class=\"cards\">\n");
+        Card(sb, "Total", ReportFormat.Duration(active + inactiveTime));
         Card(sb, "Active", ReportFormat.Duration(active));
         Card(sb, "Calls", ReportFormat.Duration(callTime));
         Card(sb, "Inactive", ReportFormat.Duration(inactiveTime));
@@ -219,10 +227,12 @@ public static class HtmlReportWriter
     // picture of the day. Calls carry the "Call" category badge; they overlay (don't replace) the
     // focused-window rows, so a call and its underlying window can both appear.
     private static void AppendRollup(
-        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls, bool editableTickets)
+        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers, bool editable)
     {
         var rows = RollupBuilder.Build(blocks)
             .Concat(RollupBuilder.BuildCalls(calls))
+            .Concat(RollupBuilder.BuildTimers(timers))
             .Where(r => r.Time >= RollupBuilder.MinRollupDuration)   // hide sub-minute noise
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
@@ -234,7 +244,7 @@ public static class HtmlReportWriter
         {
             sb.Append("<tr><td>").Append(CategoryBadge(row.Category)).Append("</td>")
               .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
-              .Append("<td>").Append(TicketCell(row, editableTickets)).Append("</td>")
+              .Append("<td>").Append(TicketCell(row, editable)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
         }
 
@@ -243,9 +253,9 @@ public static class HtmlReportWriter
 
     // In the live view, an activity row's Ticket cell is an editable input that saves a per-day
     // manual ticket (keyed by RowKey). Call rows (RowKey null) and the saved file report stay static.
-    private static string TicketCell(RollupRow row, bool editableTickets)
+    private static string TicketCell(RollupRow row, bool editable)
     {
-        if (editableTickets && row.RowKey is { } rowKey)
+        if (editable && row.RowKey is { } rowKey)
         {
             var key = Convert.ToBase64String(Encoding.UTF8.GetBytes(rowKey));
             var value = row.TicketRef is { } t ? Esc(t) : string.Empty;
@@ -313,6 +323,7 @@ public static class HtmlReportWriter
         "Browsing" => "rgba(234,179,8,.22)",
         "Remote Support" => "rgba(236,72,153,.20)",
         "Call" => "rgba(249,115,22,.22)",
+        "Timer" => "rgba(99,102,241,.24)",
         _ => "rgba(148,163,184,.22)",
     };
 
@@ -377,11 +388,13 @@ public static class HtmlReportWriter
         .tab.active { color:var(--fg); border-bottom-color:var(--accent); }
         .panel { display:none; }
         .panel.active { display:block; }
-        .tk { width:84px; background:transparent; border:1px solid transparent; border-radius:6px;
+        .tk,.tn { background:transparent; border:1px solid transparent; border-radius:6px;
           color:var(--fg); font:inherit; font-size:13px; padding:2px 6px; }
+        .tk { width:84px; }
+        .tn { width:280px; max-width:100%; }
         .tk::placeholder { color:var(--muted); }
-        .tk:hover { border-color:var(--border); }
-        .tk:focus { outline:none; border-color:var(--accent); background:var(--bg); }
+        .tk:hover,.tn:hover { border-color:var(--border); }
+        .tk:focus,.tn:focus { outline:none; border-color:var(--accent); background:var(--bg); }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -403,18 +416,23 @@ public static class HtmlReportWriter
         """;
 
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
-    // Skips the swap while a ticket cell is being edited so a refresh never wipes an in-progress edit.
+    // Skips the swap while a ticket cell OR timer-name cell is being edited so a refresh never wipes
+    // an in-progress edit.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&a.classList&&a.classList.contains('tk'))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&a.classList&&(a.classList.contains('tk')||a.classList.contains('tn')))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
 
-    // Editable Ticket cells: on commit (blur, or Enter which blurs), post {rowKey, value} to the C#
-    // host, which saves the per-day override and refreshes. Delegated so it survives innerHTML swaps.
+    // Editable cells: a ticket cell (.tk) posts {type:'ticket', key, value}; a timer-name cell (.tn)
+    // posts {type:'timerName', id, value}. Committed on blur or Enter (which blurs). Delegated so the
+    // listeners survive the innerHTML swaps; the C# host saves the change and refreshes.
     private const string TicketEditScript =
         """
         (function(){
-        function post(i){if(window.chrome&&window.chrome.webview){window.chrome.webview.postMessage({type:'ticket',key:i.getAttribute('data-k'),value:i.value});}}
-        document.addEventListener('change',function(e){var t=e.target;if(t&&t.classList&&t.classList.contains('tk'))post(t);});
-        document.addEventListener('keydown',function(e){var t=e.target;if(e.key==='Enter'&&t&&t.classList&&t.classList.contains('tk')){e.preventDefault();t.blur();}});
+        function post(i){if(!window.chrome||!window.chrome.webview)return;
+        if(i.classList.contains('tk'))window.chrome.webview.postMessage({type:'ticket',key:i.getAttribute('data-k'),value:i.value});
+        else if(i.classList.contains('tn'))window.chrome.webview.postMessage({type:'timerName',id:i.getAttribute('data-timer-id'),value:i.value});}
+        function isEdit(t){return t&&t.classList&&(t.classList.contains('tk')||t.classList.contains('tn'));}
+        document.addEventListener('change',function(e){if(isEdit(e.target))post(e.target);});
+        document.addEventListener('keydown',function(e){if(e.key==='Enter'&&isEdit(e.target)){e.preventDefault();e.target.blur();}});
         })();
         """;
 

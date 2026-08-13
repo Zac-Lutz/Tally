@@ -60,8 +60,26 @@ public static class RollupBuilder
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+    /// <summary>
+    /// Rollup rows for the day's manual timers, so a named timer shows in the Rollup under the
+    /// "Timer" category with its name as the detail (timers sharing a name are summed into one row).
+    /// Not ticket-editable there (RowKey null); rename a timer in the Timers tab and it reflects here.
+    /// </summary>
+    public static IReadOnlyList<RollupRow> BuildTimers(IReadOnlyList<ManualTimer> timers)
+        => timers
+            .GroupBy(t => t.Name)
+            .Select(g => new RollupRow(
+                TimerCategory, null, null, g.Key,
+                TimeSpan.FromTicks(g.Sum(t => t.Duration.Ticks))))
+            .OrderByDescending(r => r.Time)
+            .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
     /// <summary>The category label calls carry in the rollup (and its badge color in the writers).</summary>
     public const string CallCategory = "Call";
+
+    /// <summary>The category label manual timers carry in the rollup.</summary>
+    public const string TimerCategory = "Timer";
 
     /// <summary>Rollup rows shorter than this are hidden as noise. The time still counts in the
     /// summary totals, the Timeline, and the JSON export — only the Rollup table drops them.</summary>

@@ -28,7 +28,7 @@ public static class ReportWriter
         }
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendRollup(sb, blocks, calls);
+        AppendRollup(sb, blocks, calls, timerList);
         AppendCalls(sb, calls);
         AppendTimeline(sb, blocks);
         AppendTimers(sb, timerList);
@@ -66,16 +66,19 @@ public static class ReportWriter
         var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
 
         sb.AppendLine(
-            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)}");
+            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 total {Fmt(active + inactiveTime)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)}");
         sb.AppendLine();
     }
 
-    // Window activity AND calls, merged into one time-ordered rollup (calls carry the "Call"
-    // category), matching the HTML report's Rollup tab.
-    private static void AppendRollup(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls)
+    // Window activity, calls, AND manual timers, merged into one time-ordered rollup (calls carry
+    // the "Call" category, timers the "Timer" category), matching the HTML report's Rollup tab.
+    private static void AppendRollup(
+        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers)
     {
         var rows = RollupBuilder.Build(blocks)
             .Concat(RollupBuilder.BuildCalls(calls))
+            .Concat(RollupBuilder.BuildTimers(timers))
             .Where(r => r.Time >= RollupBuilder.MinRollupDuration)   // hide sub-minute noise
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);

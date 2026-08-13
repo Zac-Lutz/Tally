@@ -149,4 +149,21 @@ public class RollupBuilderTests
         Assert.Contains(rows, r => r.DetailName == "General");
         Assert.Contains(rows, r => r.DetailName == "Dev Team");
     }
+
+    [Fact]
+    public void BuildTimers_SummarizesByName_UnderTheTimerCategory()
+    {
+        var rows = RollupBuilder.BuildTimers(
+        [
+            new ManualTimer { Name = "Ticket 123", Start = T0, End = T0.AddMinutes(20) },
+            new ManualTimer { Name = "Ticket 123", Start = T0.AddHours(1), End = T0.AddHours(1).AddMinutes(10) },
+            new ManualTimer { Name = "Standup", Start = T0.AddHours(2), End = T0.AddHours(2).AddMinutes(15) },
+        ]);
+
+        Assert.Equal(2, rows.Count);
+        var ticket = Assert.Single(rows, r => r.DetailName == "Ticket 123");
+        Assert.Equal("Timer", ticket.Category);
+        Assert.Equal(TimeSpan.FromMinutes(30), ticket.Time);   // 20 + 10, summed by name
+        Assert.Null(ticket.RowKey);                            // not ticket-editable in the rollup
+    }
 }

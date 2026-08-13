@@ -57,8 +57,11 @@ yourself (e.g. "Ticket #123 — phone call"):
   rename the timer (inline) or stop it — without opening the full app.
 
 Completed timers are saved to the `manual_timers` table and listed in the report's **Timers
-tab** (name, start, end, duration). The running timer shows in the top bar / bubble; it joins
-the Timers tab once stopped. (Manual timers aren't in the JSON export yet.)
+tab** (name, start, end, duration), and each also appears on the **Rollup** under a **Timer**
+category (the detail is the timer name; timers sharing a name are summed). In the live view you
+can **rename a recorded timer** by editing its name in the Timers tab — the change persists and
+reflects on the Rollup. The running timer shows in the top bar / bubble; it joins the Timers tab
+once stopped. (Manual timers aren't in the JSON export yet.)
 
 ## Reports: on demand and automatic
 
