@@ -130,6 +130,14 @@ must not swallow rules you already had). Your comments and existing rules are le
 
 Saved reports show the same Unclassified list read-only — a record of what still needs a rule.
 
+## Lost time
+
+The **Lost time** tab is the other half of that question: stretches over five minutes that ended up
+on no timesheet line — idle or locked time, plus activity that matched no rule. The tab carries the
+**total** rather than a count, because "2h 09m" is the thing you need to know before someone asks
+where the day went. Unclassified is where you teach Tally a rule; Lost time is where you spot the
+hole.
+
 ## Manual timers
 
 Alongside the automatic tracking you can run **manual timers** — a named span you start and stop
@@ -184,7 +192,7 @@ is a valid picture of the morning. Three triggers:
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
 opens in the browser: stat cards up top, then **Rollup / Timesheet / Timeline / Calls / Timers /
-Unclassified as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
+Unclassified / Lost time as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
 `settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
 is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
@@ -216,8 +224,7 @@ Most rules are easiest to add from the live view's **Unclassified** tab (above).
 hand, edit `%USERPROFILE%\.tally\rules.json` (created with starter rules on first run; comments
 allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
 regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
-fields. Rules are re-read on every report generation, so edits apply immediately — check the
-report's "Gaps to account for" section for unclassified blocks worth a new rule.
+fields. Rules are re-read on every report generation, so edits apply immediately.
 
 `subject` captures a free-text "what/who" — e.g. the shipped Teams rule pulls the focused
 chat/channel name out of `Chat | <name> | Microsoft Teams`, so the rollup lists each

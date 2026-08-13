@@ -112,8 +112,7 @@ public static class HtmlReportWriter
         }
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendGaps(sb, blocks, inactivePeriods, threshold);
-        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides, timerPanel);
+        AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides, timerPanel);
     }
 
     // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
@@ -121,10 +120,12 @@ public static class HtmlReportWriter
     // TabScript. The Unclassified tab carries a count so a day needing triage announces itself.
     private static void AppendTabs(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
+        IReadOnlyList<InactivePeriod> inactivePeriods, IReadOnlyList<ManualTimer> timers,
+        TimeSpan threshold, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
         TimerPanelState? timerPanel)
     {
         var unclassified = UnclassifiedBuilder.Build(blocks);
+        var (lostLines, lostTotal) = LostTime(blocks, inactivePeriods, threshold);
 
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
@@ -135,6 +136,12 @@ public static class HtmlReportWriter
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"unclassified\">Unclassified");
         if (unclassified.Count > 0)
             sb.Append($"<span class=\"badge\">{unclassified.Count}</span>");
+        sb.Append("</button>");
+        // The badge is the total, not a count: how much time is unaccounted for is the question,
+        // and a "6" tells you nothing about whether that's six minutes or six hours.
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"lost\">Lost time");
+        if (lostLines.Count > 0)
+            sb.Append($"<span class=\"badge\">{ReportFormat.Duration(lostTotal)}</span>");
         sb.Append("</button>");
         sb.Append("</div>\n");
 
@@ -158,6 +165,9 @@ public static class HtmlReportWriter
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"unclassified\">\n");
         AppendUnclassified(sb, unclassified, blocks, editable);
+        sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"lost\">\n");
+        AppendLostTime(sb, lostLines, lostTotal);
         sb.Append("</section>\n");
     }
 
@@ -404,30 +414,45 @@ public static class HtmlReportWriter
         sb.Append("</div>\n");
     }
 
-    private static void AppendGaps(
-        StringBuilder sb,
+    /// <summary>
+    /// Stretches of the day that ended up on no timesheet line: idle or locked time, and activity
+    /// that matched no rule. Both are "time you'll have to account for from memory", which is why
+    /// they share a tab — the Unclassified tab is for teaching Tally a rule, this one is for
+    /// spotting the hole before someone asks about it.
+    /// </summary>
+    private static (List<string> Lines, TimeSpan Total) LostTime(
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<InactivePeriod> inactive,
         TimeSpan threshold)
     {
-        var idleGaps = inactive.Where(p => p.Duration >= threshold).ToList();
-        var unclassified = blocks
-            .Where(b => b.Classification.IsUnclassified && b.Block.Duration >= threshold)
+        var entries = inactive
+            .Where(p => p.Duration >= threshold)
+            .Select(g => (g.Start, g.Duration,
+                Html: $"{ReportFormat.Clock(g.Start)}–{ReportFormat.Clock(g.End)} — {Esc(g.Reason)} <span class=\"muted\">({ReportFormat.Duration(g.Duration)})</span>"))
+            .Concat(blocks
+                .Where(b => b.Classification.IsUnclassified && b.Block.Duration >= threshold)
+                .Select(b => (b.Block.Start, b.Block.Duration,
+                    Html: $"{ReportFormat.Clock(b.Block.Start)}–{ReportFormat.Clock(b.Block.End)} — unclassified: “{Esc(b.Block.Title)}” <span class=\"muted\">({ReportFormat.Duration(b.Block.Duration)})</span>")))
+            .OrderBy(x => x.Start)
             .ToList();
 
-        if (idleGaps.Count == 0 && unclassified.Count == 0)
+        return (
+            entries.Select(x => x.Html).ToList(),
+            TimeSpan.FromTicks(entries.Sum(x => x.Duration.Ticks)));
+    }
+
+    private static void AppendLostTime(StringBuilder sb, IReadOnlyList<string> lines, TimeSpan total)
+    {
+        if (lines.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">Nothing unaccounted for — every stretch over five minutes is either classified or on a timesheet line.</p>\n");
             return;
+        }
 
-        var lines = idleGaps
-            .Select(g => (g.Start,
-                Html: $"{ReportFormat.Clock(g.Start)}–{ReportFormat.Clock(g.End)} — {Esc(g.Reason)} <span class=\"muted\">({ReportFormat.Duration(g.Duration)})</span>"))
-            .Concat(unclassified.Select(b => (b.Block.Start,
-                Html: $"{ReportFormat.Clock(b.Block.Start)}–{ReportFormat.Clock(b.Block.End)} — unclassified: “{Esc(b.Block.Title)}” <span class=\"muted\">({ReportFormat.Duration(b.Block.Duration)})</span>")))
-            .OrderBy(x => x.Start);
-
-        sb.Append("<h2>Gaps to account for</h2>\n<div class=\"gaps\">\n<ul>\n");
-        foreach (var (_, html) in lines)
-            sb.Append("<li>").Append(html).Append("</li>\n");
+        sb.Append($"<p class=\"hint\">{ReportFormat.Duration(total)} across {lines.Count} {(lines.Count == 1 ? "stretch" : "stretches")} that no timesheet line covers.</p>\n");
+        sb.Append("<div class=\"gaps\">\n<ul>\n");
+        foreach (var line in lines)
+            sb.Append("<li>").Append(line).Append("</li>\n");
         sb.Append("</ul>\n</div>\n");
     }
 
@@ -551,13 +576,14 @@ public static class HtmlReportWriter
         """
         :root {
           --bg:#f6f7f9; --card:#fff; --fg:#1c2024; --muted:#626b75; --border:#e2e6ea;
-          --accent:#0d8a78; --btn-fg:#fff;
+          --accent:#0d8a78; --btn-fg:#fff; --btn-bg:#e4e8ec;
           --accent-weak:rgba(18,168,145,.12); --warn-bg:rgba(214,158,46,.12); --warn-border:rgba(214,158,46,.5);
         }
         @media (prefers-color-scheme: dark) {
           :root {
             --bg:#16181c; --card:#1e2126; --fg:#e6e9ec; --muted:#9aa4ae; --border:#2c3138;
-            --accent:#2fd4b6; --btn-fg:#08201c;
+            /* --btn-bg matches the WinForms InputBg the live window's own buttons rest on. */
+            --accent:#2fd4b6; --btn-fg:#08201c; --btn-bg:#2a2e35;
             --accent-weak:rgba(47,212,182,.14); --warn-bg:rgba(214,158,46,.16); --warn-border:rgba(214,158,46,.55);
           }
         }
@@ -597,6 +623,12 @@ public static class HtmlReportWriter
         .tab.active { color:var(--fg); border-bottom-color:var(--accent); }
         .panel { display:none; }
         .panel.active { display:block; }
+        /* Every in-page button behaves like the app's own: a dark resting surface that lights up
+           in the accent colour under the cursor, with dark text for contrast. Declared once so the
+           three of them can't drift apart. */
+        .tm-go,.tm-del,.uc-save { background:var(--btn-bg); color:var(--fg); border:none;
+          border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
+        .tm-go:hover,.tm-del:hover,.uc-save:hover { background:var(--accent); color:var(--btn-fg); }
         .tk,.tn { background:transparent; border:1px solid transparent; border-radius:6px;
           color:var(--fg); font:inherit; font-size:13px; padding:2px 6px; }
         .tk { width:84px; }
@@ -606,17 +638,15 @@ public static class HtmlReportWriter
         .tk:focus,.tn:focus { outline:none; border-color:var(--accent); background:var(--bg); }
         .badge { display:inline-block; margin-left:7px; padding:0 7px; border-radius:999px;
           background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--fg);
-          font-size:11px; font-weight:600; }
+          font-size:11px; font-weight:600; text-transform:none; letter-spacing:0; }
         .hint { color:var(--muted); margin:0 0 12px; }
         .uc-cat,.uc-scope { background:var(--bg); border:1px solid var(--border); border-radius:6px;
           color:var(--fg); font:inherit; font-size:13px; padding:3px 6px; }
         .uc-cat { width:150px; }
         .uc-cat::placeholder { color:var(--muted); }
         .uc-cat:focus,.uc-scope:focus { outline:none; border-color:var(--accent); }
-        .uc-save { background:var(--accent); color:var(--btn-fg); border:none; border-radius:6px;
-          padding:4px 12px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
-        .uc-save:hover { filter:brightness(1.06); }
-        .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; filter:none; }
+        .uc-save { font-size:13px; padding:5px 12px; white-space:nowrap; }
+        .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; }
         .cal { position:relative; margin:14px 0 4px; }
         .cal-hr { position:absolute; left:0; right:0; border-top:1px solid var(--border); }
         .cal-hr.half { border-top-style:dotted; opacity:.55; }
@@ -635,14 +665,11 @@ public static class HtmlReportWriter
           color:var(--fg); font:inherit; font-size:14px; padding:7px 11px; }
         .tm-name::placeholder { color:var(--muted); }
         .tm-name:focus { outline:none; border-color:var(--accent); }
-        .tm-go { background:var(--accent); color:var(--btn-fg); border:none; border-radius:8px;
-          padding:8px 22px; font:inherit; font-weight:600; cursor:pointer; }
-        .tm-go:hover { filter:brightness(1.06); }
-        .tm-go.stop { background:#e05252; color:#fff; }
+        .tm-go { padding:8px 22px; }
+        /* Stop stays dark and says so in red text, exactly as the app's own buttons do. */
+        .tm-go.stop { color:#e05252; }
         .tm-elapsed { font-size:20px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
-        .tm-del { background:none; border:1px solid transparent; border-radius:6px; color:var(--muted);
-          font:inherit; font-size:12px; padding:2px 10px; cursor:pointer; }
-        .tm-del:hover { color:#fff; background:#c04141; border-color:#c04141; }
+        .tm-del { font-size:12px; padding:4px 12px; }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is

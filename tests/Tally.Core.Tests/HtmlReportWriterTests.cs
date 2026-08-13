@@ -164,16 +164,41 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void GapsSectionAppearsForLongIdleAndUnclassified()
+    public void LostTimeTab_ListsLongIdleAndUnclassified_WithTheTotalOnItsTab()
     {
         var md = HtmlReportWriter.BuildHtml(Date,
             [CB(0, 60, Classification.Unclassified, "mystery window")],
             [],
             [new InactivePeriod(T0.AddMinutes(60), T0.AddMinutes(106), InactiveReasons.Idle)]);
 
-        Assert.Contains("Gaps to account for", md);
-        Assert.Contains("mystery window", md);
-        Assert.Contains("idle", md);
+        // The tab badge is the total time, not a count — "how much" is the question being asked.
+        Assert.Contains("data-tab=\"lost\"", md);
+        Assert.Contains("<span class=\"badge\">1h 46m</span>", md);
+
+        var panel = Panel(md, "lost");
+        Assert.Contains("mystery window", panel);
+        Assert.Contains("idle", panel);
+    }
+
+    [Fact]
+    public void LostTimeTab_SaysSoWhenNothingIsUnaccountedFor()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 60, "Development", "Tally")], [], []);
+
+        Assert.Contains("data-tab=\"lost\"", md);
+        Assert.Contains("Nothing unaccounted for", Panel(md, "lost"));
+    }
+
+    [Fact]
+    public void LostTime_IsNoLongerStuckAboveTheTabs()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 60, Classification.Unclassified, "mystery window")], [],
+            [new InactivePeriod(T0.AddMinutes(60), T0.AddMinutes(106), InactiveReasons.Idle)]);
+
+        // It used to render before the tab strip, pushing every tab down the page.
+        Assert.True(md.IndexOf("class=\"tabs\"", StringComparison.Ordinal)
+                    < md.IndexOf("class=\"gaps\"", StringComparison.Ordinal));
     }
 
     [Fact]
