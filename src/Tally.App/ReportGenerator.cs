@@ -77,8 +77,11 @@ public static class ReportGenerator
                 ReportWriter.BuildMarkdown(data.Date, data.Blocks, data.Calls, data.Inactive,
                     timers: data.Timers, ticketOverrides: data.TicketOverrides),
             ReportFileFormat.Json => BuildExportJson(data),
+            // The snapshot carries its own export, so a saved report can be filed later without
+            // the app running — the whole day embedded, with the range chosen in the page.
             _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
-                timers: data.Timers, ticketOverrides: data.TicketOverrides),
+                timers: data.Timers, ticketOverrides: data.TicketOverrides,
+                embeddedJson: BuildExportJson(data)),
         };
 
         Directory.CreateDirectory(reportsDirectory);

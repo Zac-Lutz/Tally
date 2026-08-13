@@ -72,9 +72,14 @@ Everything stays on this machine. No cloud, no telemetry.
   as the range changes, so the choice is made against what it produces, not against the clock alone.
   Note the consumer replaces a whole day's suggestions on import, so a second slice clears the
   first's un-logged cards; the dialog says so once a custom range is set.
-- **Exporting belongs to the live view, not the saved snapshot.** A snapshot is a frozen record;
-  an export embedded in it goes stale the moment the day moves on. The live window writes the file
-  after bringing up the Timesheet tab, so what uploads is reviewed first.
+- **Both the live view and a saved snapshot can export.** The live window writes the file after
+  bringing up the Timesheet tab, so what uploads is reviewed first. A snapshot embeds its own copy
+  and offers the same range choice as a native `<dialog>`, filtered and downloaded in the page —
+  a report from Friday can be filed on Monday with nothing but a browser. Its export is the day as
+  the snapshot found it, which is what a snapshot is for; the live view is where "now" lives.
+  The in-page filter reads each slot's wall clock straight out of the ISO string rather than
+  through `Date`, which would re-express it in the reader's zone — "the morning" has to mean the
+  morning of the machine that recorded it.
 - **Mic-in-use detection** via Core Audio capture-session enumeration (NAudio), polled every
   5s. PID-based, so it joins directly onto recorded process names.
 - **Day-to-day apps name their own calls.** A Teams call files as `Teams - Call`, its chats as

@@ -214,16 +214,28 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void SavedSnapshot_CarriesNoExport_ButStillShowsTheTimesheetPreview()
+    public void SavedSnapshot_CarriesItsOwnExport_WhenGivenOne()
     {
-        // Exporting moved to the live view; a frozen file's embedded export would go stale the
-        // moment the day moved on. The preview stays, because the record is still worth reading.
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], [],
+            embeddedJson: "{\"schema_version\":\"2\",\"slots\":[]}");
+
+        Assert.Contains("id=\"export-json\"", md);
+        Assert.Contains("data-date=\"2026-08-12\"", md);
+        Assert.Contains("id=\"tally-export\"", md);
+        Assert.Contains("<dialog id=\"xr\">", md);       // the same range choice the live view asks
+        Assert.Contains("{\"schema_version\":\"2\",\"slots\":[]}", md);
+        Assert.Contains("data-tab=\"timesheet\"", md);
+    }
+
+    [Fact]
+    public void SavedSnapshot_WithoutAnExport_HasNoButtonOrDialog()
+    {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
 
         Assert.DoesNotContain("id=\"export-json\"", md);
         Assert.DoesNotContain("id=\"tally-export\"", md);
-        Assert.DoesNotContain("schema_version", md);
-        Assert.Contains("data-tab=\"timesheet\"", md);
+        Assert.DoesNotContain("<dialog", md);
+        Assert.Contains("data-tab=\"timesheet\"", md);   // the preview is worth reading regardless
     }
 
     [Fact]

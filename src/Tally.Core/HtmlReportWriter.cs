@@ -8,10 +8,11 @@ namespace Tally.Core;
 public static class HtmlReportWriter
 {
     /// <summary>
-    /// A saved snapshot of the day: a self-contained record, deliberately without the timesheet
-    /// export. Exporting belongs to the live view, where the day can be reviewed and the file
-    /// written once — a snapshot on disk is a frozen copy whose embedded export would go stale the
-    /// moment the day moved on.
+    /// A saved snapshot of the day: a self-contained record that can still hand you its timesheet.
+    /// Given <paramref name="embeddedJson"/> it carries an Export timesheet button offering the
+    /// same range choice the live view does, filtered and downloaded in the page — so a snapshot
+    /// taken at 5:30 can be filed the next morning without the app running. What it exports is the
+    /// day as it stood when the snapshot was written, which is the point of a snapshot.
     /// </summary>
     public static string BuildHtml(
         DateOnly date,
@@ -20,7 +21,8 @@ public static class HtmlReportWriter
         IReadOnlyList<InactivePeriod> inactivePeriods,
         TimeSpan? gapThreshold = null,
         IReadOnlyList<ManualTimer>? timers = null,
-        IReadOnlyDictionary<string, string>? ticketOverrides = null)
+        IReadOnlyDictionary<string, string>? ticketOverrides = null,
+        string? embeddedJson = null)
     {
         var sb = new StringBuilder();
 
@@ -31,12 +33,39 @@ public static class HtmlReportWriter
 
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: true, editable: false,
-            ticketOverrides: ticketOverrides, timerPanel: null);
+            ticketOverrides: ticketOverrides, timerPanel: null, showExport: embeddedJson is not null);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
+
+        if (embeddedJson is not null)
+        {
+            AppendExportDialog(sb);
+            // The JSON is already default-encoder-escaped (< > & as \u00xx), so it can't break out
+            // of the script element. Everything the button does is built from this embedded copy.
+            sb.Append("<script type=\"application/json\" id=\"tally-export\">").Append(embeddedJson).Append("</script>\n");
+            sb.Append("<script>").Append(SnapshotExportScript).Append("</script>\n");
+        }
+
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
+    }
+
+    // The saved report's range chooser: the live view's dialog, rebuilt as a native <dialog> so a
+    // file on disk needs nothing but a browser.
+    private static void AppendExportDialog(StringBuilder sb)
+    {
+        sb.Append("<dialog id=\"xr\">\n");
+        sb.Append("<h3>How much of the day should this export cover?</h3>\n");
+        sb.Append("<label class=\"xr-all\"><input type=\"checkbox\" id=\"xr-every\" checked> Everything in this snapshot</label>\n");
+        sb.Append("<div class=\"xr-times\"><label for=\"xr-from\">From</label><input type=\"time\" id=\"xr-from\">");
+        sb.Append("<label for=\"xr-to\">to</label><input type=\"time\" id=\"xr-to\"></div>\n");
+        sb.Append("<p id=\"xr-sum\" class=\"xr-sum\"></p>\n");
+        sb.Append("<p class=\"hint\">An entry belongs to the window it started in, so two exports never count the same meeting twice.</p>\n");
+        sb.Append("<p class=\"hint xr-warn\" id=\"xr-warn\">Importing replaces that day's suggestions in att — log the entries you want before uploading a later slice.</p>\n");
+        sb.Append("<div class=\"xr-actions\"><button class=\"tm-go\" id=\"xr-go\">Export</button>");
+        sb.Append("<button class=\"tm-del\" id=\"xr-cancel\">Cancel</button></div>\n");
+        sb.Append("</dialog>\n");
     }
 
     /// <summary>
@@ -96,12 +125,15 @@ public static class HtmlReportWriter
         bool includeHeader,
         bool editable,
         IReadOnlyDictionary<string, string>? ticketOverrides,
-        TimerPanelState? timerPanel = null)
+        TimerPanelState? timerPanel = null,
+        bool showExport = false)
     {
         if (includeHeader)
         {
             sb.Append("<div class=\"head\">\n");
             sb.Append($"<h1>Tally <span class=\"date\">{ReportFormat.DisplayDate(date)} · {date.DayOfWeek}</span></h1>\n");
+            if (showExport)
+                sb.Append($"<button class=\"tm-go\" id=\"export-json\" type=\"button\" data-date=\"{date:yyyy-MM-dd}\">Export timesheet</button>\n");
             sb.Append("</div>\n");
         }
 
@@ -676,6 +708,24 @@ public static class HtmlReportWriter
         .tm-go.stop { color:#e05252; }
         .tm-elapsed { font-size:20px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
         .tm-del { font-size:12px; padding:4px 12px; }
+        #export-json { padding:8px 16px; font-size:14px; }
+        #xr { max-width:440px; border:1px solid var(--border); border-radius:12px; padding:22px 24px;
+          background:var(--card); color:var(--fg); font:inherit; }
+        #xr::backdrop { background:rgba(0,0,0,.45); }
+        #xr h3 { margin:0 0 16px; font-size:15px; }
+        #xr .hint { margin:10px 0 0; }
+        .xr-all { display:block; margin-bottom:14px; }
+        .xr-times { display:flex; align-items:center; gap:8px; }
+        .xr-times label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+        .xr-times input { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+          color:var(--fg); font:inherit; font-size:13px; padding:4px 8px; }
+        .xr-times input:disabled { opacity:.5; }
+        .xr-sum { margin:16px 0 0; font-weight:600; color:var(--accent); }
+        .xr-sum.warn,.xr-warn { color:#d69e2e; }
+        .xr-warn { display:none; }
+        .xr-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+        .xr-actions button { padding:8px 18px; font-size:14px; }
+        .tm-go:disabled { background:var(--border); color:var(--muted); cursor:default; }
         """;
 
     // Switches Rollup/Calls/Timeline tabs and survives live refreshes: the click listener is
@@ -715,6 +765,64 @@ public static class HtmlReportWriter
         function isEdit(t){return t&&t.classList&&(t.classList.contains('tk')||t.classList.contains('tn'));}
         document.addEventListener('change',function(e){if(isEdit(e.target))post(e.target);});
         document.addEventListener('keydown',function(e){if(e.key==='Enter'&&isEdit(e.target)){e.preventDefault();e.target.blur();}});
+        })();
+        """;
+
+    /// <summary>
+    /// The saved report's Export timesheet button: opens the range dialog, then writes the filtered
+    /// document client-side from the embedded copy — no app, no server, works offline.
+    /// <para>
+    /// The window is compared against the wall clock the producer wrote into each slot, read
+    /// straight out of the ISO string rather than through Date. Parsing would re-express the time
+    /// in whatever zone the reader happens to be in, and "the morning" has to mean the morning of
+    /// the machine that recorded it.
+    /// </para>
+    /// </summary>
+    private const string SnapshotExportScript =
+        """
+        (function(){
+        var raw=document.getElementById('tally-export');
+        var btn=document.getElementById('export-json');
+        if(!raw||!btn)return;
+        var doc=JSON.parse(raw.textContent);
+        var slots=doc.slots||[];
+        if(!slots.length){btn.style.display='none';return;}
+        var dlg=document.getElementById('xr'),every=document.getElementById('xr-every'),
+        from=document.getElementById('xr-from'),to=document.getElementById('xr-to'),
+        sum=document.getElementById('xr-sum'),warn=document.getElementById('xr-warn'),
+        go=document.getElementById('xr-go'),cancel=document.getElementById('xr-cancel');
+        function mins(iso){return parseInt(iso.substr(11,2),10)*60+parseInt(iso.substr(14,2),10);}
+        function hhmm(m){var h=Math.floor(m/60),x=m%60;return (h<10?'0':'')+h+':'+(x<10?'0':'')+x;}
+        function val(el){var p=/^(\d{2}):(\d{2})$/.exec(el.value);return p?parseInt(p[1],10)*60+parseInt(p[2],10):null;}
+        var starts=slots.map(function(s){return mins(s.start);});
+        from.value=hhmm(Math.min.apply(null,starts));
+        to.value=hhmm(Math.max.apply(null,slots.map(function(s){return mins(s.end);})));
+        function chosen(){
+        if(every.checked)return slots.slice();
+        var a=val(from),b=val(to);
+        return slots.filter(function(s){var m=mins(s.start);return (a===null||m>=a)&&(b===null||m<b);});}
+        function sync(){
+        var custom=!every.checked;
+        from.disabled=to.disabled=!custom;
+        warn.style.display=custom?'block':'none';
+        var pick=chosen();
+        var hours=pick.reduce(function(t,s){return t+(s.hours||0);},0);
+        sum.textContent=pick.length?pick.length+(pick.length===1?' entry · ':' entries · ')+hours.toFixed(2)+' h'
+        :'Nothing starts inside that window.';
+        sum.className=pick.length?'xr-sum':'xr-sum warn';
+        go.disabled=!pick.length;}
+        [every,from,to].forEach(function(el){el.addEventListener('change',sync);el.addEventListener('input',sync);});
+        btn.addEventListener('click',function(){sync();dlg.showModal();});
+        cancel.addEventListener('click',function(){dlg.close();});
+        go.addEventListener('click',function(){
+        var pick=chosen();if(!pick.length)return;
+        var out={schema_version:doc.schema_version,source:doc.source,range:doc.range,slots:pick};
+        var name='tally-'+btn.getAttribute('data-date')
+        +(every.checked?'':'-'+from.value.replace(':','')+'-'+to.value.replace(':',''))+'.json';
+        var u=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));
+        var a=document.createElement('a');a.href=u;a.download=name;
+        document.body.appendChild(a);a.click();document.body.removeChild(a);
+        URL.revokeObjectURL(u);dlg.close();});
         })();
         """;
 

@@ -105,8 +105,12 @@ can't populate are honest: `browser` and `sessions` are always empty (no URL or 
 note, a meeting always supplies it so its own name isn't outranked.
 
 The same file is produced headlessly with `--report today json`, or by setting
-`reportFormat: "json"`. Saved HTML snapshots deliberately carry **no** export: a frozen file's
-embedded copy would go stale the moment the day moved on.
+`reportFormat: "json"`.
+
+**Saved snapshots can export too.** Every HTML snapshot carries its own **Export timesheet** button
+with the same range choice, so a report generated at 5:30pm can be filed the next morning by
+opening the file — no app needed, no internet, nothing but a browser. What it exports is the day
+**as it stood when the snapshot was taken**; for the current picture, export from the live view.
 
 ## Unclassified: giving activities a rule
 
