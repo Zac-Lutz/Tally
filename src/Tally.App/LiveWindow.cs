@@ -335,6 +335,10 @@ public sealed class LiveWindow : Form
             {
                 SaveSettings(msg);
             }
+            else if (msg.Type == "timerAdd")
+            {
+                _ = AddPastTimerAsync(msg);
+            }
             else if (msg.Type == "timerToggle")
             {
                 // Start takes the name straight from the field; Stop ignores it, since the running
@@ -769,6 +773,71 @@ public sealed class LiveWindow : Form
             return null;
         }
     }
+
+    /// <summary>
+    /// Records a timer over a past stretch of today — a claimed idle/locked period from the Lost
+    /// time tab, or a hand-entered one from the Timers tab for time Tally never saw. Recorded
+    /// timers must never overlap each other (or the one currently running): a timer claims its
+    /// whole span on the timesheet, so overlap would bill the same minute twice.
+    /// </summary>
+    private async Task AddPastTimerAsync(EditMessage msg)
+    {
+        try
+        {
+            var name = msg.Value?.Trim();
+            if (string.IsNullOrEmpty(name))
+                return;
+
+            if (!TimeOnly.TryParseExact(msg.Start?.Trim(), "HH:mm", out var from)
+                || !TimeOnly.TryParseExact(msg.Stop?.Trim(), "HH:mm", out var to)
+                || to <= from)
+            {
+                Note("the end time must be after the start — nothing added");
+                return;
+            }
+
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var start = new DateTimeOffset(today.ToDateTime(from));
+            var end = new DateTimeOffset(today.ToDateTime(to));
+            if (start >= DateTimeOffset.Now)
+            {
+                Note("that timer hasn't happened yet — nothing added");
+                return;
+            }
+
+            if (_timer.Active is { } running && start < DateTimeOffset.Now && end > running.StartedAt)
+            {
+                Note("that overlaps the timer that's running right now — nothing added");
+                return;
+            }
+
+            await using (var db = new TallyDbContext(_dbOptions))
+            {
+                var overlapping = await db.ManualTimers.AsNoTracking()
+                    .Where(t => t.Start < end && t.End > start)
+                    .FirstOrDefaultAsync();
+                if (overlapping is not null)
+                {
+                    Note($"that overlaps the recorded timer “{Shorten(overlapping.Name)}” — nothing added");
+                    return;
+                }
+
+                db.ManualTimers.Add(new ManualTimer { Name = name, Start = start, End = end });
+                await db.SaveChangesAsync();
+            }
+
+            Log.Info($"Recorded past timer '{name}' {from:HH\\:mm}–{to:HH\\:mm} from the live view");
+            Note($"claimed — {name}");
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to record a past timer from the live view", ex);
+            Note("couldn't record that timer — see the log");
+        }
+    }
+
+    private static string Shorten(string s) => s.Length <= 40 ? s : s[..39] + "…";
 
     // Renames a recorded timer. A blank name is ignored (keeps the existing one).
     private async Task RenameTimerAsync(long id, string? name)

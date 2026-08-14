@@ -82,6 +82,15 @@ Everything stays on this machine. No cloud, no telemetry.
   them rounding to zero hours, against att's reference sample of 3 slots over 2 days. It was
   rejected on upload and unusable if it hadn't been. `SuggestionSlotBuilder` builds what a
   timesheet books instead: a ticket if detected, else the category, within one working session.
+- **Claiming lost time and backfilling are the same primitive: a recorded manual timer.** No new
+  storage, no new export semantics — a timer already outranks everything, persists, lists in the
+  Timers tab (rename/delete = edit/undo), and exports as an entry. The Lost time tab creates one
+  over an idle/locked stretch (times trimmable first); the Timers tab's past-timer form creates
+  one over any range of today (machine-off gaps have no idle record to claim). Lost time
+  subtracts timer coverage with the slot builder's own interval arithmetic, so "claimed" means
+  the same thing in both places and a claimed stretch leaves the tab. The host rejects a new
+  timer overlapping any recorded (or the running) timer — each timer bills its whole span, so
+  overlap would double-bill. Uncategorized stretches are not claimable: their fix is a rule.
 - **Time is claimed in priority order so no minute is billed twice** — timer, then call, then
   window activity, each clipped around the claims above it. Meetings were the motivating case: an
   hour on a call while reading a ticket was credited to browsing/email/dev, and 2h53m of a real

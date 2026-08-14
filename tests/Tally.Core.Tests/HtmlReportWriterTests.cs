@@ -124,6 +124,74 @@ public class HtmlReportWriterTests
             HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []));
 
     [Fact]
+    public void AClaimedStretch_LeavesLostTime_AndTheCardShrinks()
+    {
+        // 8:00–9:00 idle; a recorded timer claims 8:00–8:40. Only the 20m remainder stays lost.
+        var timers = new[] { new ManualTimer { Id = 1, Name = "Phone call", Start = T0.AddMinutes(-60), End = T0.AddMinutes(-20) } };
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Development", "Program.cs")],
+            [],
+            [new InactivePeriod(T0.AddMinutes(-60), T0, InactiveReasons.Idle)],
+            timers: timers);
+
+        Assert.Contains("<div class=\"v\">20m</div><div class=\"l\">Lost time</div>", md);
+        var panel = Panel(md, "lost");
+        Assert.Contains("8:40am", panel);   // the remainder's start
+        Assert.DoesNotContain("8:00am–8:40am", panel);
+    }
+
+    [Fact]
+    public void AFullyClaimedDay_HasNothingLost()
+    {
+        var timers = new[] { new ManualTimer { Id = 1, Name = "Onsite", Start = T0.AddMinutes(-60), End = T0 } };
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Development", "Program.cs")],
+            [],
+            [new InactivePeriod(T0.AddMinutes(-60), T0, InactiveReasons.Idle)],
+            timers: timers);
+
+        Assert.Contains("<div class=\"v\">0s</div><div class=\"l\">Lost time</div>", md);
+        Assert.Contains("Nothing unaccounted for", Panel(md, "lost"));
+    }
+
+    [Fact]
+    public void LostTime_IsClaimable_InTheLiveViewOnly()
+    {
+        ClassifiedBlock[] blocks = [CB(0, 30, "Development", "Program.cs")];
+        InactivePeriod[] idle = [new(T0.AddMinutes(30), T0.AddMinutes(60), InactiveReasons.Idle)];
+
+        var live = HtmlReportWriter.BuildMainInner(Date, blocks, [], idle);
+        var saved = HtmlReportWriter.BuildHtml(Date, blocks, [], idle);
+
+        // Live: prefilled time inputs + a Claim button. Saved: the same list, read-only.
+        Assert.Contains("class=\"uc-save lt-claim\"", live);
+        Assert.Contains("class=\"lt-from\" value=\"09:30\"", live);
+        Assert.DoesNotContain("class=\"uc-save lt-claim\"", saved);   // no button; only the CSS rule
+        Assert.Contains("9:30am", saved);
+    }
+
+    [Fact]
+    public void UncategorizedLostStretches_PointAtTheRuleTab_InsteadOfClaiming()
+    {
+        var live = HtmlReportWriter.BuildMainInner(Date,
+            [CB(0, 30, Classification.Unclassified, "Mystery window")], [], []);
+
+        Assert.Contains("teach it a rule", live);
+        Assert.DoesNotContain("lt-claim", live);
+    }
+
+    [Fact]
+    public void PastTimerBar_RendersInTheLiveTimersTab_Only()
+    {
+        var live = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [],
+            timerPanel: new TimerPanelState(string.Empty, null));
+        var saved = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []);
+
+        Assert.Contains("tm-past-add", live);
+        Assert.DoesNotContain("tm-past-add", saved);
+    }
+
+    [Fact]
     public void ScatteredTicketWork_DrawsAsAnEnvelopeWithVisitPins()
     {
         // Ticket #42 visited 3×2m across an hour: the pooled slot bills ~6m but the calendar
@@ -413,7 +481,7 @@ public class HtmlReportWriterTests
 
         // It used to render before the tab strip, pushing every tab down the page.
         Assert.True(md.IndexOf("class=\"tabs\"", StringComparison.Ordinal)
-                    < md.IndexOf("class=\"gaps\"", StringComparison.Ordinal));
+                    < md.IndexOf("data-panel=\"lost\"", StringComparison.Ordinal));
     }
 
     [Fact]

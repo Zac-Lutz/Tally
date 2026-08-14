@@ -160,11 +160,11 @@ public static class HtmlReportWriter
         // Uncategorized and lost time are computed once, up here: their totals are summary cards
         // and their details are tabs, and the two must agree.
         var uncategorized = UnclassifiedBuilder.Build(blocks);
-        var (lostLines, lostTotal) = LostTime(blocks, inactivePeriods, threshold);
+        var (lostStretches, lostTotal) = LostTime(blocks, inactivePeriods, timers, threshold);
 
         AppendSummary(sb, blocks, calls, inactivePeriods, lostTotal, uncategorized.Count);
         AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides,
-            timerPanel, rules, categories, palette, settings, uncategorized, lostLines, lostTotal);
+            timerPanel, rules, categories, palette, settings, uncategorized, lostStretches, lostTotal);
     }
 
     // Rollup / Calls / Timeline / Timers / Uncategorized as switchable tabs (Rollup active by
@@ -178,7 +178,7 @@ public static class HtmlReportWriter
         TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules,
         IReadOnlyList<CategoryDefinition>? categories, CategoryPalette? palette,
         SettingsPanelState? settings,
-        IReadOnlyList<UnclassifiedRow> uncategorized, IReadOnlyList<string> lostLines, TimeSpan lostTotal)
+        IReadOnlyList<UnclassifiedRow> uncategorized, IReadOnlyList<LostStretch> lostStretches, TimeSpan lostTotal)
     {
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
@@ -224,7 +224,7 @@ public static class HtmlReportWriter
         AppendUnclassified(sb, uncategorized, blocks, editable);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"lost\">\n");
-        AppendLostTime(sb, lostLines, lostTotal);
+        AppendLostTime(sb, lostStretches, lostTotal, editable);
         sb.Append("</section>\n");
         if (rules is not null)
         {
@@ -661,6 +661,16 @@ public static class HtmlReportWriter
         sb.Append(panel.StartedAt is not null
             ? "<p class=\"hint\">Renaming while it runs renames the timer; stopping files it above.</p>\n"
             : "<p class=\"hint\">Name it and press Start — or use the hotkeys, which work from anywhere.</p>\n");
+
+        // Backfill: a timer for time Tally never saw at all — the machine off, an onsite visit.
+        // Claiming from the Lost time tab covers idle/locked stretches; this covers the rest.
+        sb.Append("<div class=\"tm-pastbar\">")
+          .Append("<input type=\"time\" class=\"tm-past-from\" aria-label=\"Past timer from\"> ")
+          .Append("<input type=\"time\" class=\"tm-past-to\" aria-label=\"Past timer to\"> ")
+          .Append("<input class=\"tm-past-name\" type=\"text\" placeholder=\"Add a past timer — e.g. Onsite at Acme\" aria-label=\"Past timer name\"> ")
+          .Append("<button class=\"uc-save tm-past-add\" type=\"button\">Add past timer</button>")
+          .Append("</div>\n");
+        sb.Append("<p class=\"hint\">For time today that Tally never saw — the laptop closed, a site visit. It files above once added, and bills like any timer.</p>\n");
     }
 
     private static void AppendSummary(
@@ -696,46 +706,97 @@ public static class HtmlReportWriter
         sb.Append("</div>\n");
     }
 
+    /// <summary>One stretch on no timesheet line. Idle/locked stretches are claimable — "that was
+    /// a phone call" turns them into a recorded timer; uncategorized ones want a rule instead.</summary>
+    private sealed record LostStretch(DateTimeOffset Start, DateTimeOffset End, string What, bool Claimable)
+    {
+        public TimeSpan Duration => End - Start;
+    }
+
     /// <summary>
     /// Stretches of the day that ended up on no timesheet line: idle or locked time, and activity
     /// that matched no rule. Both are "time you'll have to account for from memory", which is why
     /// they share a tab — the Uncategorized tab is for teaching Tally a rule, this one is for
-    /// spotting the hole before someone asks about it.
+    /// spotting the hole before someone asks about it. Time a recorded timer covers is subtracted
+    /// first: a claimed stretch IS on a timesheet line now, so only its unclaimed remainder (if
+    /// still over the threshold) stays lost.
     /// </summary>
-    private static (List<string> Lines, TimeSpan Total) LostTime(
+    private static (List<LostStretch> Stretches, TimeSpan Total) LostTime(
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<InactivePeriod> inactive,
+        IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold)
     {
-        var entries = inactive
-            .Where(p => p.Duration >= threshold)
-            .Select(g => (g.Start, g.Duration,
-                Html: $"{ReportFormat.Clock(g.Start)}–{ReportFormat.Clock(g.End)} — {Esc(g.Reason)} <span class=\"muted\">({ReportFormat.Duration(g.Duration)})</span>"))
+        var claimed = SuggestionSlotBuilder.Merge(
+            timers.Where(t => t.End > t.Start).Select(t => new SuggestionSlotBuilder.Span(t.Start, t.End)));
+
+        IEnumerable<LostStretch> Unclaimed(DateTimeOffset start, DateTimeOffset end, string what, bool claimable)
+            => SuggestionSlotBuilder.Subtract(new SuggestionSlotBuilder.Span(start, end), claimed)
+                .Where(piece => piece.Duration >= threshold)
+                .Select(piece => new LostStretch(piece.Start, piece.End, what, claimable));
+
+        var stretches = inactive
+            .SelectMany(p => Unclaimed(p.Start, p.End, p.Reason, claimable: true))
             .Concat(blocks
-                .Where(b => b.Classification.IsUnclassified && b.Block.Duration >= threshold)
-                .Select(b => (b.Block.Start, b.Block.Duration,
-                    Html: $"{ReportFormat.Clock(b.Block.Start)}–{ReportFormat.Clock(b.Block.End)} — uncategorized: “{Esc(b.Block.Title)}” <span class=\"muted\">({ReportFormat.Duration(b.Block.Duration)})</span>")))
-            .OrderBy(x => x.Start)
+                .Where(b => b.Classification.IsUnclassified)
+                .SelectMany(b => Unclaimed(b.Block.Start, b.Block.End, $"uncategorized: “{b.Block.Title}”", claimable: false)))
+            .OrderBy(s => s.Start)
             .ToList();
 
-        return (
-            entries.Select(x => x.Html).ToList(),
-            TimeSpan.FromTicks(entries.Sum(x => x.Duration.Ticks)));
+        return (stretches, TimeSpan.FromTicks(stretches.Sum(s => s.Duration.Ticks)));
     }
 
-    private static void AppendLostTime(StringBuilder sb, IReadOnlyList<string> lines, TimeSpan total)
+    // The lost-time list — and, in the live view, the place an idle/locked stretch is claimed:
+    // name what it was, adjust the times if only part was real work, and Claim records a manual
+    // timer over it. The stretch then bills like any timer and leaves this tab on the next refresh.
+    private static void AppendLostTime(
+        StringBuilder sb, IReadOnlyList<LostStretch> stretches, TimeSpan total, bool editable)
     {
-        if (lines.Count == 0)
+        if (stretches.Count == 0)
         {
             sb.Append("<p class=\"empty\">Nothing unaccounted for — every stretch over five minutes is either classified or on a timesheet line.</p>\n");
             return;
         }
 
-        sb.Append($"<p class=\"hint\">{ReportFormat.Duration(total)} across {lines.Count} {(lines.Count == 1 ? "stretch" : "stretches")} that no timesheet line covers.</p>\n");
-        sb.Append("<div class=\"gaps\">\n<ul>\n");
-        foreach (var line in lines)
-            sb.Append("<li>").Append(line).Append("</li>\n");
-        sb.Append("</ul>\n</div>\n");
+        sb.Append($"<p class=\"hint\">{ReportFormat.Duration(total)} across {stretches.Count} {(stretches.Count == 1 ? "stretch" : "stretches")} that no timesheet line covers.</p>\n");
+
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n<tr><th>Start</th><th>End</th><th class=\"num\">Time</th><th>What happened</th>");
+        if (editable)
+            sb.Append("<th>What was it really?</th><th></th>");
+        sb.Append("</tr>\n</thead>\n<tbody>\n");
+
+        foreach (var stretch in stretches)
+        {
+            var start = stretch.Start.ToLocalTime();
+            var end = stretch.End.ToLocalTime();
+            sb.Append("<tr class=\"lt\">");
+            if (editable && stretch.Claimable)
+            {
+                sb.Append($"<td><input type=\"time\" class=\"lt-from\" value=\"{start:HH:mm}\" aria-label=\"Claim from\"></td>")
+                  .Append($"<td><input type=\"time\" class=\"lt-to\" value=\"{end:HH:mm}\" aria-label=\"Claim to\"></td>");
+            }
+            else
+            {
+                sb.Append("<td>").Append(ReportFormat.Clock(stretch.Start)).Append("</td>")
+                  .Append("<td>").Append(ReportFormat.Clock(stretch.End)).Append("</td>");
+            }
+
+            sb.Append("<td class=\"num\">").Append(ReportFormat.Duration(stretch.Duration)).Append("</td>")
+              .Append("<td>").Append(Esc(stretch.What)).Append("</td>");
+            if (editable)
+            {
+                sb.Append(stretch.Claimable
+                    ? "<td><input class=\"lt-name\" type=\"text\" placeholder=\"e.g. Ticket #123 — phone call\" aria-label=\"What this time was\"></td>"
+                      + "<td class=\"num\"><button class=\"uc-save lt-claim\" type=\"button\">Claim</button></td>"
+                    : "<td class=\"muted\" colspan=\"2\">teach it a rule on the Uncategorized tab</td>");
+            }
+
+            sb.Append("</tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
+        if (editable)
+            sb.Append("<p class=\"hint\">Claiming records a manual timer over the stretch — it bills like any timer, shows on the Timers tab (delete it there to undo), and leaves this list. Trim the times first if only part of the stretch was real work.</p>\n");
     }
 
     // Window activity AND calls, merged into one time-ordered table so the Rollup is a complete
@@ -1055,6 +1116,19 @@ public static class HtmlReportWriter
           border-left:3px solid; font-size:12px; line-height:17px; cursor:default; }
         .ev-fill { position:absolute; left:0; right:0; top:0; display:block; }
         .ev-pin { position:absolute; left:0; right:0; display:block; min-height:3px; }
+        /* Lost-time claiming and the past-timer bar. */
+        .lt input[type=time],.tm-pastbar input[type=time] { background:var(--bg);
+          border:1px solid var(--border); border-radius:6px; color:var(--fg); font:inherit;
+          font-size:13px; padding:3px 6px; }
+        .lt-name { width:260px; max-width:100%; background:var(--bg); border:1px solid var(--border);
+          border-radius:6px; color:var(--fg); font:inherit; font-size:13px; padding:3px 8px; }
+        .lt-name::placeholder { color:var(--muted); }
+        .lt-name:focus,.lt input[type=time]:focus,.tm-pastbar input:focus { outline:none; border-color:var(--accent); }
+        .lt-claim { font-size:13px; padding:5px 12px; white-space:nowrap; }
+        .tm-pastbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:22px 0 8px; }
+        .tm-past-name { flex:0 1 300px; background:var(--bg); border:1px solid var(--border);
+          border-radius:8px; color:var(--fg); font:inherit; font-size:13px; padding:6px 11px; }
+        .tm-past-name::placeholder { color:var(--muted); }
         .ev-txt { position:relative; display:block; padding:1px 8px;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .ev b { font-variant-numeric:tabular-nums; margin-right:4px; }
@@ -1118,7 +1192,7 @@ public static class HtmlReportWriter
         window.tallyUpdate=function(h){
         var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;
         if(document.querySelector('tr.rl.editing,tr.ct.editing,.st-form.st-dirty'))return;
-        var ab=document.querySelectorAll('.ct-new-name,.rl-addbar input[type=text]');
+        var ab=document.querySelectorAll('.ct-new-name,.rl-addbar input[type=text],.lt-name,.tm-past-name');
         for(var i=0;i<ab.length;i++){if(ab[i].value)return;}
         var y=window.scrollY;var m=document.getElementById('tally-live');
         if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};
@@ -1201,15 +1275,30 @@ public static class HtmlReportWriter
     // editing the name posts {type:'timerRename', value}. The host owns the timer, so the button's
     // new state arrives with the refresh that follows rather than being guessed here. Between
     // refreshes the elapsed figure ticks locally from data-started, matching TimerText.Elapsed.
+    // Claiming a lost stretch and adding a past timer both post {type:'timerAdd', start, stop,
+    // value:<name>} — the host records the timer and re-validates everything.
     private const string TimerControlScript =
         """
         (function(){
         function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
         function name(){var n=document.querySelector('.tm-name');return n?n.value:'';}
+        function claim(scope,fromSel,toSel,nameSel){
+        var v=function(s){var i=scope.querySelector(s);return i?i.value.trim():'';};
+        var n=v(nameSel);
+        if(!n){var f=scope.querySelector(nameSel);if(f)f.focus();return;}
+        var from=v(fromSel),to=v(toSel);
+        if(!/^\d{2}:\d{2}$/.test(from)||!/^\d{2}:\d{2}$/.test(to)||to<=from)return;
+        post({type:'timerAdd',start:from,stop:to,value:n});
+        var f2=scope.querySelector(nameSel);if(f2)f2.value='';}
         document.addEventListener('click',function(e){
-        var b=e.target.closest?e.target.closest('.tm-go'):null;
+        var t=e.target;if(!t.closest)return;
+        var c=t.closest('.lt-claim');
+        if(c){var r=c.closest('tr.lt');if(r)claim(r,'.lt-from','.lt-to','.lt-name');return;}
+        var p=t.closest('.tm-past-add');
+        if(p){var bar=p.closest('.tm-pastbar');if(bar)claim(bar,'.tm-past-from','.tm-past-to','.tm-past-name');return;}
+        var b=t.closest('.tm-go');
         if(b){post({type:'timerToggle',value:name()});return;}
-        var d=e.target.closest?e.target.closest('.tm-del'):null;
+        var d=t.closest('.tm-del');
         if(d)post({type:'timerDelete',id:d.getAttribute('data-timer-id')});});
         document.addEventListener('change',function(e){
         if(e.target.classList&&e.target.classList.contains('tm-name'))post({type:'timerRename',value:e.target.value});});

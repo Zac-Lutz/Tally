@@ -166,7 +166,16 @@ The **Lost time** tab is the other half of that question: stretches over five mi
 on no timesheet line — idle or locked time, plus activity that matched no rule. The **Lost time
 card** at the top of the page carries the total rather than a count, because "2h 09m" is the thing
 you need to know before someone asks where the day went. Uncategorized is where you teach Tally a
-rule; Lost time is where you spot the hole.
+rule; Lost time is where you spot the hole — **and fill it**.
+
+**Claiming lost time.** In the live view, every idle/locked stretch is claimable: trim the times
+if only part of it was real work, type what it was ("Ticket #493876 — phone call", "Onsite at
+Acme"), and **Claim**. That records a manual timer over the stretch, so it bills like any timer —
+it appears on the Timers tab (delete it there to undo), the Rollup, and the export — and the
+stretch leaves Lost time on the next refresh, shrinking the card. For time Tally never saw at all
+(laptop closed, a site visit), the Timers tab has an **Add a past timer** form that does the same
+for any range of today. Recorded timers can never overlap each other — a minute is never billed
+twice.
 
 ## Manual timers
 

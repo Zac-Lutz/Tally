@@ -96,7 +96,9 @@ public static class SuggestionSlotBuilder
     /// <summary>The category the combined leftovers slot carries.</summary>
     public const string OddsAndEndsCategory = "Odds and ends";
 
-    private readonly record struct Span(DateTimeOffset Start, DateTimeOffset End)
+    // Internal rather than private: the lost-time view subtracts timer claims with the same
+    // arithmetic the slot builder uses, so "claimed" means the same thing in both places.
+    internal readonly record struct Span(DateTimeOffset Start, DateTimeOffset End)
     {
         public TimeSpan Duration => End - Start;
     }
@@ -331,7 +333,7 @@ public static class SuggestionSlotBuilder
 
     // ---------- Interval arithmetic ----------
 
-    private static List<Span> Merge(IEnumerable<Span> spans)
+    internal static List<Span> Merge(IEnumerable<Span> spans)
     {
         var merged = new List<Span>();
         foreach (var span in spans.Where(s => s.End > s.Start).OrderBy(s => s.Start))
@@ -346,7 +348,7 @@ public static class SuggestionSlotBuilder
     }
 
     /// <summary>The parts of <paramref name="span"/> that no claim covers. Claims must be merged.</summary>
-    private static List<Span> Subtract(Span span, IReadOnlyList<Span> claims)
+    internal static List<Span> Subtract(Span span, IReadOnlyList<Span> claims)
     {
         var remaining = new List<Span>();
         var cursor = span.Start;
