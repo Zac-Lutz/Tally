@@ -88,13 +88,14 @@ public static class HtmlReportWriter
         TimerPanelState? timerPanel = null,
         IReadOnlyList<ClassificationRule>? rules = null,
         IReadOnlyList<CategoryDefinition>? categories = null,
-        CategoryPalette? palette = null)
+        CategoryPalette? palette = null,
+        SettingsPanelState? settings = null)
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: false, editable: true,
             ticketOverrides: ticketOverrides, timerPanel: timerPanel, rules: rules,
-            categories: categories, palette: palette);
+            categories: categories, palette: palette, settings: settings);
         return sb.ToString();
     }
 
@@ -117,6 +118,7 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
         sb.Append("<script>").Append(RulesEditScript).Append("</script>\n");
         sb.Append("<script>").Append(CategoriesScript).Append("</script>\n");
+        sb.Append("<script>").Append(SettingsScript).Append("</script>\n");
         sb.Append("<script>").Append(TimerControlScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
@@ -137,7 +139,8 @@ public static class HtmlReportWriter
         bool showExport = false,
         IReadOnlyList<ClassificationRule>? rules = null,
         IReadOnlyList<CategoryDefinition>? categories = null,
-        CategoryPalette? palette = null)
+        CategoryPalette? palette = null,
+        SettingsPanelState? settings = null)
     {
         if (includeHeader)
         {
@@ -156,7 +159,7 @@ public static class HtmlReportWriter
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
         AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides,
-            timerPanel, rules, categories, palette);
+            timerPanel, rules, categories, palette, settings);
     }
 
     // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
@@ -167,7 +170,8 @@ public static class HtmlReportWriter
         IReadOnlyList<InactivePeriod> inactivePeriods, IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
         TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules = null,
-        IReadOnlyList<CategoryDefinition>? categories = null, CategoryPalette? palette = null)
+        IReadOnlyList<CategoryDefinition>? categories = null, CategoryPalette? palette = null,
+        SettingsPanelState? settings = null)
     {
         var unclassified = UnclassifiedBuilder.Build(blocks);
         var (lostLines, lostTotal) = LostTime(blocks, inactivePeriods, threshold);
@@ -194,6 +198,8 @@ public static class HtmlReportWriter
             sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"rules\">Rules</button>");
         if (categories is not null)
             sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"categories\">Categories</button>");
+        if (settings is not null)
+            sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"settings\">Settings</button>");
         sb.Append("</div>\n");
 
         // Always the whole day: choosing a slice belongs to the export itself, so this stays the
@@ -234,6 +240,13 @@ public static class HtmlReportWriter
             sb.Append("</section>\n");
         }
 
+        if (settings is not null)
+        {
+            sb.Append("<section class=\"panel\" data-panel=\"settings\">\n");
+            AppendSettings(sb, settings);
+            sb.Append("</section>\n");
+        }
+
         // Category suggestions for the triage and rules inputs: categories seen today, the user's
         // own, and the shipped defaults, so the day's naming stays consistent (free text still
         // wins — a datalist only proposes).
@@ -254,9 +267,19 @@ public static class HtmlReportWriter
     {
         sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts today within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Unclassified.</p>\n");
 
+        // Hand-writing a rule, without leaving the tab. Placement is decided by the same
+        // specificity logic Save-rule uses: a window pattern earns the top, app-only the bottom.
+        sb.Append("<div class=\"rl-addbar\">")
+          .Append("<input class=\"rl-new-cat\" type=\"text\" list=\"uc-cats\" placeholder=\"Category\" aria-label=\"New rule category\">")
+          .Append("<input class=\"rl-new-proc\" type=\"text\" placeholder=\"App pattern (regex)\" aria-label=\"New rule app pattern\">")
+          .Append("<input class=\"rl-new-title\" type=\"text\" placeholder=\"Window pattern (regex)\" aria-label=\"New rule window pattern\">")
+          .Append("<input class=\"rl-new-client\" type=\"text\" placeholder=\"Client (optional)\" aria-label=\"New rule client\">")
+          .Append("<button class=\"uc-save rl-add-btn\" type=\"button\">Add rule</button>")
+          .Append("</div>\n");
+
         if (rules.Count == 0)
         {
-            sb.Append("<p class=\"empty\">No rules yet — save one from the Unclassified tab.</p>\n");
+            sb.Append("<p class=\"empty\">No rules yet — add one above, or save one from the Unclassified tab.</p>\n");
             return;
         }
 
@@ -282,6 +305,43 @@ public static class HtmlReportWriter
 
         sb.Append("</tbody>\n</table>\n</div>\n");
         sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields.</p>\n");
+    }
+
+    // The Settings tab — the WinForms dialog's contents, moved into the page so configuration
+    // lives beside the tabs it affects. The form is stateful (chips added, hotkeys captured)
+    // until Save posts the whole thing to the host in one message; the "st-dirty" class the
+    // script maintains keeps live refreshes from wiping half-made changes.
+    private static void AppendSettings(StringBuilder sb, SettingsPanelState settings)
+    {
+        sb.Append("<div class=\"st-form\">\n");
+
+        sb.Append("<h2>Timer hotkeys</h2>\n");
+        sb.Append($"<div class=\"st-row\"><label>Start timer</label><input class=\"st-hk\" type=\"text\" readonly value=\"{Esc(settings.StartHotkey)}\" aria-label=\"Start timer hotkey\"></div>\n");
+        sb.Append($"<div class=\"st-row\"><label>Stop timer</label><input class=\"st-hk\" type=\"text\" readonly value=\"{Esc(settings.StopHotkey)}\" aria-label=\"Stop timer hotkey\"></div>\n");
+        sb.Append("<p class=\"hint\">Click a field, then press the combination you want — Ctrl/Alt/Shift plus a letter, digit, or F-key. They work from anywhere, even when Tally isn't focused.</p>\n");
+
+        sb.Append("<h2>Auto-generate reports at these times</h2>\n<div class=\"st-times\">");
+        foreach (var time in settings.AutoReportTimes)
+        {
+            var display = TimeOnly.TryParseExact(time, "HH:mm", out var parsed)
+                ? parsed.ToString("h:mm tt", CultureInfo.InvariantCulture)
+                : time;
+            sb.Append($"<span class=\"st-time\" data-t=\"{Esc(time)}\">{Esc(display)}<button class=\"st-time-del\" type=\"button\" aria-label=\"Remove {Esc(display)}\">×</button></span>");
+        }
+
+        sb.Append("</div>\n");
+        sb.Append("<div class=\"st-row\"><input type=\"time\" class=\"st-time-new\" aria-label=\"New report time\"> <button class=\"uc-save st-time-add\" type=\"button\">Add time</button></div>\n");
+        sb.Append("<p class=\"hint\">Each time writes that day's report automatically. Remove them all to turn auto-reports off.</p>\n");
+
+        sb.Append("<h2>Keep raw history</h2>\n");
+        var forever = settings.RetentionDays <= 0;
+        var days = forever ? 90 : settings.RetentionDays;   // placeholder while disabled
+        sb.Append($"<div class=\"st-row\"><label>Delete raw activity older than</label><input type=\"number\" class=\"st-ret\" min=\"7\" max=\"3650\" value=\"{days}\"{(forever ? " disabled" : string.Empty)} aria-label=\"Days of raw history to keep\"> <span class=\"muted\">days</span></div>\n");
+        sb.Append($"<label class=\"st-forever\"><input type=\"checkbox\" class=\"st-keep-forever\"{(forever ? " checked" : string.Empty)}> Keep everything forever</label>\n");
+        sb.Append("<p class=\"hint\">Saved reports and timers are never deleted.</p>\n");
+
+        sb.Append("<div class=\"st-actions\"><button class=\"tm-go st-save\" type=\"button\">Save settings</button><span class=\"st-msg\"></span></div>\n");
+        sb.Append("</div>\n");
     }
 
     // The Categories tab: every category in play — the user's own, the ones rules file under, the
@@ -880,6 +940,38 @@ public static class HtmlReportWriter
         .ct input.ct-name:focus { outline:none; border-color:var(--accent); }
         .ct-actions { white-space:nowrap; }
         .ct-actions .uc-save,.ct-actions .tm-del { font-size:12px; padding:4px 10px; }
+        /* Rules tab's add bar, mirroring the categories one. */
+        .rl-addbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; }
+        .rl-addbar input { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+          color:var(--fg); font:inherit; font-size:13px; padding:5px 8px; }
+        .rl-addbar input::placeholder { color:var(--muted); }
+        .rl-addbar input:focus { outline:none; border-color:var(--accent); }
+        .rl-new-cat { width:140px; }
+        .rl-new-proc { width:150px; }
+        .rl-new-title { width:220px; }
+        .rl-new-client { width:110px; }
+        /* Settings tab: the dialog's layout, in page idiom. */
+        .st-form { max-width:560px; }
+        .st-row { display:flex; align-items:center; gap:10px; margin:8px 0; }
+        .st-row label { flex:0 0 210px; color:var(--muted); }
+        .st-hk { background:var(--bg); border:1px solid var(--border); border-radius:8px;
+          color:var(--fg); font:inherit; font-size:14px; padding:6px 11px; width:180px;
+          text-align:center; cursor:pointer; }
+        .st-hk:focus { outline:none; border-color:var(--accent); }
+        .st-times { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; min-height:20px; }
+        .st-time { display:inline-flex; align-items:center; gap:6px; background:var(--btn-bg);
+          border-radius:999px; padding:3px 6px 3px 12px; font-size:13px; }
+        .st-time-del { background:none; border:none; color:var(--muted); font:inherit;
+          font-size:14px; cursor:pointer; padding:0 4px; }
+        .st-time-del:hover { color:#e05252; }
+        input.st-time-new,input.st-ret { background:var(--bg); border:1px solid var(--border);
+          border-radius:6px; color:var(--fg); font:inherit; font-size:13px; padding:4px 8px; }
+        input.st-ret { width:70px; }
+        input.st-ret:disabled { opacity:.5; }
+        .st-forever { display:block; margin:6px 0 0; }
+        .st-actions { display:flex; align-items:center; gap:14px; margin-top:22px; }
+        .st-actions .tm-go { padding:8px 22px; }
+        .st-msg { color:#ff8a8a; }
         .cal { position:relative; margin:14px 0 4px; }
         .cal-hr { position:absolute; left:0; right:0; border-top:1px solid var(--border); }
         .cal-hr.half { border-top-style:dotted; opacity:.55; }
@@ -944,11 +1036,19 @@ public static class HtmlReportWriter
 
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
     // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category), a
-    // rules/categories row is in edit mode, or a new-category name is half-typed — even unfocused,
-    // those inputs hold text a swap would erase — so a refresh never wipes an in-progress edit;
-    // the next tick lands once the edit concludes.
+    // rules/categories row is in edit mode, an add bar holds half-typed text, or the settings
+    // form has unsaved changes — even unfocused, those inputs hold state a swap would erase — so
+    // a refresh never wipes an in-progress edit; the next tick lands once the edit concludes.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;if(document.querySelector('tr.rl.editing,tr.ct.editing'))return;var n=document.querySelector('.ct-new-name');if(n&&n.value)return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+        """
+        window.tallyUpdate=function(h){
+        var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;
+        if(document.querySelector('tr.rl.editing,tr.ct.editing,.st-form.st-dirty'))return;
+        var ab=document.querySelectorAll('.ct-new-name,.rl-addbar input[type=text]');
+        for(var i=0;i<ab.length;i++){if(ab[i].value)return;}
+        var y=window.scrollY;var m=document.getElementById('tally-live');
+        if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};
+        """;
 
     // Editable cells: a ticket cell (.tk) posts {type:'ticket', key, value}; a timer-name cell (.tn)
     // posts {type:'timerName', id, value}. Committed on blur or Enter (which blurs). Delegated so the
@@ -1068,6 +1168,16 @@ public static class HtmlReportWriter
         if(b){var r=b.closest('tr.rl');r.classList.add('editing');var c=r.querySelector('.rl-cat');if(c)c.focus();return;}
         b=t.closest('.rl-cancel');
         if(b){b.closest('tr.rl').classList.remove('editing');return;}
+        b=t.closest('.rl-add-btn');
+        if(b){var bar=b.closest('.rl-addbar');if(!bar)return;
+        var val=function(c){var i=bar.querySelector(c);return i?i.value.trim():'';};
+        var cat=val('.rl-new-cat');
+        if(!cat){var f=bar.querySelector('.rl-new-cat');if(f)f.focus();return;}
+        var proc=val('.rl-new-proc'),ti=val('.rl-new-title');
+        if(!proc&&!ti){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
+        post({type:'ruleAdd',category:cat,process:proc,title:ti,client:val('.rl-new-client')});
+        bar.querySelectorAll('input').forEach(function(i){i.value='';});
+        return;}
         b=t.closest('.rl-del');
         if(b){var r=b.closest('tr.rl');post({type:'ruleDelete',id:r.getAttribute('data-i'),key:r.getAttribute('data-id')});return;}
         b=t.closest('.rl-ok');
@@ -1115,6 +1225,64 @@ public static class HtmlReportWriter
         else if(e.key==='Escape'){r.classList.remove('editing');}return;}
         if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('ct-new-name')){
         e.preventDefault();var b=document.querySelector('.ct-add-btn');if(b)b.click();}});
+        })();
+        """;
+
+    // The Settings tab. Hotkey fields capture the next Ctrl/Alt/Shift+key combo pressed while
+    // focused; times are managed as removable chips; Save posts the whole form at once as
+    // {type:'settingsSave', start, stop, times:<comma-joined HH:mm>, retention:<days, 0=forever>}.
+    // The st-dirty class marks unsaved edits so live refreshes leave the form alone.
+    private const string SettingsScript =
+        """
+        (function(){
+        function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
+        function form(){return document.querySelector('.st-form');}
+        function dirty(){var f=form();if(f)f.classList.add('st-dirty');}
+        document.addEventListener('focusin',function(e){var t=e.target;
+        if(t.classList&&t.classList.contains('st-hk')){t.dataset.prev=t.value;t.value='Press keys…';}});
+        document.addEventListener('focusout',function(e){var t=e.target;
+        if(t.classList&&t.classList.contains('st-hk')&&t.value==='Press keys…')t.value=t.dataset.prev||'';});
+        document.addEventListener('keydown',function(e){var t=e.target;
+        if(!t.classList||!t.classList.contains('st-hk'))return;
+        if(e.key==='Tab'||e.key==='Escape')return;
+        e.preventDefault();
+        var key=null;
+        if(/^[a-z0-9]$/i.test(e.key))key=e.key.toUpperCase();
+        else if(/^F([1-9]|1[0-9]|2[0-4])$/.test(e.key))key=e.key;
+        if(!key)return;
+        var parts=[];if(e.ctrlKey)parts.push('Ctrl');if(e.altKey)parts.push('Alt');if(e.shiftKey)parts.push('Shift');
+        if(!parts.length)return;
+        parts.push(key);t.value=parts.join('+');t.dataset.prev=t.value;dirty();});
+        document.addEventListener('click',function(e){var t=e.target;if(!t.closest)return;
+        var b=t.closest('.st-time-add');
+        if(b){var i=document.querySelector('.st-time-new');var v=i?i.value:'';
+        if(!/^\d{2}:\d{2}$/.test(v))return;
+        var list=document.querySelector('.st-times');if(!list)return;
+        var exists=false;list.querySelectorAll('.st-time').forEach(function(c){if(c.getAttribute('data-t')===v)exists=true;});
+        if(exists)return;
+        var h=parseInt(v.slice(0,2),10),m=v.slice(3,5);
+        var span=document.createElement('span');span.className='st-time';span.setAttribute('data-t',v);
+        span.append(((h%12)||12)+':'+m+' '+(h<12?'AM':'PM'));
+        var x=document.createElement('button');x.type='button';x.className='st-time-del';x.textContent='×';
+        span.append(x);list.append(span);dirty();return;}
+        var d=t.closest('.st-time-del');
+        if(d){var c=d.closest('.st-time');if(c){c.remove();dirty();}return;}
+        var s=t.closest('.st-save');
+        if(s){var f=form();if(!f)return;
+        var hk=f.querySelectorAll('.st-hk');
+        var read=function(el){return !el?'':el.value==='Press keys…'?(el.dataset.prev||''):el.value;};
+        var start=read(hk[0]),stop=read(hk[1]);
+        var msg=f.querySelector('.st-msg');
+        if(!start||!stop){if(msg)msg.textContent='Each hotkey needs a combination.';return;}
+        if(start.toLowerCase()===stop.toLowerCase()){if(msg)msg.textContent='Start and stop must be different.';return;}
+        var times=[];f.querySelectorAll('.st-time').forEach(function(c){times.push(c.getAttribute('data-t'));});
+        var forever=f.querySelector('.st-keep-forever');
+        var ret=forever&&forever.checked?'0':((f.querySelector('.st-ret')||{}).value||'90');
+        post({type:'settingsSave',start:start,stop:stop,times:times.join(','),retention:ret});
+        f.classList.remove('st-dirty');if(msg)msg.textContent='';}});
+        document.addEventListener('change',function(e){var t=e.target;if(!t.closest||!t.closest('.st-form'))return;
+        if(t.classList.contains('st-keep-forever')){var r=document.querySelector('.st-ret');if(r)r.disabled=t.checked;}
+        dirty();});
         })();
         """;
 

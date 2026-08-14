@@ -48,6 +48,14 @@ public static class RuleDraft
         };
     }
 
+    /// <summary>
+    /// A readable id for a hand-written rule ("halo", "halo-2", …), unique among
+    /// <paramref name="existingIds"/>. Hand-written rules carry regex patterns, so unlike a
+    /// drafted rule there's no literal activity to name the id after — the category is the name.
+    /// </summary>
+    public static string ManualId(string category, IEnumerable<string>? existingIds = null)
+        => UniqueId(category.Trim(), string.Empty, existingIds);
+
     // Escapes the regex metacharacters only. Regex.Escape also escapes every space (as "\ ", for
     // IgnorePatternWhitespace mode, which the Classifier doesn't use) — correct but unreadable in a
     // file the user is invited to edit.

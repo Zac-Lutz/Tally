@@ -47,6 +47,7 @@ public sealed class LiveWindow : Form
     private bool _refreshing;
     private string? _note;
     private DateTime _noteUntil;
+    private string? _pendingTab;
 
     /// <summary>How long a saved-edit note stays beside the live status before it fades out.</summary>
     private const int NoteDuration = 8;
@@ -104,10 +105,6 @@ public sealed class LiveWindow : Form
         StyleButton(export);
         export.Click += (_, _) => ExportTimesheet();
 
-        var settings = new Button { Text = "Settings", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 0, 0), Cursor = Cursors.Hand };
-        StyleButton(settings);
-        settings.Click += (_, _) => SettingsDialog.Configure(this, _hotkeys, _onSettingsSaved);
-
         // "Tally" (in the accent color) with the running version to its right, so the current
         // version is always visible at a glance (e.g. "v1.2.3", or "dev" for a from-source build).
         _versionLabel.Text = AppUpdater.DisplayVersion;
@@ -138,7 +135,6 @@ public sealed class LiveWindow : Form
         right.Controls.Add(_timerElapsed);
         right.Controls.Add(export);
         right.Controls.Add(snapshot);
-        right.Controls.Add(settings);
 
         var bar = new Panel { Dock = DockStyle.Top, Height = 54, BackColor = ChromeBg };
         bar.Controls.Add(left);
@@ -244,10 +240,27 @@ public sealed class LiveWindow : Form
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
             var categories = ReportGenerator.LoadCategoriesSafe();
+
+            // Settings are re-read per refresh so the tab always shows the file's truth (a save
+            // from this same tab lands on the very next tick).
+            var current = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
+            var settingsPanel = new SettingsPanelState(
+                current.TimerStartHotkey, current.TimerStopHotkey,
+                current.ResolveAutoReportTimes().Select(t => t.ToString("HH:mm")).ToList(),
+                current.ResolveEventRetentionDays());
+
             var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
                 timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel(),
-                rules: LoadRulesSafe(), categories: categories, palette: new CategoryPalette(categories));
+                rules: LoadRulesSafe(), categories: categories, palette: new CategoryPalette(categories),
+                settings: settingsPanel);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
+
+            if (_pendingTab is { } tab)
+            {
+                _pendingTab = null;
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    $"window.tallyShowTab && window.tallyShowTab({JsonSerializer.Serialize(tab)})");
+            }
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
             _statusLabel.Text = $"Live · updated {DateTime.Now:h:mm:ss tt}{note}";
@@ -313,6 +326,14 @@ public sealed class LiveWindow : Form
             else if (msg.Type == "catDelete")
             {
                 DeleteCategory(msg);
+            }
+            else if (msg.Type == "ruleAdd")
+            {
+                AddRule(msg);
+            }
+            else if (msg.Type == "settingsSave")
+            {
+                SaveSettings(msg);
             }
             else if (msg.Type == "timerToggle")
             {
@@ -496,6 +517,99 @@ public sealed class LiveWindow : Form
         {
             Log.Error("Failed to delete a classification rule from the live view", ex);
             Note("couldn't delete that rule — see the log");
+        }
+    }
+
+    // "Add rule" from the Rules tab: a hand-written rule, validated like an edit (category, at
+    // least one pattern, patterns compile), placed by the same specificity logic Save-rule uses —
+    // a window pattern to the top, an app-only rule to the bottom.
+    private void AddRule(EditMessage msg)
+    {
+        try
+        {
+            var category = msg.Category?.Trim();
+            var process = NullIfEmpty(msg.Process);
+            var title = NullIfEmpty(msg.Title);
+            if (string.IsNullOrEmpty(category))
+            {
+                Note("a rule needs a category — nothing added");
+                return;
+            }
+
+            if (process is null && title is null)
+            {
+                Note("a rule needs an app or window pattern — nothing added");
+                return;
+            }
+
+            if (BadPattern(process) is not null || BadPattern(title) is not null)
+            {
+                Note("that pattern isn't a valid regex — nothing added");
+                return;
+            }
+
+            var rule = new ClassificationRule
+            {
+                Id = RuleDraft.ManualId(category, ExistingRuleIds()),
+                ProcessPattern = process,
+                TitlePattern = title,
+                Category = category,
+                Client = NullIfEmpty(msg.Client),
+            };
+            RulesFile.AddRule(TallyPaths.RulesPath, rule);
+            Log.Info($"Added classification rule '{rule.Id}' ({category}) from the Rules tab");
+            Note($"rule added — {category}");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to add a classification rule from the Rules tab", ex);
+            Note("couldn't add that rule — see the log");
+        }
+    }
+
+    // The Settings tab's Save: the whole form in one message. The page pre-validates, but the
+    // file is only written from here, so everything is re-checked where it matters.
+    private void SaveSettings(EditMessage msg)
+    {
+        try
+        {
+            var start = msg.Start?.Trim();
+            var stop = msg.Stop?.Trim();
+            if (string.IsNullOrEmpty(start) || !HotkeySpec.TryParse(start, out _, out _)
+                || string.IsNullOrEmpty(stop) || !HotkeySpec.TryParse(stop, out _, out _))
+            {
+                Note("each hotkey needs a modifier plus a key — nothing saved");
+                return;
+            }
+
+            if (string.Equals(start, stop, StringComparison.OrdinalIgnoreCase))
+            {
+                Note("start and stop hotkeys must be different — nothing saved");
+                return;
+            }
+
+            var times = (msg.Times ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(t => TimeOnly.TryParseExact(t, "HH:mm", out _))
+                .Distinct()
+                .Order()
+                .ToList();
+            var retention = int.TryParse(msg.Retention, out var days)
+                ? Math.Max(0, days)
+                : TallySettings.DefaultEventRetentionDays;
+
+            SettingsWriter.UpdateSettings(TallyPaths.SettingsPath, start, stop, times, retention);
+            _hotkeys?.Rebind(start, stop);
+            _onSettingsSaved?.Invoke();
+            Log.Info($"Settings saved from the live view: start='{start}' stop='{stop}', times=[{string.Join(", ", times)}], retention={retention}d");
+            Note("settings saved");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to save settings from the live view", ex);
+            Note("couldn't save settings — see the log");
         }
     }
 
@@ -726,12 +840,14 @@ public sealed class LiveWindow : Form
     private static readonly JsonSerializerOptions EditMessageOptions = new() { PropertyNameCaseInsensitive = true };
 
     // Every edit the live page can post: a ticket cell (Key/Value), a timer rename (Id/Value), a
-    // rule saved from triage (Process/Title as base64, Scope, Category), or a Rules-tab edit or
-    // delete (Id = the rule's index, Key = its id as base64; the typed pattern/category/client
-    // values travel plain — they ride the JSON message, not an HTML attribute).
+    // rule saved from triage (Process/Title as base64, Scope, Category), a Rules-tab add/edit/
+    // delete (Id = the rule's index, Key = its id as base64; typed values travel plain — they
+    // ride the JSON message, not an HTML attribute), or the Settings tab's whole form
+    // (Start/Stop hotkeys, Times comma-joined, Retention in days).
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
-        string? Process, string? Title, string? Scope, string? Category, string? Client);
+        string? Process, string? Title, string? Scope, string? Category, string? Client,
+        string? Start, string? Stop, string? Times, string? Retention);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>
@@ -844,6 +960,21 @@ public sealed class LiveWindow : Form
             _refreshTimer.Start();
             _ = RefreshAsync();
         }
+    }
+
+    /// <summary>
+    /// Shows the window switched to the named tab — how the tray's Settings entry lands on the
+    /// Settings tab. Before the first content has rendered the switch is parked and applied by
+    /// the refresh that follows.
+    /// </summary>
+    public void ShowTab(string name)
+    {
+        ShowLive();
+        if (_ready)
+            _ = _webView.CoreWebView2.ExecuteScriptAsync(
+                $"window.tallyShowTab && window.tallyShowTab({JsonSerializer.Serialize(name)})");
+        else
+            _pendingTab = name;
     }
 
     protected override void Dispose(bool disposing)

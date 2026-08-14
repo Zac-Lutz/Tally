@@ -60,6 +60,13 @@ Everything stays on this machine. No cloud, no telemetry.
   recolouring ANY name stores an override, Rename also refiles rules
   (`RulesFile.WithCategoryRenamed` — exact-match, in-place per rule), Delete removes only the
   user's entry. Live-only, same gating as the Rules tab.
+- **Settings live in the page, once.** The WinForms SettingsDialog was replaced by a Settings
+  tab rendered like every other panel (`SettingsPanelState` re-read from settings.json per
+  refresh; one `settingsSave` message posts the whole form; the host validates, writes via
+  SettingsWriter, rebinds hotkeys, reschedules). The tray's Settings entry opens the live view
+  on that tab (`LiveWindow.ShowTab`, with a pending-tab park for the pre-ready window) — one
+  settings surface, so the two UIs can't drift. The form's `st-dirty` class joins the
+  refresh-skip guard: unsaved edits survive the 5s ticks.
 - **Saved rules are placed by specificity, not appended blindly.** Rules are first-match-wins, so
   a rule written from the Unclassified tab lands where its breadth earns: a *window* rule (app +
   exact title) goes first — it names one thing and should beat the generic rules — while an *app*

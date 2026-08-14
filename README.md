@@ -20,7 +20,7 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 - **Open live view** — a dashboard window that shows the current day and refreshes in place
 - **Pause/Resume tracking**
 - **Generate today's / yesterday's report** — writes and opens a snapshot
-- **Settings** — hotkeys, auto-report times, and how long raw history is kept
+- **Settings** — opens the live view's Settings tab: hotkeys, auto-report times, raw-history retention
 - **Check for updates** — pull and apply the newest version right now (see Auto-update below)
 - **Open reports / data folder**
 - **Exit**
@@ -155,9 +155,9 @@ Alongside the automatic tracking you can run **manual timers** — a named span 
 yourself (e.g. "Ticket #123 — phone call"):
 
 - **Global hotkeys** start/stop from anywhere, even when Tally isn't focused. Defaults are
-  `Ctrl+Alt+T` (start) and `Ctrl+Alt+S` (stop). **Reconfigure them in the app** — the live
-  view's **Hotkeys…** button (or the tray's **Configure hotkeys…**) opens a dialog where you
-  press the combo you want; it saves to `settings.json` and rebinds immediately. You can still
+  `Ctrl+Alt+T` (start) and `Ctrl+Alt+S` (stop). **Reconfigure them in the app** — on the live
+  view's **Settings** tab, click a hotkey field and press the combo you want; Save writes
+  `settings.json` and rebinds immediately. You can still
   hand-edit `timerStartHotkey` / `timerStopHotkey` in `settings.json` (Ctrl/Alt/Shift/Win + a
   letter or F-key; the in-app picker captures Ctrl/Alt/Shift combos).
 - **Name and start** a timer in the live view's **Timers** tab: the field and Start/Stop button sit
@@ -192,8 +192,8 @@ is a valid picture of the morning. Three triggers:
 - **CLI** — `tally.exe --report [today|yesterday|yyyy-MM-dd] [html|md]` writes the file
   headlessly (works while the tray instance runs; usable from a scheduled task). The optional
   format arg overrides the setting for that one run.
-- **Automatic** — at one or more times a day. Configure them in the app under **Settings**
-  (tray menu or the live view's Settings button): add each time with the picker, or remove
+- **Automatic** — at one or more times a day. Configure them on the live view's **Settings**
+  tab (the tray's Settings entry lands there): add each time with the picker, or remove
   them; no times = auto-reports off. They're stored as `autoReportTimes` (e.g.
   `["12:00", "17:30"]`, machine-local) in `settings.json`, and applied immediately when you
   save — no restart. Each time shows a tray balloon when ready (or set
@@ -239,6 +239,11 @@ rejected with a note, nothing saved). **Delete** asks first; the rule's activiti
 Unclassified, where they can be taught a better rule. Edits rewrite just that one line of
 `rules.json` — comments and every other rule stay exactly as written. The Rules tab exists only
 in the live app; saved reports don't carry it.
+
+**Rules can also be written by hand, in the tab.** The bar at the top of the Rules tab takes a
+category, an app pattern and/or a window pattern (regexes), and an optional client — **Add rule**
+places it by specificity, exactly as a saved rule would land: one naming a window goes to the
+top, an app-wide one to the bottom.
 
 **Categories are yours to define.** The live view's **Categories** tab lists every category in
 play — your own, the ones rules file under, and the app's built-ins — each with a colour swatch.

@@ -59,6 +59,47 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void SettingsTab_RendersInTheLiveView_WithTheFileValues()
+    {
+        var settings = new SettingsPanelState("Ctrl+Alt+T", "Ctrl+Alt+S", ["12:00", "17:30"], 90);
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [], settings: settings);
+
+        Assert.Contains("data-tab=\"settings\"", inner);
+        Assert.Contains("data-panel=\"settings\"", inner);
+        Assert.Contains("value=\"Ctrl+Alt+T\"", inner);
+        Assert.Contains("data-t=\"17:30\"", inner);            // a time chip, carrying HH:mm
+        Assert.Contains("5:30 PM", inner);                     // displayed human-readably
+        Assert.Contains("value=\"90\"", inner);                // retention prefilled
+        Assert.Contains("st-save", inner);
+    }
+
+    [Fact]
+    public void SettingsTab_KeepForever_RendersCheckedWithTheNumberDisabled()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [],
+            settings: new SettingsPanelState("Ctrl+Alt+T", "Ctrl+Alt+S", [], 0));
+
+        Assert.Contains("st-keep-forever\" checked", inner);
+        Assert.Contains("disabled", inner);
+    }
+
+    [Fact]
+    public void SettingsTab_AbsentFromSavedReports()
+        => Assert.DoesNotContain("data-tab=\"settings\"",
+            HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []));
+
+    [Fact]
+    public void RulesTab_CarriesAnAddBar()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [],
+            rules: [new ClassificationRule { Id = "x", TitlePattern = "t", Category = "X" }]);
+
+        Assert.Contains("rl-add-btn", inner);
+        Assert.Contains("rl-new-cat", inner);
+    }
+
+    [Fact]
     public void RollupAndTimeline_ShowTheApp_BeforeTheCategory()
     {
         var md = HtmlReportWriter.BuildHtml(Date,

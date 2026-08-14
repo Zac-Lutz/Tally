@@ -130,6 +130,14 @@ public class RuleAuthoringTests
     }
 
     [Fact]
+    public void ManualId_IsTheCategorySlug_Uniquified()
+    {
+        Assert.Equal("it-glue", RuleDraft.ManualId("IT Glue"));
+        Assert.Equal("it-glue-2", RuleDraft.ManualId("IT Glue", ["it-glue"]));
+        Assert.Equal("rule", RuleDraft.ManualId("???"));   // nothing sluggable still gets an id
+    }
+
+    [Fact]
     public void Draft_WithoutACategory_IsRejected()
         => Assert.Throws<ArgumentException>(() => RuleDraft.Create("notepad", "Runbook", RuleMatch.App, "   "));
 

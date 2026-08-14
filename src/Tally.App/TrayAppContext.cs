@@ -78,7 +78,8 @@ public sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Generate today's report", null, (_, _) => GenerateReport(0)));
         menu.Items.Add(new ToolStripMenuItem("Generate yesterday's report", null, (_, _) => GenerateReport(-1)));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => SettingsDialog.Configure(null, _hotkeys, ReloadAutoReportSchedule)));
+        // Settings live in the live view's Settings tab; this entry just lands there.
+        menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripMenuItem("Check for updates…", null, (_, _) => CheckForUpdates()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Open reports folder", null, (_, _) => OpenFolder(_reportsDirectory)));
@@ -228,6 +229,12 @@ public sealed class TrayAppContext : ApplicationContext
         // A changed retention takes effect on the next tick rather than tomorrow (or next start).
         _eventRetentionDays = settings.ResolveEventRetentionDays();
         _lastPurgeDate = default;
+    }
+
+    private void OpenSettings()
+    {
+        OpenLiveView();
+        _liveWindow!.ShowTab("settings");
     }
 
     private void OpenLiveView()
