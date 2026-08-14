@@ -28,7 +28,7 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 ## Live view
 
 **Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
-window showing the same rollup / timesheet / timeline / calls / timers / unclassified as a report, for
+window showing the same rollup / timesheet / timeline / calls / timers / uncategorized as a report, for
 **today**, refreshing every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
 **Ticket** column is editable: click any row's Ticket cell — a window activity *or a call* — and
 type a number. It's saved for that day (in `ticket-overrides.json`) and shows on the Rollup and in
@@ -119,18 +119,19 @@ with the same range choice, so a report generated at 5:30pm can be filed the nex
 opening the file — no app needed, no internet, nothing but a browser. What it exports is the day
 **as it stood when the snapshot was taken**; for the current picture, export from the live view.
 
-## Unclassified: giving activities a rule
+## Uncategorized: giving activities a rule
 
-Anything that didn't match a rule lands in the **Unclassified** tab, one row per app + window with
-the time it took today (the tab shows a count, so a day needing attention says so). This is the
-place to teach Tally, instead of hand-editing `rules.json`:
+Anything that didn't match a rule lands in the **Uncategorized** tab, one row per app + window with
+the time it took today (the **Uncategorized card** at the top of the page carries the count, so a
+day needing attention says so from any tab). This is the place to teach Tally, instead of
+hand-editing `rules.json`:
 
 1. Type a **Category** (the box suggests the ones you already use — any text is fine).
 2. Pick what it **applies to** — *any window of that app*, or *only this window*.
 3. Click **Save rule**.
 
 The rule is written to `rules.json` straight away, and the next refresh (a few seconds) reclassifies
-the whole day: the row leaves Unclassified and shows up in the Rollup under its new category. Every
+the whole day: the row leaves Uncategorized and shows up in the Rollup under its new category. Every
 later day and report uses it too. Nothing is guessed — the app name and window title are matched
 exactly as shown.
 
@@ -139,15 +140,15 @@ wins: a **window** rule goes to the **top** (it names one thing, so it should be
 generic), and an **app** rule goes to the **bottom** (it covers everything that app does, so it
 must not swallow rules you already had). Your comments and existing rules are left untouched.
 
-Saved reports show the same Unclassified list read-only — a record of what still needs a rule.
+Saved reports show the same Uncategorized list read-only — a record of what still needs a rule.
 
 ## Lost time
 
 The **Lost time** tab is the other half of that question: stretches over five minutes that ended up
-on no timesheet line — idle or locked time, plus activity that matched no rule. The tab carries the
-**total** rather than a count, because "2h 09m" is the thing you need to know before someone asks
-where the day went. Unclassified is where you teach Tally a rule; Lost time is where you spot the
-hole.
+on no timesheet line — idle or locked time, plus activity that matched no rule. The **Lost time
+card** at the top of the page carries the total rather than a count, because "2h 09m" is the thing
+you need to know before someone asks where the day went. Uncategorized is where you teach Tally a
+rule; Lost time is where you spot the hole.
 
 ## Manual timers
 
@@ -203,7 +204,7 @@ is a valid picture of the morning. Three triggers:
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
 opens in the browser: stat cards up top, then **Rollup / Timesheet / Timeline / Calls / Timers /
-Unclassified / Lost time as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
+Uncategorized / Lost time as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
 `settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
 is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
@@ -231,12 +232,12 @@ dotnet test tests/Tally.Core.Tests
 
 ## Classification rules
 
-Most rules are easiest to add from the live view's **Unclassified** tab (above), and managed from
+Most rules are easiest to add from the live view's **Uncategorized** tab (above), and managed from
 its **Rules** tab: every rule Tally classifies with, in the order they're tried (first match
 wins). **Edit** turns a row into fields — category, app pattern, window pattern, client — and
 **Save** applies it to today within seconds and to every report from then on (a bad regex is
 rejected with a note, nothing saved). **Delete** asks first; the rule's activities go back to
-Unclassified, where they can be taught a better rule. Edits rewrite just that one line of
+Uncategorized, where they can be taught a better rule. Edits rewrite just that one line of
 `rules.json` — comments and every other rule stay exactly as written. The Rules tab exists only
 in the live app; saved reports don't carry it.
 
@@ -263,7 +264,7 @@ breadcrumb-shaped title (`Tickets > Management > …` — a trailing number is c
 ticket, since Halo's tabs never actually say "Halo"), an IT Glue tab by its `— IT Glue` suffix,
 ScreenConnect by name, and Outlook whether it's OWA in a tab (`… - Outlook`) or the desktop app
 (`olk` / `outlook` by process). There is deliberately **no catch-all browser rule**: a tab that
-matches nothing lands in Unclassified, where the triage tab can teach it a real rule — a visible
+matches nothing lands in Uncategorized, where the triage tab can teach it a real rule — a visible
 gap beats time quietly filed under a generic "Browsing".
 
 `subject` captures a free-text "what/who" — e.g. the shipped Teams rule pulls the focused
@@ -281,8 +282,8 @@ a call — the activity feed, the calendar — stays plain **Teams**.)
 
 The **Rollup** is per-activity, not per-category: each distinct browser tab, editor window,
 email, or Teams chat is its own row with time summed across the whole day. The Rollup, Timeline,
-and Calls tabs share one column shape — App, Category, Detail leading, Time trailing — and every
-row leads with the **app** the time was spent in, categorized or not, so an unclassified stretch
+and Calls tabs share one column shape — Category, App, Detail leading, Time trailing — and every
+row names the **app** the time was spent in, categorized or not, so an uncategorized stretch
 still says where it happened (so several Halo
 ticket tabs open at once each track separately). Halo tickets group by ticket number; Teams
 chats by name; everything else by window title, after stripping volatile title noise

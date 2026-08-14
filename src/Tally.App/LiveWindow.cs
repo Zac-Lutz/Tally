@@ -494,7 +494,7 @@ public sealed class LiveWindow : Form
 
             var answer = MessageBox.Show(
                 this,
-                $"Delete this rule?\n\n{rule.Category}\n{matches}\n\nIts activities go back to Unclassified, today and in any report generated from now on.",
+                $"Delete this rule?\n\n{rule.Category}\n{matches}\n\nIts activities go back to Uncategorized, today and in any report generated from now on.",
                 "Delete rule",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning,

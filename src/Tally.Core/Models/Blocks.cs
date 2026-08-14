@@ -36,7 +36,9 @@ public static class InactiveReasons
 public sealed record Classification(
     string Category, string? Client, string? TicketRef, string? Subject, string? RuleId)
 {
-    public const string Unclassified = "Unclassified";
+    // The display value is "Uncategorized" — the app's whole vocabulary is categories — while the
+    // code name stays Unclassified (renaming every identifier would churn half the codebase).
+    public const string Unclassified = "Uncategorized";
 
     public bool IsUnclassified => Category == Unclassified;
 }

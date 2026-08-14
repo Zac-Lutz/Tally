@@ -362,7 +362,7 @@ public static partial class RulesFile
             { "id": "terminal", "processPattern": "^(WindowsTerminal|wt|OpenConsole|conhost|powershell|pwsh|cmd)$", "category": "Development" },
             { "id": "vscode", "processPattern": "^Code$", "category": "Development" },
             { "id": "visual-studio", "processPattern": "^devenv$", "category": "Development" }
-            // No catch-all browser rule: a tab that matches nothing lands in Unclassified, where
+            // No catch-all browser rule: a tab that matches nothing lands in Uncategorized, where
             // the triage tab can teach it a real rule — a visible gap beats time quietly filed
             // under a generic "Browsing".
           ]

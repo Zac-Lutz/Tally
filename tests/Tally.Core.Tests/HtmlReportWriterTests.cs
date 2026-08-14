@@ -108,12 +108,12 @@ public class HtmlReportWriterTests
             CB(30, 45, Classification.Unclassified, "Mystery window", process: "someapp"),
         ], [], []);
 
-        // Both tables carry the App column, headed right before Category; the Timeline shares the
-        // Rollup's shape (App, Category, Detail leading, Time trailing).
-        Assert.Contains("<th>App</th><th>Category</th>", md);
-        Assert.Contains("<th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th>", md);
+        // Both tables carry the App column right after Category; the Timeline shares the
+        // Rollup's shape (Category, App, Detail leading, Time trailing).
+        Assert.Contains("<th>Category</th><th>App</th>", md);
+        Assert.Contains("<th>Category</th><th>App</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th>", md);
         Assert.Contains("<td>Code</td>", md);
-        // Unclassified time still names its app — that's what makes it identifiable.
+        // Uncategorized time still names its app — that's what makes it identifiable.
         Assert.Contains("<td>someapp</td>", md);
     }
 
@@ -126,7 +126,7 @@ public class HtmlReportWriterTests
             []);
 
         var calls = md[md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal)..];
-        Assert.Contains("<th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th>", calls);
+        Assert.Contains("<th>Category</th><th>App</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th>", calls);
         Assert.Contains("<td>ms-teams</td>", calls);
         Assert.Contains("Teams - Call", calls);   // the same category its rollup row carries
         Assert.Contains("<td>Standup</td>", calls);
@@ -323,16 +323,18 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void LostTimeTab_ListsLongIdleAndUnclassified_WithTheTotalOnItsTab()
+    public void LostTimeAndUncategorized_AreSummaryCards_NotTabBadges()
     {
         var md = HtmlReportWriter.BuildHtml(Date,
             [CB(0, 60, Classification.Unclassified, "mystery window")],
             [],
             [new InactivePeriod(T0.AddMinutes(60), T0.AddMinutes(106), InactiveReasons.Idle)]);
 
-        // The tab badge is the total time, not a count — "how much" is the question being asked.
+        // The totals moved from tab badges to summary cards; the tab strip is names only.
         Assert.Contains("data-tab=\"lost\"", md);
-        Assert.Contains("<span class=\"badge\">1h 46m</span>", md);
+        Assert.DoesNotContain("<span class=\"badge\">", md);
+        Assert.Contains("<div class=\"v\">1h 46m</div><div class=\"l\">Lost time</div>", md);
+        Assert.Contains("<div class=\"v\">1</div><div class=\"l\">Uncategorized</div>", md);
 
         var panel = Panel(md, "lost");
         Assert.Contains("mystery window", panel);
@@ -501,7 +503,7 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void UnclassifiedTab_ListsWhatMatchedNoRule_WithACount()
+    public void UncategorizedTab_ListsWhatMatchedNoRule_WithTheCountAsACard()
     {
         var md = HtmlReportWriter.BuildHtml(Date,
         [
@@ -509,8 +511,8 @@ public class HtmlReportWriterTests
             CB(30, 55, Classification.Unclassified, "Runbook.txt - Notepad", process: "notepad"),
         ], [], []);
 
-        Assert.Contains("data-tab=\"unclassified\"", md);
-        Assert.Contains("<span class=\"badge\">1</span>", md);   // the tab announces the backlog
+        Assert.Contains(">Uncategorized</button>", md);          // the tab is a name, no badge
+        Assert.Contains("<div class=\"v\">1</div><div class=\"l\">Uncategorized</div>", md);
 
         var panel = md[md.IndexOf("data-panel=\"unclassified\"", StringComparison.Ordinal)..];
         Assert.Contains("notepad", panel);
@@ -519,13 +521,13 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
-    public void UnclassifiedTab_SaysSoWhenEverythingMatched()
+    public void UncategorizedTab_SaysSoWhenEverythingMatched()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
 
         Assert.Contains("data-tab=\"unclassified\"", md);
-        Assert.DoesNotContain("<span class=\"badge\">", md);     // nothing to announce
-        Assert.Contains("Nothing unclassified", md);
+        Assert.Contains("<div class=\"v\">0</div><div class=\"l\">Uncategorized</div>", md);
+        Assert.Contains("Nothing uncategorized", md);
     }
 
     [Fact]

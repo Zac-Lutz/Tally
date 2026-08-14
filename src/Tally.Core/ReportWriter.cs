@@ -154,7 +154,7 @@ public static class ReportWriter
         var lines = idleGaps
             .Select(g => (g.Start, Line: $"- {Clock(g.Start)}\u2013{Clock(g.End)} \u2014 {g.Reason} ({Fmt(g.Duration)})"))
             .Concat(unclassified.Select(b => (b.Block.Start,
-                Line: $"- {Clock(b.Block.Start)}\u2013{Clock(b.Block.End)} \u2014 unclassified: \"{Esc(b.Block.Title)}\" ({Fmt(b.Block.Duration)})")))
+                Line: $"- {Clock(b.Block.Start)}\u2013{Clock(b.Block.End)} \u2014 uncategorized: \"{Esc(b.Block.Title)}\" ({Fmt(b.Block.Duration)})")))
             .OrderBy(x => x.Start);
 
         foreach (var (_, line) in lines)

@@ -157,41 +157,37 @@ public static class HtmlReportWriter
             return;
         }
 
-        AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides,
-            timerPanel, rules, categories, palette, settings);
-    }
-
-    // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
-    // instead of stacked sections. Tab switching + preserving the choice across live refreshes is
-    // TabScript. The Unclassified tab carries a count so a day needing triage announces itself.
-    private static void AppendTabs(
-        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<InactivePeriod> inactivePeriods, IReadOnlyList<ManualTimer> timers,
-        TimeSpan threshold, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
-        TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules = null,
-        IReadOnlyList<CategoryDefinition>? categories = null, CategoryPalette? palette = null,
-        SettingsPanelState? settings = null)
-    {
-        var unclassified = UnclassifiedBuilder.Build(blocks);
+        // Uncategorized and lost time are computed once, up here: their totals are summary cards
+        // and their details are tabs, and the two must agree.
+        var uncategorized = UnclassifiedBuilder.Build(blocks);
         var (lostLines, lostTotal) = LostTime(blocks, inactivePeriods, threshold);
 
+        AppendSummary(sb, blocks, calls, inactivePeriods, lostTotal, uncategorized.Count);
+        AppendTabs(sb, blocks, calls, timers, editable, ticketOverrides,
+            timerPanel, rules, categories, palette, settings, uncategorized, lostLines, lostTotal);
+    }
+
+    // Rollup / Calls / Timeline / Timers / Uncategorized as switchable tabs (Rollup active by
+    // default) instead of stacked sections. Tab switching + preserving the choice across live
+    // refreshes is TabScript. Uncategorized and lost-time totals live in the summary cards, so
+    // the tab strip stays just names.
+    private static void AppendTabs(
+        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers,
+        bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
+        TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules,
+        IReadOnlyList<CategoryDefinition>? categories, CategoryPalette? palette,
+        SettingsPanelState? settings,
+        IReadOnlyList<UnclassifiedRow> uncategorized, IReadOnlyList<string> lostLines, TimeSpan lostTotal)
+    {
         sb.Append("<div class=\"tabs\">");
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timesheet\">Timesheet</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timers\">Timers</button>");
-        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"unclassified\">Unclassified");
-        if (unclassified.Count > 0)
-            sb.Append($"<span class=\"badge\">{unclassified.Count}</span>");
-        sb.Append("</button>");
-        // The badge is the total, not a count: how much time is unaccounted for is the question,
-        // and a "6" tells you nothing about whether that's six minutes or six hours.
-        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"lost\">Lost time");
-        if (lostLines.Count > 0)
-            sb.Append($"<span class=\"badge\">{ReportFormat.Duration(lostTotal)}</span>");
-        sb.Append("</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"unclassified\">Uncategorized</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"lost\">Lost time</button>");
         // The Rules and Categories tabs exist only where their data was provided — the live view.
         // A saved report is a record of a day; the app's current configuration doesn't belong in it.
         if (rules is not null)
@@ -221,7 +217,7 @@ public static class HtmlReportWriter
         AppendTimers(sb, timers, editable, timerPanel);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"unclassified\">\n");
-        AppendUnclassified(sb, unclassified, blocks, editable);
+        AppendUnclassified(sb, uncategorized, blocks, editable);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"lost\">\n");
         AppendLostTime(sb, lostLines, lostTotal);
@@ -265,7 +261,7 @@ public static class HtmlReportWriter
     // the table shows is always what rules.json actually says.
     private static void AppendRules(StringBuilder sb, IReadOnlyList<ClassificationRule> rules, CategoryPalette? palette)
     {
-        sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts today within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Unclassified.</p>\n");
+        sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts today within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Uncategorized.</p>\n");
 
         // Hand-writing a rule, without leaving the tab. Placement is decided by the same
         // specificity logic Save-rule uses: a window pattern earns the top, app-only the bottom.
@@ -279,7 +275,7 @@ public static class HtmlReportWriter
 
         if (rules.Count == 0)
         {
-            sb.Append("<p class=\"empty\">No rules yet — add one above, or save one from the Unclassified tab.</p>\n");
+            sb.Append("<p class=\"empty\">No rules yet — add one above, or save one from the Uncategorized tab.</p>\n");
             return;
         }
 
@@ -516,7 +512,7 @@ public static class HtmlReportWriter
     {
         if (rows.Count == 0)
         {
-            sb.Append("<p class=\"empty\">Nothing unclassified — every activity today matched a rule.</p>\n");
+            sb.Append("<p class=\"empty\">Nothing uncategorized — every activity today matched a rule.</p>\n");
             return;
         }
 
@@ -636,7 +632,9 @@ public static class HtmlReportWriter
         StringBuilder sb,
         IReadOnlyList<ClassifiedBlock> blocks,
         IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<InactivePeriod> inactive)
+        IReadOnlyList<InactivePeriod> inactive,
+        TimeSpan lostTotal,
+        int uncategorizedCount)
     {
         var active = TimeSpan.FromTicks(blocks.Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
@@ -650,19 +648,23 @@ public static class HtmlReportWriter
         }
 
         // Total = all recorded wall-clock (active work + idle/locked). Calls and manual timers
-        // overlay that time rather than adding to it, so they're not summed in.
+        // overlay that time rather than adding to it, so they're not summed in. Lost time is the
+        // "how much is unaccounted for" figure; Uncategorized is the count of activities still
+        // needing a rule — their tabs hold the detail.
         sb.Append("<div class=\"cards\">\n");
         Card(sb, "Total", ReportFormat.Duration(active + inactiveTime));
         Card(sb, "Active", ReportFormat.Duration(active));
         Card(sb, "Calls", ReportFormat.Duration(callTime));
         Card(sb, "Inactive", ReportFormat.Duration(inactiveTime));
+        Card(sb, "Lost time", ReportFormat.Duration(lostTotal));
+        Card(sb, "Uncategorized", uncategorizedCount.ToString());
         sb.Append("</div>\n");
     }
 
     /// <summary>
     /// Stretches of the day that ended up on no timesheet line: idle or locked time, and activity
     /// that matched no rule. Both are "time you'll have to account for from memory", which is why
-    /// they share a tab — the Unclassified tab is for teaching Tally a rule, this one is for
+    /// they share a tab — the Uncategorized tab is for teaching Tally a rule, this one is for
     /// spotting the hole before someone asks about it.
     /// </summary>
     private static (List<string> Lines, TimeSpan Total) LostTime(
@@ -677,7 +679,7 @@ public static class HtmlReportWriter
             .Concat(blocks
                 .Where(b => b.Classification.IsUnclassified && b.Block.Duration >= threshold)
                 .Select(b => (b.Block.Start, b.Block.Duration,
-                    Html: $"{ReportFormat.Clock(b.Block.Start)}–{ReportFormat.Clock(b.Block.End)} — unclassified: “{Esc(b.Block.Title)}” <span class=\"muted\">({ReportFormat.Duration(b.Block.Duration)})</span>")))
+                    Html: $"{ReportFormat.Clock(b.Block.Start)}–{ReportFormat.Clock(b.Block.End)} — uncategorized: “{Esc(b.Block.Title)}” <span class=\"muted\">({ReportFormat.Duration(b.Block.Duration)})</span>")))
             .OrderBy(x => x.Start)
             .ToList();
 
@@ -717,13 +719,13 @@ public static class HtmlReportWriter
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>App</th><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th></tr>\n");
+        sb.Append("<tr><th>Category</th><th>App</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var row in rows)
         {
-            // The app always shows, classified or not — a manual timer is the one row with no app.
-            sb.Append("<tr><td>").Append(row.ProcessName is { } app ? Esc(app) : "<span class=\"muted\">—</span>").Append("</td>")
-              .Append("<td>").Append(CategoryBadge(row.Category, palette)).Append("</td>")
+            // The app always shows, categorized or not — a manual timer is the one row with no app.
+            sb.Append("<tr><td>").Append(CategoryBadge(row.Category, palette)).Append("</td>")
+              .Append("<td>").Append(row.ProcessName is { } app ? Esc(app) : "<span class=\"muted\">—</span>").Append("</td>")
               .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
               .Append("<td>").Append(TicketCell(row, editable)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
@@ -746,7 +748,7 @@ public static class HtmlReportWriter
         return row.TicketRef is { } tk ? $"#{Esc(tk)}" : string.Empty;
     }
 
-    // Calls, Timeline, and the Rollup share one column shape — App, Category, Detail leading,
+    // Calls, Timeline, and the Rollup share one column shape — Category, App, Detail leading,
     // Time trailing — so the eye lands on the same facts in the same place on every tab.
     private static void AppendCalls(StringBuilder sb, IReadOnlyList<CallSpan> calls, CategoryPalette? palette)
     {
@@ -757,14 +759,14 @@ public static class HtmlReportWriter
         }
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th></tr>\n");
+        sb.Append("<tr><th>Category</th><th>App</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var call in calls)
         {
             // The category is the one the call's rollup row carries (Teams - Call, Discord, …),
             // so a call is filed identically wherever it shows.
-            sb.Append("<tr><td>").Append(Esc(call.ProcessName)).Append("</td>")
-              .Append("<td>").Append(CategoryBadge(CallApps.CategoryFor(call.ProcessName), palette)).Append("</td>")
+            sb.Append("<tr><td>").Append(CategoryBadge(CallApps.CategoryFor(call.ProcessName), palette)).Append("</td>")
+              .Append("<td>").Append(Esc(call.ProcessName)).Append("</td>")
               .Append("<td>").Append(Esc(call.Title)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(call.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(call.End)).Append("</td>")
@@ -777,14 +779,14 @@ public static class HtmlReportWriter
     private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, CategoryPalette? palette)
     {
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th></tr>\n");
+        sb.Append("<tr><th>Category</th><th>App</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         // Newest first — most recent activity at the top.
         for (var i = blocks.Count - 1; i >= 0; i--)
         {
             var b = blocks[i];
-            sb.Append("<tr><td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
-              .Append("<td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
+            sb.Append("<tr><td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
+              .Append("<td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
               .Append("<td>").Append(Esc(b.Block.Title)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
