@@ -344,8 +344,8 @@ public static class HtmlReportWriter
     // Categories seen today, plus the shipped defaults so a fresh day still offers sensible names.
     private static readonly string[] BaselineCategories =
     [
-        "Admin", "Browsing", "Development", "Discord", "Email", "HaloPSA", "Meetings",
-        "Remote Support", "RingCentral", "Teams",
+        "Admin", "Development", "Discord", "Halo", "IT Glue", "Meetings",
+        "Outlook", "RingCentral", "ScreenConnect", "Teams",
     ];
 
     private static IReadOnlyList<string> KnownCategories(IReadOnlyList<ClassifiedBlock> blocks)
@@ -589,16 +589,19 @@ public static class HtmlReportWriter
     // so contrast holds in both themes.
     private static string CategoryRgb(string category) => category switch
     {
-        "HaloPSA" => "59,130,246",
+        // Old category names ("HaloPSA", "Email", "Remote Support") stay as aliases: rules.json is
+        // user-owned, so an installed copy may keep filing under them long after the defaults moved on.
+        "Halo" or "HaloPSA" => "59,130,246",
         // Teams keeps one hue whether the time was a call or a chat — the badge text draws the
         // distinction, and the colour is there to say "this was Teams" at a glance.
         "Teams" or CallApps.TeamsCallCategory or TeamsChatCategory => "139,92,246",
         CallApps.DiscordCategory => "88,101,242",
         CallApps.RingCentralCategory => "6,182,212",
-        "Email" => "20,184,166",
+        "Outlook" or "Email" => "20,184,166",
         "Development" => "34,197,94",
+        "IT Glue" => "239,68,68",
         "Browsing" => "234,179,8",
-        "Remote Support" => "236,72,153",
+        "ScreenConnect" or "Remote Support" => "236,72,153",
         RollupBuilder.CallCategory => "249,115,22",
         RollupBuilder.TimerCategory => "99,102,241",
         // The one row that needs a human gets the same amber the gaps panel uses.

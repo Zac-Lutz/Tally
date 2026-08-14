@@ -180,11 +180,23 @@ public static partial class RulesFile
           // Ordered, first match wins. processPattern / titlePattern are case-insensitive regexes.
           // Named groups (?<ticket>...) and (?<client>...) in titlePattern extract those fields.
           "rules": [
-            { "id": "halo-ticket", "titlePattern": "Ticket\\s*#?(?<ticket>\\d{3,})", "category": "HaloPSA" },
-            { "id": "halo", "titlePattern": "Halo\\s?PSA", "category": "HaloPSA" },
-            { "id": "screenconnect-client", "titlePattern": "^(?<client>.+?)\\s+[-\\u2013\\u2014].*(ScreenConnect|ConnectWise Control)", "category": "Remote Support" },
-            { "id": "screenconnect", "titlePattern": "ScreenConnect|ConnectWise Control", "category": "Remote Support" },
-            { "id": "owa", "titlePattern": "Outlook", "category": "Email" },
+            { "id": "halo-ticket", "titlePattern": "Ticket\\s*#?(?<ticket>\\d{3,})", "category": "Halo" },
+            // HaloPSA's web app titles itself with unbranded breadcrumbs — "Tickets > Management >
+            // <view>", ending in the ticket number when one is open — so the module names anchor
+            // the match, and a trailing number is captured as the ticket.
+            { "id": "halo-ticket-tab", "titlePattern": "^Tickets\\s*>.*>\\s*(?<ticket>\\d{3,})", "category": "Halo" },
+            { "id": "halo-tab", "titlePattern": "^(Tickets|Clients|Users|Sites|Assets|Opportunities|Projects|Contracts|Suppliers|Invoices|Quotations|Reports|Configuration|Knowledge Base)\\s*>", "category": "Halo" },
+            { "id": "halo", "titlePattern": "Halo\\s?PSA", "category": "Halo" },
+            // IT Glue pages title themselves "<page> — IT Glue" (em-dash in the web app; hyphen and
+            // en-dash allowed too), or lead with the product name.
+            { "id": "itglue", "titlePattern": "(^|[-\\u2013\\u2014]\\s*)IT Glue\\b", "category": "IT Glue" },
+            { "id": "screenconnect-client", "titlePattern": "^(?<client>.+?)\\s+[-\\u2013\\u2014].*(ScreenConnect|ConnectWise Control)", "category": "ScreenConnect" },
+            { "id": "screenconnect", "titlePattern": "ScreenConnect|ConnectWise Control", "category": "ScreenConnect" },
+            // Outlook wherever it's read: the desktop app (olk = new Outlook, outlook = classic) by
+            // process, and OWA in a browser tab by its "Mail - <name> - Outlook" title shape. The
+            // leading dash keeps a page merely mentioning Outlook from being claimed.
+            { "id": "outlook-app", "processPattern": "^(olk|outlook)$", "category": "Outlook" },
+            { "id": "owa", "titlePattern": "(^|[-\\u2013\\u2014]\\s*)Outlook\\b", "category": "Outlook" },
             // Teams window titles carry the focused chat/channel: "Chat | <name> | Microsoft Teams".
             // Capture that name as the subject so the rollup separates each conversation. Filed as
             // "Teams - Chat" so it reads apart from "Teams - Call" (which calls carry) on a
@@ -201,8 +213,10 @@ public static partial class RulesFile
             { "id": "ringcentral", "processPattern": "^RingCentral", "category": "RingCentral" },
             { "id": "terminal", "processPattern": "^(WindowsTerminal|wt|OpenConsole|conhost|powershell|pwsh|cmd)$", "category": "Development" },
             { "id": "vscode", "processPattern": "^Code$", "category": "Development" },
-            { "id": "visual-studio", "processPattern": "^devenv$", "category": "Development" },
-            { "id": "browser", "processPattern": "^(chrome|msedge|firefox)$", "category": "Browsing" }
+            { "id": "visual-studio", "processPattern": "^devenv$", "category": "Development" }
+            // No catch-all browser rule: a tab that matches nothing lands in Unclassified, where
+            // the triage tab can teach it a real rule — a visible gap beats time quietly filed
+            // under a generic "Browsing".
           ]
         }
         """;

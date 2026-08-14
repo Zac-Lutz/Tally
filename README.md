@@ -237,6 +237,14 @@ allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-in
 regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
 fields. Rules are re-read on every report generation, so edits apply immediately.
 
+**The starter rules know the web apps by their titles.** A Halo tab is recognized by its
+breadcrumb-shaped title (`Tickets > Management > …` — a trailing number is captured as the
+ticket, since Halo's tabs never actually say "Halo"), an IT Glue tab by its `— IT Glue` suffix,
+ScreenConnect by name, and Outlook whether it's OWA in a tab (`… - Outlook`) or the desktop app
+(`olk` / `outlook` by process). There is deliberately **no catch-all browser rule**: a tab that
+matches nothing lands in Unclassified, where the triage tab can teach it a real rule — a visible
+gap beats time quietly filed under a generic "Browsing".
+
 `subject` captures a free-text "what/who" — e.g. the shipped Teams rule pulls the focused
 chat/channel name out of `Chat | <name> | Microsoft Teams`, so the rollup lists each
 conversation separately instead of one lumped row. The **Discord** rule does the same

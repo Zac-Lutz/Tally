@@ -30,6 +30,16 @@ Everything stays on this machine. No cloud, no telemetry.
   follows the same shape from the other end of the title (`… - Discord`), with a process-gated
   fallback for the bare `Discord` window — chat apps title themselves by what's focused, so both
   get a specific rule plus a catch-all rather than one loose pattern.
+- **Categories are named after the tool, and the browser is not a category.** The defaults file
+  under the tool that earns the bill: "Halo" (was "HaloPSA"), "Outlook" (was "Email"),
+  "ScreenConnect" (was "Remote Support"), plus "IT Glue". Halo's web app is matched by its
+  unbranded breadcrumb titles (`^Tickets\s*>` etc., trailing number captured as the ticket) —
+  measured against a real day, the old rules saw 0 of those tabs and the brand rule alone missed
+  ~75% of Halo time. The browser→"Browsing" catch-all was removed: it was the single biggest
+  category and said nothing billable, so unmatched tabs now land in Unclassified where the triage
+  tab teaches real rules. Old category names live on as colour aliases in `HtmlReportWriter`
+  because rules.json is user-owned — an installed copy keeps its old names until its user updates
+  them; only fresh installs get the new defaults.
 - **Saved rules are placed by specificity, not appended blindly.** Rules are first-match-wins, so
   a rule written from the Unclassified tab lands where its breadth earns: a *window* rule (app +
   exact title) goes first — it names one thing and should beat the generic rules — while an *app*

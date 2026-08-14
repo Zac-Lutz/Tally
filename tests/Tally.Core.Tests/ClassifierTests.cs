@@ -26,8 +26,77 @@ public class ClassifierTests
     {
         var c = DefaultClassifier().Classify("chrome", "Ticket #12345 - VPN drops at Acme - HaloPSA");
 
-        Assert.Equal("HaloPSA", c.Category);
+        Assert.Equal("Halo", c.Category);
         Assert.Equal("12345", c.TicketRef);
+    }
+
+    // Halo's web app titles are unbranded breadcrumbs; when a ticket is open its number is the
+    // last segment. Real titles from a captured day, browser suffix included.
+    [Fact]
+    public void HaloBreadcrumbTab_WithTrailingNumber_ExtractsTheTicket()
+    {
+        var c = DefaultClassifier().Classify(
+            "msedge", "Tickets > Management > Zac Franklin > 493876 and 5 more pages - Work - Microsoft​ Edge");
+
+        Assert.Equal("Halo", c.Category);
+        Assert.Equal("493876", c.TicketRef);
+        Assert.Equal("halo-ticket-tab", c.RuleId);
+    }
+
+    [Theory]
+    [InlineData("Tickets > Management > Zac Franklin and 5 more pages - Work - Microsoft​ Edge")]
+    [InlineData("Tickets > Management > 🛑 Missing Category and 4 more pages - Work - Microsoft​ Edge")]
+    [InlineData("Configuration > Tickets > Ticket Types and 11 more pages - Work - Microsoft​ Edge")]
+    [InlineData("Configuration > Integrations > Custom Integrations > Methods and 11 more pages - Work - Microsoft​ Edge")]
+    public void HaloBreadcrumbTab_WithoutATicket_IsStillHalo(string title)
+    {
+        var c = DefaultClassifier().Classify("msedge", title);
+
+        Assert.Equal("Halo", c.Category);
+        Assert.Null(c.TicketRef);
+    }
+
+    [Theory]
+    [InlineData("Organizations — IT Glue and 6 more pages - Work - Microsoft​ Edge")]
+    [InlineData("Pella Windows and Doors — IT Glue and 10 more pages - Work - Microsoft​ Edge")]
+    [InlineData("IT Glue and 5 more pages - Work - Microsoft​ Edge")]
+    public void ItGlueTab_IsItGlue(string title)
+        => Assert.Equal("IT Glue", DefaultClassifier().Classify("msedge", title).Category);
+
+    [Theory]
+    [InlineData("msedge", "Mail - Zac Franklin - Outlook and 4 more pages - Work - Microsoft​ Edge")]
+    [InlineData("msedge", "Calendar - Zac Franklin - Outlook and 5 more pages - Work - Microsoft​ Edge")]
+    [InlineData("msedge", "Outlook and 7 more pages - Work - Microsoft​ Edge")]
+    public void OwaTab_IsOutlook(string process, string title)
+        => Assert.Equal("Outlook", DefaultClassifier().Classify(process, title).Category);
+
+    // The desktop app is claimed by process name — olk is new Outlook, outlook is classic —
+    // whatever the window title says.
+    [Theory]
+    [InlineData("olk")]
+    [InlineData("OUTLOOK")]
+    public void OutlookDesktopApp_IsOutlook_ByProcess(string process)
+    {
+        var c = DefaultClassifier().Classify(process, "Inbox - kirra@example.com");
+
+        Assert.Equal("Outlook", c.Category);
+        Assert.Equal("outlook-app", c.RuleId);
+    }
+
+    [Fact]
+    public void PageMerelyMentioningOutlook_IsNotClaimed()
+        => Assert.True(DefaultClassifier()
+            .Classify("msedge", "what's new in Outlook - Google Search and 3 more pages - Work - Microsoft​ Edge")
+            .IsUnclassified);
+
+    [Fact]
+    public void UnmatchedBrowserTab_IsUnclassified_NotBrowsing()
+    {
+        // No catch-all browser rule: unknown tabs surface in Unclassified to be taught a rule.
+        var c = DefaultClassifier().Classify(
+            "msedge", "Pull requests · lutz-tech/ATT and 5 more pages - Work - Microsoft​ Edge");
+
+        Assert.True(c.IsUnclassified);
     }
 
     // The four title shapes Discord actually produces, taken from a real day's captures.
@@ -64,15 +133,15 @@ public class ClassifierTests
 
     [Fact]
     public void RingCentral_DoesNotClaimABrowserTabAboutIt()
-        => Assert.Equal("Browsing",
-            DefaultClassifier().Classify("msedge", "ringcentral - Google Search - Work").Category);
+        => Assert.True(DefaultClassifier()
+            .Classify("msedge", "ringcentral - Google Search - Work").IsUnclassified);
 
     [Fact]
     public void Discord_DoesNotClaimOtherAppsThatMentionIt()
     {
         // A shell jump list and a browser tab both say "Discord"; only the app itself counts.
         Assert.True(DefaultClassifier().Classify("ShellExperienceHost", "Jump List for Discord").IsUnclassified);
-        Assert.Equal("Browsing", DefaultClassifier().Classify("chrome", "Discord | Lutz Tech").Category);
+        Assert.True(DefaultClassifier().Classify("chrome", "Discord | Lutz Tech").IsUnclassified);
     }
 
     [Fact]
@@ -80,17 +149,18 @@ public class ClassifierTests
     {
         var c = DefaultClassifier().Classify("chrome", "Acme Corp - Backstage - ScreenConnect");
 
-        Assert.Equal("Remote Support", c.Category);
+        Assert.Equal("ScreenConnect", c.Category);
         Assert.Equal("Acme Corp", c.Client);
     }
 
     [Fact]
-    public void FirstMatchWins_TicketRuleBeatsGenericBrowserRule()
+    public void FirstMatchWins_TicketRuleBeatsTheBrandRule()
     {
-        // chrome also matches the catch-all browser rule; the ticket rule is earlier in the list.
+        // The title matches both the ticket rule and the HaloPSA brand rule; the ticket rule is
+        // earlier in the list, so the number is captured.
         var c = DefaultClassifier().Classify("chrome", "Ticket #777 - HaloPSA");
 
-        Assert.Equal("HaloPSA", c.Category);
+        Assert.Equal("Halo", c.Category);
         Assert.Equal("halo-ticket", c.RuleId);
     }
 
@@ -109,7 +179,7 @@ public class ClassifierTests
         var c = DefaultClassifier().Classify("chrome", "some page");
 
         Assert.NotEqual("Teams", c.Category);   // the teams process rule must not fire for chrome
-        Assert.Equal("Browsing", c.Category);
+        Assert.True(c.IsUnclassified);
     }
 
     [Fact]
