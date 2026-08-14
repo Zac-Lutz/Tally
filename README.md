@@ -69,13 +69,6 @@ side, and unaccounted time shows as empty space, so a gap in your day is somethi
 rather than something you have to work out. The solid part of a block is the time actually
 measured: a block that's mostly faint spanned an hour but only earned a few minutes of it.
 
-**Two views, one toggle.** The calendar opens on **Actual** — every stretch of window time
-exactly as it happened, the Timeline drawn on the grid, each block labelled with its real
-duration (activities totalling under a minute across the whole day are left out, the same noise
-the Rollup hides). Switch to **Merged** for the entries the export will actually contain —
-grouped, claimed, and rounded. The toggle sits under the calendar and remembers your choice
-across refreshes; saved reports carry both views too.
-
 The **Tickets** tab is the day grouped by ticket number: one row per ticket a window title named
 or you typed onto a Rollup row — window activity and calls alike, so a meeting given a ticket
 number files under it too. Each row carries the app and window the most time went to, how many

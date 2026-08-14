@@ -17,39 +17,6 @@ public class SuggestionSlotBuilderTests
         => new(T0.AddMinutes(startMin), T0.AddMinutes(endMin), "ms-teams", title);
 
     [Fact]
-    public void BuildActual_KeepsEveryStretchAtItsRealTime_NothingMerged()
-    {
-        // Two visits to the same ticket: the merged build makes one engagement; Actual keeps two
-        // items exactly where they happened, durations unrounded.
-        var actual = SuggestionSlotBuilder.BuildActual(
-        [
-            CB(0, 5, "Halo", "Ticket #42", ticket: "42"),
-            CB(25, 30, "Halo", "Ticket #42", ticket: "42"),
-        ]);
-
-        Assert.Equal(2, actual.Count);
-        Assert.Equal(T0, actual[0].Start);
-        Assert.Equal(T0.AddMinutes(25), actual[1].Start);
-        Assert.All(actual, s => Assert.Equal(TimeSpan.FromMinutes(5), s.Measured));
-        Assert.All(actual, s => Assert.Equal("42", s.TicketRef));
-    }
-
-    [Fact]
-    public void BuildActual_DropsActivitiesTotallingUnderAMinute_ButSumsBeforeJudging()
-    {
-        var actual = SuggestionSlotBuilder.BuildActual(
-        [
-            CB(0, 0.4, "Development", "Fix.cs"),      // three 24s glances at one file: 72s total —
-            CB(10, 10.4, "Development", "Fix.cs"),    // over the minute, so all three stay
-            CB(20, 20.4, "Development", "Fix.cs"),
-            CB(30, 30.5, "Outlook", "Quick glance"),  // one 30s glance: under a minute total — gone
-        ]);
-
-        Assert.Equal(3, actual.Count);
-        Assert.All(actual, s => Assert.Equal("Development", s.Category));
-    }
-
-    [Fact]
     public void TicketVisits_UpToHalfAnHourApart_MakeOneEngagement()
     {
         // The ticket window is left and returned to while the work happens elsewhere — three 5m

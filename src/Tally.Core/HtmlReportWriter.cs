@@ -202,7 +202,7 @@ public static class HtmlReportWriter
         // Always the whole day: choosing a slice belongs to the export itself, so this stays the
         // one honest picture of what happened rather than a filtered one.
         sb.Append("<section class=\"panel\" data-panel=\"timesheet\">\n");
-        AppendTimesheet(sb, blocks, SuggestionSlotBuilder.Build(blocks, calls, timers), palette);
+        AppendTimesheet(sb, SuggestionSlotBuilder.Build(blocks, calls, timers), palette);
         sb.Append("</section>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
@@ -426,12 +426,7 @@ public static class HtmlReportWriter
     /// be checked before it's uploaded. Measured time is shown beside the reported figure — the
     /// rounding is visible rather than something the file does quietly.
     /// </summary>
-    // Two calendars behind one toggle: Actual (default) is the Timeline drawn on the grid —
-    // every stretch at its real time, nothing merged — and Merged is the export's entries. Both
-    // render up front and the toggle just switches which shows, so it works in a saved file too.
-    private static void AppendTimesheet(
-        StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<SuggestionSlot> slots,
-        CategoryPalette? palette)
+    private static void AppendTimesheet(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots, CategoryPalette? palette)
     {
         if (slots.Count == 0)
         {
@@ -441,31 +436,10 @@ public static class HtmlReportWriter
 
         var total = slots.Sum(s => s.Reported.TotalHours);
         var measured = TimeSpan.FromTicks(slots.Sum(s => s.Measured.Ticks));
-        sb.Append($"<p class=\"hint\">{slots.Count} {(slots.Count == 1 ? "entry" : "entries")} · <strong>{total:0.00} h</strong> to enter · {ReportFormat.Duration(measured)} actually measured. The export contains exactly these entries — the Merged view draws them.</p>\n");
+        sb.Append($"<p class=\"hint\">{slots.Count} {(slots.Count == 1 ? "entry" : "entries")} · <strong>{total:0.00} h</strong> to enter · {ReportFormat.Duration(measured)} actually measured. This is exactly what the export contains.</p>\n");
 
-        sb.Append("<div class=\"ts-view\" data-ts-view=\"actual\">\n");
-        var actual = SuggestionSlotBuilder.BuildActual(blocks);
-        if (actual.Count == 0)
-        {
-            sb.Append("<p class=\"empty\">No window activity to draw — the day so far is calls or timers only.</p>\n");
-        }
-        else
-        {
-            AppendCalendar(sb, actual, palette, actual: true);
-            sb.Append("<p class=\"hint\">Every stretch exactly as it happened — the Timeline drawn on the calendar. Activities totalling under a minute across the whole day are left out, the same noise the Rollup hides.</p>\n");
-        }
-
-        sb.Append("</div>\n");
-
-        sb.Append("<div class=\"ts-view\" data-ts-view=\"merged\" hidden>\n");
         AppendCalendar(sb, slots, palette);
         sb.Append("<p class=\"hint\">Blocks sit where the work happened; the number on each is the hours to enter. Work you kept coming back to — a ticket revisited between other windows — draws as one faint stretch from its first visit to its last, with solid pins marking the visits themselves (hover for their exact times); the hours are still only the time measured. Time is claimed once — a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” block rather than dropped.</p>\n");
-        sb.Append("</div>\n");
-
-        sb.Append("<div class=\"ts-toggle\">")
-          .Append("<button class=\"ts-mode active\" type=\"button\" data-ts=\"actual\">Actual</button>")
-          .Append("<button class=\"ts-mode\" type=\"button\" data-ts=\"merged\">Merged</button>")
-          .Append("</div>\n");
     }
 
     /// <summary>How many pixels one minute of the day is drawn as.</summary>
@@ -478,8 +452,7 @@ public static class HtmlReportWriter
     // Blocks are drawn over their real span (the shape att's own calendar will show them in), with
     // the billable hours on the block — the two differ whenever short gaps were bridged, and the
     // gaps between blocks are the point: unaccounted time is visible as empty space.
-    private static void AppendCalendar(
-        StringBuilder sb, IReadOnlyList<SuggestionSlot> slots, CategoryPalette? palette, bool actual = false)
+    private static void AppendCalendar(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots, CategoryPalette? palette)
     {
         if (TimesheetCalendar.Bounds(slots) is not { } bounds)
             return;
@@ -511,13 +484,9 @@ public static class HtmlReportWriter
             var rgb = CategoryRgb(slot.Category, palette);
             var ticket = slot.TicketRef is { } t ? $"#{t} " : string.Empty;
             var visits = slot.Kind == SuggestionSlotKind.Activity ? TimesheetCalendar.Visits(slot) : [];
-            // The actual view's items ARE the measurement — no rounding, no claiming — so their
-            // hover says the duration plainly instead of "measured → to enter".
-            var tip = actual
-                ? $"{ReportFormat.Clock(displayStart)}–{ReportFormat.Clock(displayEnd)} · {ticket}{slot.Label} · {ReportFormat.Duration(slot.Measured)}"
-                : $"{ReportFormat.Clock(displayStart)}–{ReportFormat.Clock(displayEnd)} · {ticket}{slot.Label} · "
-                  + $"{ReportFormat.Duration(slot.Measured)} measured → {slot.Reported.TotalHours:0.00} h to enter"
-                  + VisitsTip(visits);
+            var tip = $"{ReportFormat.Clock(displayStart)}–{ReportFormat.Clock(displayEnd)} · {ticket}{slot.Label} · "
+                      + $"{ReportFormat.Duration(slot.Measured)} measured → {slot.Reported.TotalHours:0.00} h to enter"
+                      + VisitsTip(visits);
 
             sb.Append($"<div class=\"ev\" style=\"top:{Px(top)}px;height:{Px(height - 2)}px;")
               .Append($"left:calc({Px(left)}% + 1px);width:calc({Px(width)}% - 3px);")
@@ -546,9 +515,7 @@ public static class HtmlReportWriter
             }
 
             sb.Append("<span class=\"ev-txt\">")
-              .Append(actual
-                  ? $"<b>{ReportFormat.Duration(slot.Measured)}</b> "
-                  : $"<b>{slot.Reported.TotalHours:0.00}</b> ")
+              .Append($"<b>{slot.Reported.TotalHours:0.00}</b> ")
               .Append(Esc(ticket + slot.Label))
               .Append("</span></div>\n");
         }
@@ -1088,13 +1055,6 @@ public static class HtmlReportWriter
           border-left:3px solid; font-size:12px; line-height:17px; cursor:default; }
         .ev-fill { position:absolute; left:0; right:0; top:0; display:block; }
         .ev-pin { position:absolute; left:0; right:0; display:block; min-height:3px; }
-        /* Actual/Merged toggle under the timesheet calendar — a small segmented control. */
-        .ts-toggle { display:inline-flex; gap:2px; margin:12px 0 4px; background:var(--btn-bg);
-          border-radius:8px; padding:2px; }
-        .ts-mode { background:none; border:none; border-radius:6px; color:var(--muted); font:inherit;
-          font-size:12px; font-weight:600; padding:4px 14px; cursor:pointer; }
-        .ts-mode:hover { color:var(--fg); }
-        .ts-mode.active { background:var(--card); color:var(--fg); }
         .ev-txt { position:relative; display:block; padding:1px 8px;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .ev b { font-variant-numeric:tabular-nums; margin-right:4px; }
@@ -1135,24 +1095,15 @@ public static class HtmlReportWriter
     private const string TabScript =
         """
         (function(){
-        function applyTs(){
-        var mode=window.__tallyTsView||'actual';
-        document.querySelectorAll('.ts-mode').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-ts')===mode);});
-        document.querySelectorAll('.ts-view').forEach(function(v){v.hidden=v.getAttribute('data-ts-view')!==mode;});
-        }
         function apply(){
         var name=window.__tallyTab||'rollup';var ok=false;
         document.querySelectorAll('.tab').forEach(function(t){var on=t.getAttribute('data-tab')===name;t.classList.toggle('active',on);if(on)ok=true;});
         if(!ok){name='rollup';window.__tallyTab='rollup';document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.getAttribute('data-tab')==='rollup');});}
         document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-panel')===name);});
-        applyTs();
         }
         window.tallyApplyActiveTab=apply;
         window.tallyShowTab=function(n){window.__tallyTab=n;apply();};
-        document.addEventListener('click',function(e){
-        var m=e.target.closest?e.target.closest('.ts-mode'):null;
-        if(m){window.__tallyTsView=m.getAttribute('data-ts');applyTs();return;}
-        var t=e.target.closest?e.target.closest('.tab'):null;if(!t)return;window.__tallyTab=t.getAttribute('data-tab');apply();});
+        document.addEventListener('click',function(e){var t=e.target.closest?e.target.closest('.tab'):null;if(!t)return;window.__tallyTab=t.getAttribute('data-tab');apply();});
         document.addEventListener('DOMContentLoaded',apply);
         })();
         """;
