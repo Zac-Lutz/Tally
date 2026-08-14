@@ -31,6 +31,9 @@ public sealed record TallySettings
     /// <summary>Start Tally automatically at login (per-user HKCU Run entry).</summary>
     public bool AutoStart { get; init; } = true;
 
+    /// <summary>Days of raw activity history to keep; older whole days are deleted daily. 0 = keep forever; null = default.</summary>
+    public int? EventRetentionDays { get; init; }
+
     /// <summary>Global hotkey to start a manual timer, e.g. "Ctrl+Alt+T".</summary>
     public string TimerStartHotkey { get; init; } = "Ctrl+Alt+T";
 
@@ -62,6 +65,11 @@ public sealed record TallySettings
 
     /// <summary>Resolves the format string; anything unrecognized falls back to HTML.</summary>
     public ReportFileFormat ResolveReportFormat() => ReportFileFormats.Parse(ReportFormat);
+
+    /// <summary>Raw-event retention in days; a missing setting gets the default. 0 = keep forever.</summary>
+    public int ResolveEventRetentionDays() => EventRetentionDays ?? DefaultEventRetentionDays;
+
+    public const int DefaultEventRetentionDays = 90;
 
     public static TallySettings LoadOrCreate(string path)
     {
@@ -97,6 +105,10 @@ public sealed record TallySettings
           "reportsDirectory": null,
           // Report file format: "html" (default), "markdown", or "json".
           "reportFormat": "html",
+          // How many days of raw activity history to keep. Whole days older than this are deleted
+          // once a day so the database stops growing (saved report files are never touched).
+          // 0 = keep everything forever; values 1-6 are treated as 7.
+          "eventRetentionDays": 90,
           // Start Tally automatically at login.
           "autoStart": true,
           // Global hotkeys for manual timers. Combine Ctrl/Alt/Shift/Win + a letter/F-key.

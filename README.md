@@ -20,7 +20,7 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 - **Open live view** — a dashboard window that shows the current day and refreshes in place
 - **Pause/Resume tracking**
 - **Generate today's / yesterday's report** — writes and opens a snapshot
-- **Settings** — hotkeys and auto-report times
+- **Settings** — hotkeys, auto-report times, and how long raw history is kept
 - **Check for updates** — pull and apply the newest version right now (see Auto-update below)
 - **Open reports / data folder**
 - **Exit**
@@ -330,6 +330,20 @@ Remove-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' 
 
 Headless report (e.g. from a scheduled task): `tally.exe --report [today|yesterday|yyyy-MM-dd]`
 writes the file without opening it.
+
+## How long data is kept
+
+Raw activity events are kept for **90 days** by default, then deleted automatically — whole days
+at a time, once a day — so the database never grows without limit (the file is compacted after
+each cleanup). Change the window under **Settings** ("Keep raw history"), or set
+`eventRetentionDays` in `settings.json`: `0` keeps everything forever, and values under 7 are
+treated as 7 so the last week always stays regenerable.
+
+What deletion means: a purged day can no longer have a *new* report generated for it, but nothing
+already written is touched — saved report files stay, manual timers stay (they can't be rebuilt
+from anything), and rules, settings, and ticket overrides are unaffected. With the daily
+auto-report on (the default), every day has its snapshot on disk long before its raw events age
+out.
 
 ## Data locations
 

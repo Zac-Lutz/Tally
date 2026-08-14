@@ -77,6 +77,39 @@ public class JsonValueEditorTests
         Assert.Empty(ArrayOf(updated, "autoReportTimes"));
     }
 
+    private static long NumberOf(string json, string key)
+        => JsonDocument.Parse(json, Options).RootElement.GetProperty(key).GetInt64();
+
+    [Fact]
+    public void SetNumber_ReplacesExisting()
+    {
+        const string json = """{ "eventRetentionDays": 90, "b": "y" }""";
+        var updated = JsonValueEditor.SetNumberProperty(json, "eventRetentionDays", 30);
+
+        Assert.Equal(30, NumberOf(updated, "eventRetentionDays"));
+        Assert.Equal("y", ValueOf(updated, "b"));
+    }
+
+    [Fact]
+    public void SetNumber_InsertsWhenAbsent()
+    {
+        const string json = """{ "a": "x" }""";
+        var updated = JsonValueEditor.SetNumberProperty(json, "eventRetentionDays", 90);
+
+        Assert.Equal(90, NumberOf(updated, "eventRetentionDays"));
+        Assert.Equal("x", ValueOf(updated, "a"));
+    }
+
+    [Fact]
+    public void SetNumber_ReplacesExplicitNull()
+    {
+        const string json = """{ "eventRetentionDays": null, "b": 3 }""";
+        var updated = JsonValueEditor.SetNumberProperty(json, "eventRetentionDays", 0);
+
+        Assert.Equal(0, NumberOf(updated, "eventRetentionDays"));
+        Assert.Equal(3, NumberOf(updated, "b"));
+    }
+
     [Fact]
     public void OnlyReplacesFirstMatch_AndProducesValidJson()
     {

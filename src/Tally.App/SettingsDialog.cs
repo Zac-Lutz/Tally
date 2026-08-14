@@ -23,11 +23,14 @@ public sealed class SettingsDialog : Form
     private readonly ListBox _timesList = new();
     private readonly DateTimePicker _timePicker = new();
     private readonly List<TimeOnly> _times = [];
+    private readonly NumericUpDown _retentionDays = new();
+    private readonly CheckBox _keepForever = new();
     private readonly Label _error;
 
     public string StartSpec => _start.Spec;
     public string StopSpec => _stop.Spec;
     public IReadOnlyList<string> AutoReportTimes => _times.Select(t => t.ToString("HH:mm")).ToList();
+    public int EventRetentionDays => _keepForever.Checked ? 0 : (int)_retentionDays.Value;
 
     private SettingsDialog(TallySettings settings)
     {
@@ -38,7 +41,7 @@ public sealed class SettingsDialog : Form
         MinimizeBox = false;
         BackColor = Bg;
         ForeColor = Fg;
-        ClientSize = new Size(400, 452);
+        ClientSize = new Size(400, 560);
         try { Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "Assets", "tally.ico")); } catch { /* default icon */ }
 
         Controls.Add(Header("Timer hotkeys", 16));
@@ -84,14 +87,46 @@ public sealed class SettingsDialog : Form
             Size = new Size(360, 34),
         });
 
-        _error = new Label { ForeColor = Color.FromArgb(0xff, 0x8a, 0x8a), AutoSize = false, Location = new Point(20, 336), Size = new Size(360, 18) };
+        Controls.Add(new Panel { BackColor = Border, Location = new Point(20, 334), Size = new Size(360, 1) });
+
+        Controls.Add(Header("Keep raw history", 348));
+
+        Controls.Add(Field("Delete raw activity older than", 381));
+        _retentionDays.SetBounds(196, 377, 56, 24);
+        _retentionDays.Minimum = Tally.Core.RetentionPolicy.MinimumDays;
+        _retentionDays.Maximum = 3650;
+        _retentionDays.BackColor = InputBg;
+        _retentionDays.ForeColor = Fg;
+        _retentionDays.BorderStyle = BorderStyle.FixedSingle;
+        Controls.Add(_retentionDays);
+        var daysLabel = Field("days", 381);
+        daysLabel.Location = new Point(258, 381);
+        Controls.Add(daysLabel);
+
+        _keepForever.Text = "Keep everything forever";
+        _keepForever.ForeColor = Fg;
+        _keepForever.AutoSize = true;
+        _keepForever.Location = new Point(20, 407);
+        _keepForever.CheckedChanged += (_, _) => _retentionDays.Enabled = !_keepForever.Checked;
+        Controls.Add(_keepForever);
+
+        Controls.Add(new Label
+        {
+            Text = "Saved reports and timers are never deleted.",
+            ForeColor = MutedFg,
+            AutoSize = false,
+            Location = new Point(20, 433),
+            Size = new Size(360, 18),
+        });
+
+        _error = new Label { ForeColor = Color.FromArgb(0xff, 0x8a, 0x8a), AutoSize = false, Location = new Point(20, 460), Size = new Size(360, 18) };
         Controls.Add(_error);
 
         var save = MakeButton("Save");
-        save.SetBounds(238, 408, 72, 30);
+        save.SetBounds(238, 516, 72, 30);
         save.Click += OnSave;
         var cancel = MakeButton("Cancel");
-        cancel.SetBounds(316, 408, 64, 30);
+        cancel.SetBounds(316, 516, 64, 30);
         cancel.DialogResult = DialogResult.Cancel;
         Controls.Add(save);
         Controls.Add(cancel);
@@ -101,6 +136,12 @@ public sealed class SettingsDialog : Form
         foreach (var t in settings.ResolveAutoReportTimes())
             _times.Add(t);
         RefreshTimes();
+
+        var retention = settings.ResolveEventRetentionDays();
+        _keepForever.Checked = retention <= 0;
+        _retentionDays.Value = retention <= 0
+            ? TallySettings.DefaultEventRetentionDays
+            : Math.Clamp(retention, (int)_retentionDays.Minimum, (int)_retentionDays.Maximum);
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -180,10 +221,10 @@ public sealed class SettingsDialog : Form
         if (dialog.ShowDialog(owner) != DialogResult.OK)
             return;
 
-        SettingsWriter.UpdateSettings(TallyPaths.SettingsPath, dialog.StartSpec, dialog.StopSpec, dialog.AutoReportTimes);
+        SettingsWriter.UpdateSettings(TallyPaths.SettingsPath, dialog.StartSpec, dialog.StopSpec, dialog.AutoReportTimes, dialog.EventRetentionDays);
         listener?.Rebind(dialog.StartSpec, dialog.StopSpec);
         onSaved?.Invoke();
-        Log.Info($"Settings saved: hotkeys start='{dialog.StartSpec}' stop='{dialog.StopSpec}', auto-report times=[{string.Join(", ", dialog.AutoReportTimes)}]");
+        Log.Info($"Settings saved: hotkeys start='{dialog.StartSpec}' stop='{dialog.StopSpec}', auto-report times=[{string.Join(", ", dialog.AutoReportTimes)}], retention={dialog.EventRetentionDays}d");
     }
 
     /// <summary>A read-only field that records the next Ctrl/Alt/Shift + key combination pressed.</summary>

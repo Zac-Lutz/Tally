@@ -23,6 +23,8 @@ public sealed class TrayAppContext : ApplicationContext
     private IReadOnlyList<TimeOnly> _autoReportTimes;
     private HashSet<TimeOnly> _firedTimes = [];
     private DateOnly _firedDate;
+    private int _eventRetentionDays;
+    private DateOnly _lastPurgeDate;
     private LiveWindow? _liveWindow;
     private bool _liveFocused;
     private readonly ManualTimerService _timerService;
@@ -111,6 +113,7 @@ public sealed class TrayAppContext : ApplicationContext
         _timerService.Changed += OnTimerChanged;
 
         _autoReportTimes = _settings.ResolveAutoReportTimes();
+        _eventRetentionDays = _settings.ResolveEventRetentionDays();
         _firedDate = DateOnly.FromDateTime(DateTime.Now);
         _autoReportTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
         _autoReportTimer.Tick += (_, _) => AutoReportTick();
@@ -179,6 +182,14 @@ public sealed class TrayAppContext : ApplicationContext
                 _firedTimes.Clear();
             }
 
+            // Retention purge rides the same 30s timer: once per local day (so also ~30s after
+            // startup), off the UI thread, and fire-and-forget — it logs its own outcome.
+            if (_lastPurgeDate != today)
+            {
+                _lastPurgeDate = today;
+                _ = DatabaseMaintenance.PurgeOldEventsAsync(_dbOptions, _eventRetentionDays);
+            }
+
             // Any configured time that has passed today and hasn't fired yet is due. If several are
             // due at once (e.g. catching up at startup), generate ONE report and mark them all —
             // each would show the same "today so far", so duplicates add nothing.
@@ -213,6 +224,10 @@ public sealed class TrayAppContext : ApplicationContext
         _firedDate = DateOnly.FromDateTime(now);
         var nowTime = TimeOnly.FromDateTime(now);
         _firedTimes = [.. _autoReportTimes.Where(t => t <= nowTime)];
+
+        // A changed retention takes effect on the next tick rather than tomorrow (or next start).
+        _eventRetentionDays = settings.ResolveEventRetentionDays();
+        _lastPurgeDate = default;
     }
 
     private void OpenLiveView()

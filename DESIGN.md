@@ -10,9 +10,15 @@ Everything stays on this machine. No cloud, no telemetry.
 
 - **Standalone app**, deliberately separate from att Desktop — free to iterate, no shared
   MSIX identity or CI entanglement.
-- **Window titles are kept verbatim, indefinitely** (in derived blocks). The block history
-  is the searchable time-entry record; titles are the signal. Only raw events get a
-  retention setting (not yet implemented — nothing is purged in v1).
+- **Window titles are kept verbatim; raw events age out.** Retention is `eventRetentionDays`
+  (default 90; 0 = forever; positive values floored at 7 so the last week always stays
+  regenerable). `RetentionPolicy` (Core, tested) computes the cutoff at local midnight, so a
+  purge removes only complete days and every retained day is fully regenerable;
+  `DatabaseMaintenance` (App) deletes and VACUUMs once per local day, riding the tray's 30s
+  timer (~30s after startup, then daily; a Settings save re-arms it so a shortened window
+  applies on the next tick). Manual timers are never purged — user-declared and unrebuildable.
+  The durable record for aged-out days is the report files already written (the default daily
+  auto-report covers this); persisting classified blocks as a queryable history is still slice 5.
 - **No input-activity counting.** An earlier version counted key-downs/clicks per block as an
   "intensity" signal (counts only, never key identity). It was removed: the signal was weak and
   redundant with idle detection (reading, calls, and reviewing are low-input but real work), and
@@ -197,7 +203,8 @@ correctly; rendered in local time.
    posts to the host, which drafts the rule (`RuleDraft`) and writes it (`RulesFile.AddRule`). Rules
    are re-read every recompute, so the next ~5s refresh reclassifies the day in place. The file
    report renders the same list read-only.
-5. Persist classified blocks + manual block edits; raw-event retention/purge.
+5. Raw-event retention/purge (done — see the retention decision above). Persist classified
+   blocks + manual block edits: still open.
 6. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),
    Velopack installer (done — `Package-Tally.ps1`).
 
