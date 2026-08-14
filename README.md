@@ -63,8 +63,15 @@ block sitting where the work happened, coloured by category, with the hours to e
 block for its times and the measured-vs-rounded figures. Entries that overlap in time sit side by
 side, and unaccounted time shows as empty space, so a gap in your day is something you can see
 rather than something you have to work out. The solid part of a block is the time actually
-measured: a block that's mostly faint spanned an hour but only earned a few minutes of it. The
-Export button brings this tab up first.
+measured: a block that's mostly faint spanned an hour but only earned a few minutes of it.
+
+**Ticket work is tracked as an engagement, not a window.** Working a ticket means leaving its
+window — the remote session, the docs, the code — and coming back, so visits to the same ticket
+up to half an hour apart count as **one engagement**: one entry, billing only the visited time.
+On the calendar it draws as a faint stretch from the first visit to the last, with **solid pins
+at each actual visit** (hover for their exact times) — so "opened three times across an hour"
+looks like exactly that, and the work done in other windows between visits still bills to its
+own category, never double-counted. The Export button brings this tab up first.
 
 ### How a day becomes a handful of entries
 

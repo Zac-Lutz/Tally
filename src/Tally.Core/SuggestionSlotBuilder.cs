@@ -41,6 +41,15 @@ public sealed record SuggestionSlotOptions
     /// <summary>A new slot starts when an activity hasn't been touched for this long.</summary>
     public TimeSpan SessionGap { get; init; } = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// The patience for TICKET targets specifically. Working a ticket means leaving its window —
+    /// the remote session, the docs, the code — and coming back, so visits up to this far apart
+    /// still belong to one engagement and make one entry (billing only the visited time; the
+    /// calendar draws the envelope with each visit pinned). Categories keep the shorter
+    /// <see cref="SessionGap"/>: un-ticketed time has no "it" to keep returning to.
+    /// </summary>
+    public TimeSpan TicketSessionGap { get; init; } = TimeSpan.FromMinutes(30);
+
     /// <summary>Shorter than this and a slot isn't worth its own timesheet line — it gets rescued
     /// (see <see cref="SuggestionSlotBuilder"/>) rather than dropped.</summary>
     public TimeSpan MinimumSlot { get; init; } = TimeSpan.FromMinutes(5);
@@ -189,7 +198,9 @@ public static class SuggestionSlotBuilder
 
         foreach (var session in free
                      .GroupBy(TargetKey)
-                     .SelectMany(t => Sessions(t.OrderBy(b => b.Block.Start).ToList(), opts.SessionGap)))
+                     .SelectMany(t => Sessions(
+                         t.OrderBy(b => b.Block.Start).ToList(),
+                         IsTicketTarget(t.Key) ? opts.TicketSessionGap : opts.SessionGap)))
         {
             if (Measured(session) >= opts.MinimumSlot)
                 slots.Add(ToActivitySlot(session, opts, SuggestionSlotKind.Activity, contiguous: true));
@@ -267,6 +278,8 @@ public static class SuggestionSlotBuilder
     // groups by category, which is what a non-ticketed line gets booked against.
     private static string TargetKey(ClassifiedBlock b)
         => b.EffectiveTicket is { } ticket ? $"T␟{ticket}" : $"C␟{b.Classification.Category}";
+
+    private static bool IsTicketTarget(string targetKey) => targetKey.StartsWith("T␟", StringComparison.Ordinal);
 
     private static IEnumerable<List<ClassifiedBlock>> Sessions(List<ClassifiedBlock> ordered, TimeSpan gap)
     {

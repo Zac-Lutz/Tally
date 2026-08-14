@@ -96,8 +96,19 @@ Everything stays on this machine. No cloud, no telemetry.
   minimum claims nothing, so a mic blip doesn't strand time in a slot too small to keep.
 - **Short work is rescued, never dropped.** Ten two-minute visits are twenty real minutes. Sessions
   under the minimum re-pool per target across the day, and the remainder combines into one visible
-  "odds and ends" slot. Pooled slots are drawn at their start for the time they earned, not spanning
-  the hours they were scattered across — they were never one stretch of time.
+  "odds and ends" slot. A pooled slot's official End (and the export) stays compact — start + the
+  time it earned — but the calendar draws its true story (see the next decision).
+- **A ticket is an engagement; the calendar shows the envelope with the visits pinned.** Ticket
+  targets get a longer session patience (`TicketSessionGap`, 30m vs 10m for categories): leaving
+  the ticket window to do the work elsewhere and returning is one engagement, one entry, billing
+  only the visited minutes. On the calendar, any activity slot draws over `DisplaySpan` (first
+  visit → last visit, `TimesheetCalendar`) with `Visits` (blocks merged across sub-minute gaps)
+  as positioned solid pins inside the faint envelope, and the hover lists each visit's times.
+  Layout and grid bounds follow the envelope so stretched slots share width honestly. Calls,
+  timers, and odds-and-ends keep their own span — a call is one stretch, and odds-and-ends has
+  no single story. The in-between work keeps billing to its own category: this is visualization
+  plus grouping, never re-attribution (a possible later step is a per-entry "bill the whole
+  span" control, human-approved).
 - **Reported time rounds to the nearest 5 minutes with a floor of one multiple**, never to zero:
   rounding an activity to nothing deletes work, and a zero-hour slot is rejected on import anyway.
   `Measured` and `Reported` are separate fields so the Timesheet tab can show the rounding rather

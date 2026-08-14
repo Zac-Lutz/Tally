@@ -435,7 +435,7 @@ public static class HtmlReportWriter
         sb.Append($"<p class=\"hint\">{slots.Count} {(slots.Count == 1 ? "entry" : "entries")} · <strong>{total:0.00} h</strong> to enter · {ReportFormat.Duration(measured)} actually measured. This is exactly what the export contains.</p>\n");
 
         AppendCalendar(sb, slots, palette);
-        sb.Append("<p class=\"hint\">Blocks sit where the work happened and are as tall as the time they span; the number on each is the hours to enter. Time is claimed once — a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” block rather than dropped.</p>\n");
+        sb.Append("<p class=\"hint\">Blocks sit where the work happened; the number on each is the hours to enter. Work you kept coming back to — a ticket revisited between other windows — draws as one faint stretch from its first visit to its last, with solid pins marking the visits themselves (hover for their exact times); the hours are still only the time measured. Time is claimed once — a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” block rather than dropped.</p>\n");
     }
 
     /// <summary>How many pixels one minute of the day is drawn as.</summary>
@@ -470,28 +470,45 @@ public static class HtmlReportWriter
         foreach (var entry in TimesheetCalendar.Lay(slots))
         {
             var slot = entry.Slot;
-            var span = slot.End - slot.Start;
-            var top = (slot.Start - bounds.Start).TotalMinutes * MinuteHeight;
+            var (displayStart, displayEnd) = TimesheetCalendar.DisplaySpan(slot);
+            var span = displayEnd - displayStart;
+            var top = (displayStart - bounds.Start).TotalMinutes * MinuteHeight;
             var height = Math.Max(MinEventHeight, span.TotalMinutes * MinuteHeight);
             var width = 100d / entry.Columns;
             var left = entry.Column * width;
 
             var rgb = CategoryRgb(slot.Category, palette);
             var ticket = slot.TicketRef is { } t ? $"#{t} " : string.Empty;
-            var tip = $"{ReportFormat.Clock(slot.Start)}–{ReportFormat.Clock(slot.End)} · {ticket}{slot.Label} · "
-                      + $"{ReportFormat.Duration(slot.Measured)} measured → {slot.Reported.TotalHours:0.00} h to enter";
+            var visits = slot.Kind == SuggestionSlotKind.Activity ? TimesheetCalendar.Visits(slot) : [];
+            var tip = $"{ReportFormat.Clock(displayStart)}–{ReportFormat.Clock(displayEnd)} · {ticket}{slot.Label} · "
+                      + $"{ReportFormat.Duration(slot.Measured)} measured → {slot.Reported.TotalHours:0.00} h to enter"
+                      + VisitsTip(visits);
 
             sb.Append($"<div class=\"ev\" style=\"top:{Px(top)}px;height:{Px(height - 2)}px;")
               .Append($"left:calc({Px(left)}% + 1px);width:calc({Px(width)}% - 3px);")
               .Append($"background:rgba({rgb},.10);border-left-color:rgba({rgb},.9)\" title=\"{Esc(tip)}\">");
 
-            // Blocks are drawn over the stretch they cover, but the billable time can be less when
-            // short gaps were bridged. The solid part is the time actually measured, so a block
-            // that's mostly empty reads as mostly empty instead of as a full hour of work.
-            var fill = span > TimeSpan.Zero
-                ? Math.Clamp(slot.Measured.TotalMinutes / span.TotalMinutes * 100, 0, 100)
-                : 100;
-            sb.Append($"<i class=\"ev-fill\" style=\"height:{Px(fill)}%;background:rgba({rgb},.22)\"></i>");
+            if (visits.Count > 1)
+            {
+                // Work revisited across the envelope: each sitting is a pin at the time it really
+                // happened, so the block reads "returned to three times over the hour" rather than
+                // one merged smear.
+                foreach (var (visitStart, visitEnd) in visits)
+                {
+                    var pinTop = Math.Clamp((visitStart - displayStart).TotalMinutes / span.TotalMinutes * 100, 0, 100);
+                    var pinHeight = Math.Clamp((visitEnd - visitStart).TotalMinutes / span.TotalMinutes * 100, 0, 100 - pinTop);
+                    sb.Append($"<i class=\"ev-pin\" style=\"top:{Px(pinTop)}%;height:{Px(pinHeight)}%;background:rgba({rgb},.32)\"></i>");
+                }
+            }
+            else
+            {
+                // One continuous stretch (or a call/timer/odds-and-ends): the solid part is the
+                // time actually measured, so a block that's mostly empty reads as mostly empty.
+                var fill = span > TimeSpan.Zero
+                    ? Math.Clamp(slot.Measured.TotalMinutes / span.TotalMinutes * 100, 0, 100)
+                    : 100;
+                sb.Append($"<i class=\"ev-fill\" style=\"height:{Px(fill)}%;background:rgba({rgb},.22)\"></i>");
+            }
 
             sb.Append("<span class=\"ev-txt\">")
               .Append($"<b>{slot.Reported.TotalHours:0.00}</b> ")
@@ -503,6 +520,20 @@ public static class HtmlReportWriter
     }
 
     private static string Px(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
+
+    // The hover's visit list — the exact times behind each pin. Capped so a day of constant
+    // switching doesn't produce a tooltip taller than the screen.
+    private static string VisitsTip(IReadOnlyList<(DateTimeOffset Start, DateTimeOffset End)> visits)
+    {
+        if (visits.Count <= 1)
+            return string.Empty;
+
+        const int shown = 6;
+        var list = string.Join(", ", visits.Take(shown)
+            .Select(v => $"{ReportFormat.Clock(v.Start)}–{ReportFormat.Clock(v.End)}"));
+        var more = visits.Count > shown ? $" +{visits.Count - shown} more" : string.Empty;
+        return $" · {visits.Count} visits: {list}{more}";
+    }
 
     // The triage list: everything that matched no rule, one row per app+window. In the live view each
     // row can be given a category and saved as a rule on the spot (the C# host writes rules.json and
@@ -988,6 +1019,7 @@ public static class HtmlReportWriter
         .ev { position:absolute; box-sizing:border-box; overflow:hidden; border-radius:5px;
           border-left:3px solid; font-size:12px; line-height:17px; cursor:default; }
         .ev-fill { position:absolute; left:0; right:0; top:0; display:block; }
+        .ev-pin { position:absolute; left:0; right:0; display:block; min-height:3px; }
         .ev-txt { position:relative; display:block; padding:1px 8px;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .ev b { font-variant-numeric:tabular-nums; margin-right:4px; }

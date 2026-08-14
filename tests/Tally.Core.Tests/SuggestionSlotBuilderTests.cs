@@ -16,6 +16,58 @@ public class SuggestionSlotBuilderTests
     private static CallSpan Call(double startMin, double endMin, string title = "Standup | Microsoft Teams")
         => new(T0.AddMinutes(startMin), T0.AddMinutes(endMin), "ms-teams", title);
 
+    [Fact]
+    public void TicketVisits_UpToHalfAnHourApart_MakeOneEngagement()
+    {
+        // The ticket window is left and returned to while the work happens elsewhere — three 5m
+        // visits across an hour are one engagement: one entry, billing only the visited 15m,
+        // spanning first visit to last so the calendar can pin the visits inside it.
+        var slots = SuggestionSlotBuilder.Build(
+        [
+            CB(0, 5, "Halo", "Ticket #42", ticket: "42"),
+            CB(5, 25, "Development", "Fix.cs"),
+            CB(25, 30, "Halo", "Ticket #42", ticket: "42"),
+            CB(30, 55, "Development", "Fix.cs"),
+            CB(55, 60, "Halo", "Ticket #42", ticket: "42"),
+        ]);
+
+        var ticket = Assert.Single(slots, s => s.TicketRef == "42");
+        Assert.Equal(TimeSpan.FromMinutes(15), ticket.Measured);
+        Assert.Equal(T0, ticket.Start);
+        Assert.Equal(T0.AddMinutes(60), ticket.End);
+
+        // The in-between work still bills to its own category — nothing is double-counted.
+        var dev = Assert.Single(slots, s => s.Category == "Development");
+        Assert.Equal(TimeSpan.FromMinutes(45), dev.Measured);
+    }
+
+    [Fact]
+    public void TicketVisits_FurtherApartThanThePatience_StaySeparateEntries()
+    {
+        // Morning and afternoon on one ticket are still two entries where the work happened.
+        var slots = SuggestionSlotBuilder.Build(
+        [
+            CB(0, 20, "Halo", "Ticket #42", ticket: "42"),
+            CB(120, 140, "Halo", "Ticket #42", ticket: "42"),
+        ]);
+
+        Assert.Equal(2, slots.Count(s => s.TicketRef == "42"));
+    }
+
+    [Fact]
+    public void CategoryVisits_KeepTheShorterPatience()
+    {
+        // Un-ticketed browsing 20m apart is two sittings, not one engagement — only tickets get
+        // the long leash, because only a ticket is a thing you keep returning to.
+        var slots = SuggestionSlotBuilder.Build(
+        [
+            CB(0, 6, "Development", "Fix.cs"),
+            CB(26, 32, "Development", "Fix.cs"),
+        ]);
+
+        Assert.Equal(2, slots.Count(s => s.Category == "Development"));
+    }
+
     private static ManualTimer Timer(double startMin, double endMin, string name)
         => new() { Name = name, Start = T0.AddMinutes(startMin), End = T0.AddMinutes(endMin) };
 

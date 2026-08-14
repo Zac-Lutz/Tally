@@ -18,6 +18,49 @@ public sealed record CalendarEntry(SuggestionSlot Slot, int Column, int Columns)
 /// </summary>
 public static class TimesheetCalendar
 {
+    /// <summary>Blocks closer together than this draw as one visit — a flurry of tab switches
+    /// inside the same minute is one sitting, not confetti.</summary>
+    public static readonly TimeSpan VisitMergeGap = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// The stretch of day a slot is <b>drawn</b> over. A window-activity slot revisited across the
+    /// day draws as an envelope from its first visit to its last — the true story of the work —
+    /// even though the slot's official <c>End</c> (and the export built from it) stays compact.
+    /// Calls, timers, and the odds-and-ends slot keep their own span: a call is one stretch, and
+    /// odds-and-ends is a mixed bag with no single story to stretch over.
+    /// </summary>
+    public static (DateTimeOffset Start, DateTimeOffset End) DisplaySpan(SuggestionSlot slot)
+    {
+        if (slot.Kind != SuggestionSlotKind.Activity || slot.Blocks.Count == 0)
+            return (slot.Start, slot.End);
+
+        var last = slot.Blocks.Max(b => b.Block.End);
+        return (slot.Start, last > slot.End ? last : slot.End);
+    }
+
+    /// <summary>
+    /// The distinct sittings an activity slot's time was actually spent in: its blocks in time
+    /// order, merged wherever they touch or sit within <see cref="VisitMergeGap"/> of each other.
+    /// These are the solid pins inside the envelope.
+    /// </summary>
+    public static IReadOnlyList<(DateTimeOffset Start, DateTimeOffset End)> Visits(SuggestionSlot slot)
+    {
+        var merged = new List<(DateTimeOffset Start, DateTimeOffset End)>();
+        foreach (var block in slot.Blocks.OrderBy(b => b.Block.Start))
+        {
+            var (start, end) = (block.Block.Start, block.Block.End);
+            if (end <= start)
+                continue;
+
+            if (merged.Count > 0 && start - merged[^1].End <= VisitMergeGap)
+                merged[^1] = (merged[^1].Start, end > merged[^1].End ? end : merged[^1].End);
+            else
+                merged.Add((start, end));
+        }
+
+        return merged;
+    }
+
     public static IReadOnlyList<CalendarEntry> Lay(IReadOnlyList<SuggestionSlot> slots)
     {
         var entries = new List<CalendarEntry>();
@@ -34,27 +77,33 @@ public static class TimesheetCalendar
             runEnd = DateTimeOffset.MinValue;
         }
 
-        foreach (var slot in slots.OrderBy(s => s.Start).ThenByDescending(s => s.End))
+        // Overlap is judged on what will be DRAWN — the envelope — so a stretched slot shares
+        // width with everything it visually crosses.
+        foreach (var slot in slots
+                     .OrderBy(s => DisplaySpan(s).Start)
+                     .ThenByDescending(s => DisplaySpan(s).End))
         {
+            var (start, end) = DisplaySpan(slot);
+
             // Nothing still open reaches this slot, so the previous run is finished and the next
             // one starts back at full width.
-            if (run.Count > 0 && slot.Start >= runEnd)
+            if (run.Count > 0 && start >= runEnd)
                 CloseRun();
 
-            var column = columnEnds.FindIndex(end => end <= slot.Start);
+            var column = columnEnds.FindIndex(e => e <= start);
             if (column < 0)
             {
-                columnEnds.Add(slot.End);
+                columnEnds.Add(end);
                 column = columnEnds.Count - 1;
             }
             else
             {
-                columnEnds[column] = slot.End;
+                columnEnds[column] = end;
             }
 
             run.Add((slot, column));
-            if (slot.End > runEnd)
-                runEnd = slot.End;
+            if (end > runEnd)
+                runEnd = end;
         }
 
         CloseRun();
@@ -74,9 +123,10 @@ public static class TimesheetCalendar
         if (slots.Count == 0)
             return null;
 
-        var start = Floor(slots.Min(s => s.Start));
-        var end = Floor(slots.Max(s => s.End));
-        if (end < slots.Max(s => s.End))
+        var spans = slots.Select(DisplaySpan).ToList();
+        var start = Floor(spans.Min(s => s.Start));
+        var end = Floor(spans.Max(s => s.End));
+        if (end < spans.Max(s => s.End))
             end += GridStep;
 
         // A day whose work all sits inside one interval still needs a grid to sit on.

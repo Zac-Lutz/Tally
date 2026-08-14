@@ -100,6 +100,36 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void ScatteredTicketWork_DrawsAsAnEnvelopeWithVisitPins()
+    {
+        // Ticket #42 visited 3×2m across an hour: the pooled slot bills ~6m but the calendar
+        // block must span the hour with a pin per visit, and the hover must list the visits.
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 2, "Halo", "Ticket #42", ticket: "42"),
+            CB(25, 27, "Halo", "Ticket #42", ticket: "42"),
+            CB(58, 60, "Halo", "Ticket #42", ticket: "42"),
+        ], [], []);
+
+        var pins = md.Split("class=\"ev-pin\"").Length - 1;
+        Assert.Equal(3, pins);
+        Assert.Contains("3 visits:", md);
+        Assert.Contains("9:00am–9:02am", md);
+        // The envelope spans to the last visit, so the grid reaches the hour mark.
+        Assert.Contains("10:00am", md);
+    }
+
+    [Fact]
+    public void OneContinuousStretch_KeepsTheSimpleFilledBlock()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Development", "Program.cs", process: "Code")], [], []);
+
+        Assert.Contains("class=\"ev-fill\"", md);
+        Assert.DoesNotContain("class=\"ev-pin\"", md);
+        Assert.DoesNotContain("visits:", md);
+    }
+
+    [Fact]
     public void RollupAndTimeline_ShowTheApp_BeforeTheCategory()
     {
         var md = HtmlReportWriter.BuildHtml(Date,
