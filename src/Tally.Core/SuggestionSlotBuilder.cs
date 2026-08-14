@@ -163,6 +163,45 @@ public static class SuggestionSlotBuilder
     }
 
     /// <summary>
+    /// The day exactly as it happened, as calendar items: every foreground stretch at its real
+    /// time — the Timeline's picture drawn on the calendar. Nothing merges, pools, or claims; the
+    /// only omission is activities whose whole-day total is under <paramref name="minimum"/>
+    /// (default one minute), which would draw as confetti while the Rollup hides them as noise
+    /// anyway. Grouping for that filter is the Rollup's own identity, so what this view drops is
+    /// exactly what the Rollup declines to list.
+    /// </summary>
+    public static IReadOnlyList<SuggestionSlot> BuildActual(
+        IReadOnlyList<ClassifiedBlock> blocks, TimeSpan? minimum = null)
+    {
+        var floor = minimum ?? TimeSpan.FromMinutes(1);
+        return blocks
+            .Where(b => b.Block.Duration > TimeSpan.Zero)
+            .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.TicketRef,
+                Key: b.Classification.Subject
+                     ?? (b.Classification.TicketRef is not null ? null : TitleNormalizer.Normalize(b.Block.Title))))
+            .Where(g => g.Sum(b => b.Block.Duration.Ticks) >= floor.Ticks)
+            .SelectMany(g => g)
+            .OrderBy(b => b.Block.Start)
+            .Select(b => new SuggestionSlot(
+                SuggestionSlotKind.Activity,
+                b.Classification.Category,
+                b.EffectiveTicket,
+                ActualLabel(b),
+                b.Block.Start,
+                b.Block.End,
+                b.Block.Duration,
+                b.Block.Duration,
+                [b]))
+            .ToList();
+    }
+
+    private static string ActualLabel(ClassifiedBlock b)
+    {
+        var label = b.Classification.Subject ?? TitleNormalizer.Normalize(b.Block.Title);
+        return string.IsNullOrWhiteSpace(label) ? b.Classification.Category : label;
+    }
+
+    /// <summary>
     /// Whether a slot belongs to an export window. Membership is decided by where a slot
     /// <b>begins</b>, never by overlap: a meeting running through the cut-off belongs to the half
     /// of the day it started in, so exporting a morning and then an afternoon covers everything

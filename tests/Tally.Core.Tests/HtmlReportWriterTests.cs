@@ -124,6 +124,28 @@ public class HtmlReportWriterTests
             HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []));
 
     [Fact]
+    public void TimesheetTab_OffersActualAndMergedViews_DefaultingToActual()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 5, "Halo", "Ticket #42", ticket: "42"),
+            CB(25, 30, "Halo", "Ticket #42", ticket: "42"),
+        ], [], []);
+
+        // Both calendars render; Actual shows, Merged starts hidden; the toggle sits below.
+        Assert.Contains("data-ts-view=\"actual\"", md);
+        Assert.Contains("<div class=\"ts-view\" data-ts-view=\"merged\" hidden>", md);
+        Assert.Contains("data-ts=\"actual\"", md);
+        Assert.Contains("data-ts=\"merged\"", md);
+        Assert.Contains("ts-mode active\" type=\"button\" data-ts=\"actual\"", md);
+
+        // The actual view labels items by duration, not billable hours.
+        var actualView = md[md.IndexOf("data-ts-view=\"actual\"", StringComparison.Ordinal)
+                          ..md.IndexOf("data-ts-view=\"merged\"", StringComparison.Ordinal)];
+        Assert.Contains("<b>5m</b>", actualView);
+    }
+
+    [Fact]
     public void ScatteredTicketWork_DrawsAsAnEnvelopeWithVisitPins()
     {
         // Ticket #42 visited 3×2m across an hour: the pooled slot bills ~6m but the calendar
