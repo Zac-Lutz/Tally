@@ -100,6 +100,30 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void TicketsTab_SitsBetweenTimelineAndCalls_AndGroupsTheDayByTicket()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 10, "Halo", "Tickets > Management > 42", ticket: "42"),
+            CB(30, 40, "Outlook", "RE: ticket 42", ticket: "42", process: "olk"),
+        ], [], []);
+
+        var timeline = md.IndexOf("data-tab=\"timeline\"", StringComparison.Ordinal);
+        var tickets = md.IndexOf("data-tab=\"tickets\"", StringComparison.Ordinal);
+        var calls = md.IndexOf("data-tab=\"calls\"", StringComparison.Ordinal);
+        Assert.True(timeline < tickets && tickets < calls);
+
+        var panel = md[md.IndexOf("data-panel=\"tickets\"", StringComparison.Ordinal)..];
+        Assert.Contains("<td>#42</td>", panel);
+        Assert.Contains("<th class=\"num\">Visits</th>", panel);
+    }
+
+    [Fact]
+    public void TicketsTab_SaysSoWhenNoTicketWasSeen()
+        => Assert.Contains("No tickets seen today",
+            HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []));
+
+    [Fact]
     public void ScatteredTicketWork_DrawsAsAnEnvelopeWithVisitPins()
     {
         // Ticket #42 visited 3×2m across an hour: the pooled slot bills ~6m but the calendar

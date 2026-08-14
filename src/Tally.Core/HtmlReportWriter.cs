@@ -184,6 +184,7 @@ public static class HtmlReportWriter
         sb.Append("<button class=\"tab active\" type=\"button\" data-tab=\"rollup\">Rollup</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timesheet\">Timesheet</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timeline\">Timeline</button>");
+        sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"tickets\">Tickets</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"calls\">Calls</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"timers\">Timers</button>");
         sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"unclassified\">Uncategorized</button>");
@@ -209,6 +210,9 @@ public static class HtmlReportWriter
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"timeline\">\n");
         AppendTimeline(sb, blocks, palette);
+        sb.Append("</section>\n");
+        sb.Append("<section class=\"panel\" data-panel=\"tickets\">\n");
+        AppendTickets(sb, TicketsBuilder.Build(blocks), palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls, palette);
@@ -777,6 +781,37 @@ public static class HtmlReportWriter
         }
 
         return row.TicketRef is { } tk ? $"#{Esc(tk)}" : string.Empty;
+    }
+
+    // The day by ticket: however many windows and apps a ticket's work crossed, it lands on one
+    // row here — the "what did I actually touch today" list for time entry. Rows come from the
+    // same effective ticket everything else bills by, so typing a ticket on a Rollup row files
+    // that activity here too.
+    private static void AppendTickets(StringBuilder sb, IReadOnlyList<TicketRow> tickets, CategoryPalette? palette)
+    {
+        if (tickets.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">No tickets seen today. A window title carrying a ticket number files here automatically — typing a ticket on a Rollup row counts too.</p>\n");
+            return;
+        }
+
+        sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
+        sb.Append("<tr><th>Ticket</th><th>Category</th><th>App</th><th>Detail</th><th class=\"num\">Visits</th><th>First seen</th><th>Last seen</th><th class=\"num\">Time</th></tr>\n");
+        sb.Append("</thead>\n<tbody>\n");
+        foreach (var ticket in tickets)
+        {
+            sb.Append("<tr><td>#").Append(Esc(ticket.TicketRef)).Append("</td>")
+              .Append("<td>").Append(CategoryBadge(ticket.Category, palette)).Append("</td>")
+              .Append("<td>").Append(Esc(ticket.ProcessName)).Append("</td>")
+              .Append("<td>").Append(Esc(ticket.Detail)).Append("</td>")
+              .Append("<td class=\"num\">").Append(ticket.Visits).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(ticket.FirstSeen)).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(ticket.LastSeen)).Append("</td>")
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(ticket.Time)).Append("</td></tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
+        sb.Append("<p class=\"hint\">Each row sums every window that named the ticket. Visits are distinct sittings — the same count as the pins on that ticket's Timesheet block.</p>\n");
     }
 
     // Calls, Timeline, and the Rollup share one column shape — Category, App, Detail leading,

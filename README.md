@@ -28,7 +28,7 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 ## Live view
 
 **Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
-window showing the same rollup / timesheet / timeline / calls / timers / uncategorized as a report, for
+window showing the same rollup / timesheet / timeline / tickets / calls / timers / uncategorized as a report, for
 **today**, refreshing every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
 **Ticket** column is editable: click any row's Ticket cell — a window activity *or a call* — and
 type a number. It's saved for that day (in `ticket-overrides.json`) and shows on the Rollup and in
@@ -64,6 +64,11 @@ block for its times and the measured-vs-rounded figures. Entries that overlap in
 side, and unaccounted time shows as empty space, so a gap in your day is something you can see
 rather than something you have to work out. The solid part of a block is the time actually
 measured: a block that's mostly faint spanned an hour but only earned a few minutes of it.
+
+The **Tickets** tab is the day grouped by ticket number: one row per ticket a window title named
+(or you typed onto a Rollup row), with the app and window the most time went to, how many
+distinct sittings it took, first seen, last seen, and the total time — the "what did I actually
+touch today" list for time entry.
 
 **Ticket work is tracked as an engagement, not a window.** Working a ticket means leaving its
 window — the remote session, the docs, the code — and coming back, so visits to the same ticket
@@ -210,8 +215,8 @@ is a valid picture of the morning. Three triggers:
   fallback if `autoReportTimes` isn't set.)
 
 **Format** — reports render as **HTML by default** (a self-contained, theme-aware page that
-opens in the browser: stat cards up top, then **Rollup / Timesheet / Timeline / Calls / Timers /
-Uncategorized / Lost time as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
+opens in the browser: stat cards up top, then **Rollup / Timesheet / Timeline / Tickets / Calls /
+Timers / Uncategorized / Lost time as tabs** — Rollup first — over color-coded tables). Dates display MM-dd-yyyy. Set `reportFormat` in
 `settings.json` to `"markdown"` for
 `.md` (stacked sections, no tabs), or `"json"` to emit the machine export directly. The page
 is fully self-contained (inline CSS + a little inline JS for the tabs, no external requests),
