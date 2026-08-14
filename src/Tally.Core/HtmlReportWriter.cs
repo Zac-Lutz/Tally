@@ -22,7 +22,8 @@ public static class HtmlReportWriter
         TimeSpan? gapThreshold = null,
         IReadOnlyList<ManualTimer>? timers = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null,
-        string? embeddedJson = null)
+        string? embeddedJson = null,
+        CategoryPalette? palette = null)
     {
         var sb = new StringBuilder();
 
@@ -33,7 +34,8 @@ public static class HtmlReportWriter
 
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: true, editable: false,
-            ticketOverrides: ticketOverrides, timerPanel: null, showExport: embeddedJson is not null);
+            ticketOverrides: ticketOverrides, timerPanel: null, showExport: embeddedJson is not null,
+            palette: palette);
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
@@ -84,12 +86,15 @@ public static class HtmlReportWriter
         IReadOnlyList<ManualTimer>? timers = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null,
         TimerPanelState? timerPanel = null,
-        IReadOnlyList<ClassificationRule>? rules = null)
+        IReadOnlyList<ClassificationRule>? rules = null,
+        IReadOnlyList<CategoryDefinition>? categories = null,
+        CategoryPalette? palette = null)
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: false, editable: true,
-            ticketOverrides: ticketOverrides, timerPanel: timerPanel, rules: rules);
+            ticketOverrides: ticketOverrides, timerPanel: timerPanel, rules: rules,
+            categories: categories, palette: palette);
         return sb.ToString();
     }
 
@@ -111,6 +116,7 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
         sb.Append("<script>").Append(RulesEditScript).Append("</script>\n");
+        sb.Append("<script>").Append(CategoriesScript).Append("</script>\n");
         sb.Append("<script>").Append(TimerControlScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
@@ -129,7 +135,9 @@ public static class HtmlReportWriter
         IReadOnlyDictionary<string, string>? ticketOverrides,
         TimerPanelState? timerPanel = null,
         bool showExport = false,
-        IReadOnlyList<ClassificationRule>? rules = null)
+        IReadOnlyList<ClassificationRule>? rules = null,
+        IReadOnlyList<CategoryDefinition>? categories = null,
+        CategoryPalette? palette = null)
     {
         if (includeHeader)
         {
@@ -147,7 +155,8 @@ public static class HtmlReportWriter
         }
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides, timerPanel, rules);
+        AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides,
+            timerPanel, rules, categories, palette);
     }
 
     // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
@@ -157,7 +166,8 @@ public static class HtmlReportWriter
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods, IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
-        TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules = null)
+        TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules = null,
+        IReadOnlyList<CategoryDefinition>? categories = null, CategoryPalette? palette = null)
     {
         var unclassified = UnclassifiedBuilder.Build(blocks);
         var (lostLines, lostTotal) = LostTime(blocks, inactivePeriods, threshold);
@@ -178,23 +188,25 @@ public static class HtmlReportWriter
         if (lostLines.Count > 0)
             sb.Append($"<span class=\"badge\">{ReportFormat.Duration(lostTotal)}</span>");
         sb.Append("</button>");
-        // The Rules tab exists only where rules were provided — the live view. A saved report is a
-        // record of a day; the app's current configuration doesn't belong in it.
+        // The Rules and Categories tabs exist only where their data was provided — the live view.
+        // A saved report is a record of a day; the app's current configuration doesn't belong in it.
         if (rules is not null)
             sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"rules\">Rules</button>");
+        if (categories is not null)
+            sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"categories\">Categories</button>");
         sb.Append("</div>\n");
 
         // Always the whole day: choosing a slice belongs to the export itself, so this stays the
         // one honest picture of what happened rather than a filtered one.
         sb.Append("<section class=\"panel\" data-panel=\"timesheet\">\n");
-        AppendTimesheet(sb, SuggestionSlotBuilder.Build(blocks, calls, timers));
+        AppendTimesheet(sb, SuggestionSlotBuilder.Build(blocks, calls, timers), palette);
         sb.Append("</section>\n");
 
         sb.Append("<section class=\"panel active\" data-panel=\"rollup\">\n");
-        AppendRollup(sb, blocks, calls, timers, editable, ticketOverrides);
+        AppendRollup(sb, blocks, calls, timers, editable, ticketOverrides, palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"timeline\">\n");
-        AppendTimeline(sb, blocks);
+        AppendTimeline(sb, blocks, palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls);
@@ -211,17 +223,24 @@ public static class HtmlReportWriter
         if (rules is not null)
         {
             sb.Append("<section class=\"panel\" data-panel=\"rules\">\n");
-            AppendRules(sb, rules);
+            AppendRules(sb, rules, palette);
             sb.Append("</section>\n");
         }
 
-        // Category suggestions for the triage and rules inputs: categories seen today plus the
-        // shipped defaults, so the day's naming stays consistent (free text still wins — a
-        // datalist only proposes).
+        if (categories is not null)
+        {
+            sb.Append("<section class=\"panel\" data-panel=\"categories\">\n");
+            AppendCategories(sb, categories, rules, palette);
+            sb.Append("</section>\n");
+        }
+
+        // Category suggestions for the triage and rules inputs: categories seen today, the user's
+        // own, and the shipped defaults, so the day's naming stays consistent (free text still
+        // wins — a datalist only proposes).
         if (editable)
         {
             sb.Append("<datalist id=\"uc-cats\">");
-            foreach (var category in KnownCategories(blocks))
+            foreach (var category in KnownCategories(blocks, categories))
                 sb.Append($"<option value=\"{Esc(category)}\"></option>");
             sb.Append("</datalist>\n");
         }
@@ -231,7 +250,7 @@ public static class HtmlReportWriter
     // deletable. The page only toggles a row between its read view and its inputs; the C# host
     // does the writing, and the refresh that follows re-renders the table from the file — so what
     // the table shows is always what rules.json actually says.
-    private static void AppendRules(StringBuilder sb, IReadOnlyList<ClassificationRule> rules)
+    private static void AppendRules(StringBuilder sb, IReadOnlyList<ClassificationRule> rules, CategoryPalette? palette)
     {
         sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts today within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Unclassified.</p>\n");
 
@@ -249,7 +268,7 @@ public static class HtmlReportWriter
             sb.Append($"<tr class=\"rl\" data-i=\"{i}\" data-id=\"{B64(rule.Id)}\">")
               .Append($"<td class=\"num muted\">{i + 1}</td>")
               .Append("<td>")
-              .Append($"<span class=\"rl-view\">{CategoryBadge(rule.Category)}</span>")
+              .Append($"<span class=\"rl-view\">{CategoryBadge(rule.Category, palette)}</span>")
               .Append($"<input class=\"rl-in rl-cat\" type=\"text\" list=\"uc-cats\" value=\"{Esc(rule.Category)}\" aria-label=\"Category\">")
               .Append("</td>");
             AppendRuleCell(sb, rule.ProcessPattern, "rl-proc", "any app", "App pattern (regex)");
@@ -263,6 +282,71 @@ public static class HtmlReportWriter
 
         sb.Append("</tbody>\n</table>\n</div>\n");
         sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields.</p>\n");
+    }
+
+    // The Categories tab: every category in play — the user's own, the ones rules file under, the
+    // shipped suggestions, and the app's built-ins — each with its colour. Changing any swatch
+    // stores that colour as the user's own; Rename refiles the rules too (the host does that);
+    // Delete removes only the user's entry — rules still using the name keep it, on the standard
+    // colour. The host writes categories.json; the refresh re-renders this table from the file.
+    private static void AppendCategories(
+        StringBuilder sb, IReadOnlyList<CategoryDefinition> categories,
+        IReadOnlyList<ClassificationRule>? rules, CategoryPalette? palette)
+    {
+        sb.Append("<p class=\"hint\">Add your own categories and pick each one's colour — it colours the Rollup, Timeline, and the Timesheet calendar, in the live view and in saved reports. Renaming a category also refiles every rule that uses it.</p>\n");
+
+        sb.Append("<div class=\"ct-addbar\">")
+          .Append("<input type=\"color\" class=\"ct-new-color\" value=\"#8b5cf6\" aria-label=\"New category colour\">")
+          .Append("<input type=\"text\" class=\"ct-new-name\" placeholder=\"New category name\" aria-label=\"New category name\">")
+          .Append("<button class=\"uc-save ct-add-btn\" type=\"button\">Add category</button>")
+          .Append("</div>\n");
+
+        var ruleCounts = (rules ?? [])
+            .GroupBy(r => r.Category, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        var custom = categories.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string[] builtIn =
+        [
+            RollupBuilder.CallCategory, RollupBuilder.TimerCategory,
+            SuggestionSlotBuilder.OddsAndEndsCategory, CallApps.TeamsCallCategory, TeamsChatCategory,
+        ];
+
+        var names = categories.Select(c => c.Name)
+            .Concat(ruleCounts.Keys)
+            .Concat(BaselineCategories)
+            .Concat(builtIn)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+
+        sb.Append("<div class=\"scroll\">\n<table class=\"cats\">\n<thead>\n<tr><th>Colour</th><th>Category</th><th>Used by</th><th></th></tr>\n</thead>\n<tbody>\n");
+
+        foreach (var name in names)
+        {
+            var hex = CategoryPalette.RgbToHex(CategoryRgb(name, palette));
+            var isCustom = custom.Contains(name);
+            var count = ruleCounts.GetValueOrDefault(name);
+            var usedBy = count > 0 ? $"{count} rule{(count == 1 ? "" : "s")}"
+                : builtIn.Contains(name, StringComparer.OrdinalIgnoreCase) ? "built-in"
+                : isCustom ? "custom" : "suggestion";
+
+            sb.Append($"<tr class=\"ct\" data-name=\"{B64(name)}\">")
+              .Append($"<td><input type=\"color\" class=\"ct-color\" value=\"{hex}\" aria-label=\"Colour for {Esc(name)}\"></td>")
+              .Append("<td>")
+              .Append($"<span class=\"ct-view\">{CategoryBadge(name, palette)}</span>")
+              .Append($"<input class=\"ct-in ct-name\" type=\"text\" value=\"{Esc(name)}\" aria-label=\"Category name\">")
+              .Append("</td>")
+              .Append($"<td class=\"muted\">{Esc(usedBy)}</td>")
+              .Append("<td class=\"num ct-actions\"><span class=\"ct-view\">");
+            if (count > 0 || isCustom)
+                sb.Append("<button class=\"uc-save ct-rename\" type=\"button\">Rename</button> ");
+            if (isCustom)
+                sb.Append("<button class=\"tm-del ct-del\" type=\"button\">Delete</button>");
+            sb.Append("</span><span class=\"ct-in\"><button class=\"uc-save ct-ok\" type=\"button\">Save</button> <button class=\"tm-del ct-cancel\" type=\"button\">Cancel</button></span>")
+              .Append("</td></tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
+        sb.Append("<p class=\"hint\">“Suggestion” names are offered in category pickers; “built-in” ones are the app's own (Call, Timer…). Any of them can be recoloured — that stores it as yours.</p>\n");
     }
 
     // One value cell of a rules row: the read view (pattern as code, or a muted placeholder when
@@ -282,7 +366,7 @@ public static class HtmlReportWriter
     /// be checked before it's uploaded. Measured time is shown beside the reported figure — the
     /// rounding is visible rather than something the file does quietly.
     /// </summary>
-    private static void AppendTimesheet(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots)
+    private static void AppendTimesheet(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots, CategoryPalette? palette)
     {
         if (slots.Count == 0)
         {
@@ -294,7 +378,7 @@ public static class HtmlReportWriter
         var measured = TimeSpan.FromTicks(slots.Sum(s => s.Measured.Ticks));
         sb.Append($"<p class=\"hint\">{slots.Count} {(slots.Count == 1 ? "entry" : "entries")} · <strong>{total:0.00} h</strong> to enter · {ReportFormat.Duration(measured)} actually measured. This is exactly what the export contains.</p>\n");
 
-        AppendCalendar(sb, slots);
+        AppendCalendar(sb, slots, palette);
         sb.Append("<p class=\"hint\">Blocks sit where the work happened and are as tall as the time they span; the number on each is the hours to enter. Time is claimed once — a timer beats a meeting, a meeting beats whatever window was open during it. Anything too short to stand alone is gathered into the “odds and ends” block rather than dropped.</p>\n");
     }
 
@@ -308,7 +392,7 @@ public static class HtmlReportWriter
     // Blocks are drawn over their real span (the shape att's own calendar will show them in), with
     // the billable hours on the block — the two differ whenever short gaps were bridged, and the
     // gaps between blocks are the point: unaccounted time is visible as empty space.
-    private static void AppendCalendar(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots)
+    private static void AppendCalendar(StringBuilder sb, IReadOnlyList<SuggestionSlot> slots, CategoryPalette? palette)
     {
         if (TimesheetCalendar.Bounds(slots) is not { } bounds)
             return;
@@ -336,7 +420,7 @@ public static class HtmlReportWriter
             var width = 100d / entry.Columns;
             var left = entry.Column * width;
 
-            var rgb = CategoryRgb(slot.Category);
+            var rgb = CategoryRgb(slot.Category, palette);
             var ticket = slot.TicketRef is { } t ? $"#{t} " : string.Empty;
             var tip = $"{ReportFormat.Clock(slot.Start)}–{ReportFormat.Clock(slot.End)} · {ticket}{slot.Label} · "
                       + $"{ReportFormat.Duration(slot.Measured)} measured → {slot.Reported.TotalHours:0.00} h to enter";
@@ -412,10 +496,12 @@ public static class HtmlReportWriter
         "Outlook", "RingCentral", "ScreenConnect", "Teams",
     ];
 
-    private static IReadOnlyList<string> KnownCategories(IReadOnlyList<ClassifiedBlock> blocks)
+    private static IReadOnlyList<string> KnownCategories(
+        IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CategoryDefinition>? categories)
         => blocks
             .Select(b => b.Classification.Category)
             .Where(c => c != Classification.Unclassified)
+            .Concat((categories ?? []).Select(c => c.Name))
             .Concat(BaselineCategories)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
@@ -560,7 +646,8 @@ public static class HtmlReportWriter
     // focused-window rows, so a call and its underlying window can both appear.
     private static void AppendRollup(
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
-        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides)
+        IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
+        CategoryPalette? palette)
     {
         var rows = RollupBuilder.Build(blocks)
             .Concat(RollupBuilder.BuildCalls(calls, ticketOverrides))
@@ -574,7 +661,7 @@ public static class HtmlReportWriter
         sb.Append("</thead>\n<tbody>\n");
         foreach (var row in rows)
         {
-            sb.Append("<tr><td>").Append(CategoryBadge(row.Category)).Append("</td>")
+            sb.Append("<tr><td>").Append(CategoryBadge(row.Category, palette)).Append("</td>")
               .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
               .Append("<td>").Append(TicketCell(row, editable)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
@@ -620,7 +707,7 @@ public static class HtmlReportWriter
         sb.Append("</tbody>\n</table>\n</div>\n");
     }
 
-    private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks)
+    private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, CategoryPalette? palette)
     {
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>Category</th><th>Title</th></tr>\n");
@@ -632,7 +719,7 @@ public static class HtmlReportWriter
             sb.Append("<tr><td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td>")
-              .Append("<td>").Append(CategoryBadge(b.Classification.Category)).Append("</td>")
+              .Append("<td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
               .Append("<td>").Append(Esc(b.Block.Title)).Append("</td></tr>\n");
         }
 
@@ -642,16 +729,16 @@ public static class HtmlReportWriter
     private static void Card(StringBuilder sb, string label, string value)
         => sb.Append($"<div class=\"card\"><div class=\"v\">{value}</div><div class=\"l\">{label}</div></div>\n");
 
-    private static string CategoryBadge(string category)
-        => $"<span class=\"cat\" style=\"background:rgba({CategoryRgb(category)},.22)\">{Esc(category)}</span>";
+    private static string CategoryBadge(string category, CategoryPalette? palette)
+        => $"<span class=\"cat\" style=\"background:rgba({CategoryRgb(category, palette)},.22)\">{Esc(category)}</span>";
 
     /// <summary>The category the shipped Teams chat rule files a focused conversation under.</summary>
     private const string TeamsChatCategory = "Teams - Chat";
 
     // The hue a category is drawn in, as bare RGB so callers can pick their own alpha — a pill wants
     // a wash, a calendar block's edge wants the full colour. Text always uses the theme foreground,
-    // so contrast holds in both themes.
-    private static string CategoryRgb(string category) => category switch
+    // so contrast holds in both themes. The user's own colours (categories.json) win over all of it.
+    private static string CategoryRgb(string category, CategoryPalette? palette) => palette?.CustomRgb(category) ?? category switch
     {
         // Old category names ("HaloPSA", "Email", "Remote Support") stay as aliases: rules.json is
         // user-owned, so an installed copy may keep filing under them long after the defaults moved on.
@@ -772,6 +859,24 @@ public static class HtmlReportWriter
         .rl-client { width:100px; }
         .rl-actions { white-space:nowrap; }
         .rl-actions .uc-save,.rl-actions .tm-del { font-size:12px; padding:4px 10px; }
+        /* Categories tab: the add bar on top, then a row per category with its colour swatch.
+           Rows follow the Rules tab's view/edit toggle. */
+        .ct-addbar { display:flex; align-items:center; gap:10px; margin:0 0 14px; }
+        .ct-new-name { flex:0 1 260px; background:var(--bg); border:1px solid var(--border);
+          border-radius:8px; color:var(--fg); font:inherit; font-size:14px; padding:6px 11px; }
+        .ct-new-name::placeholder { color:var(--muted); }
+        .ct-new-name:focus { outline:none; border-color:var(--accent); }
+        .ct-add-btn { padding:7px 16px; }
+        input[type=color] { width:36px; height:26px; padding:2px; background:var(--bg);
+          border:1px solid var(--border); border-radius:6px; cursor:pointer; }
+        .ct .ct-in { display:none; }
+        tr.ct.editing .ct-view { display:none; }
+        tr.ct.editing .ct-in { display:inline-block; }
+        .ct input.ct-name { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+          color:var(--fg); font:inherit; font-size:13px; padding:3px 6px; width:180px; max-width:100%; }
+        .ct input.ct-name:focus { outline:none; border-color:var(--accent); }
+        .ct-actions { white-space:nowrap; }
+        .ct-actions .uc-save,.ct-actions .tm-del { font-size:12px; padding:4px 10px; }
         .cal { position:relative; margin:14px 0 4px; }
         .cal-hr { position:absolute; left:0; right:0; border-top:1px solid var(--border); }
         .cal-hr.half { border-top-style:dotted; opacity:.55; }
@@ -835,11 +940,12 @@ public static class HtmlReportWriter
         """;
 
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
-    // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category) or a
-    // rules row is in edit mode — even unfocused, its inputs hold typed text a swap would erase —
-    // so a refresh never wipes an in-progress edit; the next tick lands once the edit concludes.
+    // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category), a
+    // rules/categories row is in edit mode, or a new-category name is half-typed — even unfocused,
+    // those inputs hold text a swap would erase — so a refresh never wipes an in-progress edit;
+    // the next tick lands once the edit concludes.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;if(document.querySelector('tr.rl.editing'))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;if(document.querySelector('tr.rl.editing,tr.ct.editing'))return;var n=document.querySelector('.ct-new-name');if(n&&n.value)return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
 
     // Editable cells: a ticket cell (.tk) posts {type:'ticket', key, value}; a timer-name cell (.tn)
     // posts {type:'timerName', id, value}. Committed on blur or Enter (which blurs). Delegated so the
@@ -970,6 +1076,42 @@ public static class HtmlReportWriter
         var r=e.target.closest?e.target.closest('tr.rl.editing'):null;if(!r)return;
         if(e.key==='Enter'){e.preventDefault();var b=r.querySelector('.rl-ok');if(b)b.click();}
         else if(e.key==='Escape'){r.classList.remove('editing');}});
+        })();
+        """;
+
+    // The Categories tab. Add posts {type:'catAdd', category, value:<hex>}; changing a swatch posts
+    // {type:'catColor', key:<b64 name>, value:<hex>} on commit; Rename follows the rules-row edit
+    // toggle and posts {type:'catRename', key:<b64 old name>, category:<new name>}; Delete posts
+    // {type:'catDelete', key} and the host confirms before touching the file.
+    private const string CategoriesScript =
+        """
+        (function(){
+        function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
+        document.addEventListener('click',function(e){
+        var t=e.target;if(!t.closest)return;
+        var b=t.closest('.ct-add-btn');
+        if(b){var n=document.querySelector('.ct-new-name'),c=document.querySelector('.ct-new-color');
+        var v=n?n.value.trim():'';if(!v){if(n)n.focus();return;}
+        post({type:'catAdd',category:v,value:c?c.value:''});if(n)n.value='';return;}
+        b=t.closest('.ct-rename');
+        if(b){var r=b.closest('tr.ct');r.classList.add('editing');var i=r.querySelector('.ct-name');if(i)i.focus();return;}
+        b=t.closest('.ct-cancel');
+        if(b){b.closest('tr.ct').classList.remove('editing');return;}
+        b=t.closest('.ct-del');
+        if(b){var r=b.closest('tr.ct');post({type:'catDelete',key:r.getAttribute('data-name')});return;}
+        b=t.closest('.ct-ok');
+        if(b){var r=b.closest('tr.ct');var i=r.querySelector('.ct-name');
+        post({type:'catRename',key:r.getAttribute('data-name'),category:i?i.value:''});
+        r.classList.remove('editing');}});
+        document.addEventListener('change',function(e){
+        var el=e.target;if(!el.classList||!el.classList.contains('ct-color'))return;
+        var r=el.closest('tr.ct');if(r)post({type:'catColor',key:r.getAttribute('data-name'),value:el.value});});
+        document.addEventListener('keydown',function(e){
+        var r=e.target.closest?e.target.closest('tr.ct.editing'):null;
+        if(r){if(e.key==='Enter'){e.preventDefault();var b=r.querySelector('.ct-ok');if(b)b.click();}
+        else if(e.key==='Escape'){r.classList.remove('editing');}return;}
+        if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('ct-new-name')){
+        e.preventDefault();var b=document.querySelector('.ct-add-btn');if(b)b.click();}});
         })();
         """;
 

@@ -78,10 +78,11 @@ public static class ReportGenerator
                     timers: data.Timers, ticketOverrides: data.TicketOverrides),
             ReportFileFormat.Json => BuildExportJson(data),
             // The snapshot carries its own export, so a saved report can be filed later without
-            // the app running — the whole day embedded, with the range chosen in the page.
+            // the app running — the whole day embedded, with the range chosen in the page. The
+            // user's category colours bake in, so the file matches what the live view showed.
             _ => HtmlReportWriter.BuildHtml(data.Date, data.Blocks, data.Calls, data.Inactive,
                 timers: data.Timers, ticketOverrides: data.TicketOverrides,
-                embeddedJson: BuildExportJson(data)),
+                embeddedJson: BuildExportJson(data), palette: LoadPaletteSafe()),
         };
 
         Directory.CreateDirectory(reportsDirectory);
@@ -100,6 +101,22 @@ public static class ReportGenerator
             data.Date, data.Blocks, data.Calls,
             new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now),
             data.Timers, slotOptions);
+
+    /// <summary>The user's category definitions; a broken file reads as none rather than failing.</summary>
+    internal static IReadOnlyList<CategoryDefinition> LoadCategoriesSafe()
+    {
+        try
+        {
+            return CategoriesFile.Load(TallyPaths.CategoriesPath);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to load categories.json — default colours apply", ex);
+            return [];
+        }
+    }
+
+    internal static CategoryPalette LoadPaletteSafe() => new(LoadCategoriesSafe());
 
     private static IReadOnlyList<ClassificationRule> LoadRules()
     {

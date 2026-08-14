@@ -140,6 +140,50 @@ public class RuleEditingTests
         => Assert.Throws<ArgumentOutOfRangeException>(() => RulesFile.WithRuleReplacedAt(
             ThreeRules, 9, new ClassificationRule { Id = "x", TitlePattern = "x", Category = "X" }));
 
+    // ---- WithCategoryRenamed ----
+
+    private const string TwoAsOneB =
+        """
+        {
+          "rules": [
+            // both a-rules move together
+            { "id": "a1", "titlePattern": "Alpha", "category": "A" },
+            { "id": "b1", "processPattern": "^b$", "category": "B" },
+            { "id": "a2", "titlePattern": "Alef", "category": "A" }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void RenameCategory_RefilesEveryMatchingRule_InPlace()
+    {
+        var updated = RulesFile.WithCategoryRenamed(TwoAsOneB, "A", "Admin", out var renamed);
+
+        Assert.Equal(2, renamed);
+        var rules = LoadRules(updated);
+        Assert.Equal(["a1", "b1", "a2"], rules.Select(r => r.Id));   // order untouched
+        Assert.Equal(["Admin", "B", "Admin"], rules.Select(r => r.Category));
+        Assert.Equal("Alpha", rules[0].TitlePattern);                // everything else kept
+        Assert.Contains("// both a-rules move together", updated);
+    }
+
+    [Fact]
+    public void RenameCategory_NoMatch_ChangesNothing()
+    {
+        var updated = RulesFile.WithCategoryRenamed(TwoAsOneB, "Zzz", "Admin", out var renamed);
+
+        Assert.Equal(0, renamed);
+        Assert.Equal(TwoAsOneB, updated);
+    }
+
+    [Fact]
+    public void RenameCategory_IsExactMatch_SoACasingVariantIsItsOwnCategory()
+    {
+        RulesFile.WithCategoryRenamed(TwoAsOneB, "a", "Admin", out var renamed);
+
+        Assert.Equal(0, renamed);
+    }
+
     // Round-trips the edited document through the real loader, so a test only passes if what was
     // written is a file the app can actually read back.
     private static IReadOnlyList<ClassificationRule> LoadRules(string json)

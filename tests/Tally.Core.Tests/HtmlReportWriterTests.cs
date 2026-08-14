@@ -59,6 +59,53 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void CategoriesTab_RendersInTheLiveView_WithCustomRuleAndBuiltInNames()
+    {
+        var categories = new CategoryDefinition[] { new("Documentation", "#8b5cf6") };
+        var rules = new ClassificationRule[] { new() { Id = "h", TitlePattern = "x", Category = "Halo" } };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Halo", "T")], [], [],
+            rules: rules, categories: categories, palette: new CategoryPalette(categories));
+
+        Assert.Contains("data-tab=\"categories\"", inner);
+        Assert.Contains("data-panel=\"categories\"", inner);
+        Assert.Contains("Documentation", inner);                       // the custom category
+        Assert.Contains("1 rule", inner);                              // Halo shows its rule count
+        Assert.Contains("built-in", inner);                            // Timer/Call etc. labelled
+        Assert.Contains("value=\"#8b5cf6\"", inner);                   // swatch prefilled custom
+        Assert.Contains("ct-add-btn", inner);                          // the add bar
+    }
+
+    [Fact]
+    public void CategoriesTab_AbsentFromSavedReports()
+    {
+        var saved = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []);
+
+        Assert.DoesNotContain("data-tab=\"categories\"", saved);
+        Assert.DoesNotContain("data-panel=\"categories\"", saved);
+    }
+
+    [Fact]
+    public void CustomColour_WinsOverTheShippedHue_EverywhereABadgeRenders()
+    {
+        var palette = new CategoryPalette([new("Halo", "#ff0000")]);
+
+        var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Halo", "Ticket page")], [], [], palette: palette);
+
+        Assert.Contains("rgba(255,0,0", md);            // the custom red
+        Assert.DoesNotContain("rgba(59,130,246", md);   // Halo's shipped blue is fully replaced
+    }
+
+    [Fact]
+    public void CustomCategoryNames_JoinTheDatalistSuggestions()
+    {
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [],
+            categories: [new CategoryDefinition("Documentation", "#8b5cf6")]);
+
+        Assert.Contains("<option value=\"Documentation\">", inner);
+    }
+
+    [Fact]
     public void ProducesSelfContainedHtmlDocument()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);

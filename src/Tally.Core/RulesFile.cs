@@ -22,9 +22,10 @@ public static partial class RulesFile
 
     private sealed record RulesDocument(List<ClassificationRule> Rules);
 
-    public static IReadOnlyList<ClassificationRule> Load(string path)
+    public static IReadOnlyList<ClassificationRule> Load(string path) => Parse(File.ReadAllText(path));
+
+    public static IReadOnlyList<ClassificationRule> Parse(string json)
     {
-        var json = File.ReadAllText(path);
         var document = JsonSerializer.Deserialize<RulesDocument>(json, JsonOptions);
         return document?.Rules ?? [];
     }
@@ -66,6 +67,40 @@ public static partial class RulesFile
         return last < 0
             ? json.Insert(close, $"\n    {literal}\n  ")
             : json.Insert(last + 1, $"{(json[last] == ',' ? "" : ",")}\n    {literal}");
+    }
+
+    /// <summary>
+    /// Refiles every rule under <paramref name="oldName"/> to <paramref name="newName"/> in the
+    /// file, returning how many changed. Nothing is written when none matched.
+    /// </summary>
+    public static int RenameCategory(string path, string oldName, string newName)
+    {
+        var updated = WithCategoryRenamed(File.ReadAllText(path), oldName, newName, out var renamed);
+        if (renamed > 0)
+            File.WriteAllText(path, updated);
+        return renamed;
+    }
+
+    /// <summary>
+    /// The rules document with every rule filed under <paramref name="oldName"/> rewritten in
+    /// place under <paramref name="newName"/> — positions, other rules, and comments untouched.
+    /// </summary>
+    public static string WithCategoryRenamed(string json, string oldName, string newName, out int renamed)
+    {
+        var rules = Parse(json);
+        renamed = 0;
+        for (var i = 0; i < rules.Count; i++)
+        {
+            if (!string.Equals(rules[i].Category, oldName, StringComparison.Ordinal))
+                continue;
+
+            // Replacing keeps rule count and order, so the index still means the same rule on
+            // the next pass even though character positions shifted.
+            json = WithRuleReplacedAt(json, i, rules[i] with { Category = newName });
+            renamed++;
+        }
+
+        return json;
     }
 
     /// <summary>Removes the rule at <paramref name="index"/> (array order) from the file.</summary>

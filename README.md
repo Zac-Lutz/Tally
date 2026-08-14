@@ -240,6 +240,14 @@ Unclassified, where they can be taught a better rule. Edits rewrite just that on
 `rules.json` — comments and every other rule stay exactly as written. The Rules tab exists only
 in the live app; saved reports don't carry it.
 
+**Categories are yours to define.** The live view's **Categories** tab lists every category in
+play — your own, the ones rules file under, and the app's built-ins — each with a colour swatch.
+Pick a colour and type a name to **add a category** (it then shows up in every category picker);
+change any swatch to **recolour** a category (the colour follows it onto the Rollup, Timeline,
+the Timesheet calendar, and saved reports); **Rename** refiles every rule using the name too;
+**Delete** (custom entries only) asks first and removes just your entry — rules that still use
+the name keep it. Stored in `%USERPROFILE%\.tally\categories.json`.
+
 To write a rule by hand instead, edit `%USERPROFILE%\.tally\rules.json` (created with starter
 rules on first run; comments allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
 regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
@@ -367,6 +375,7 @@ out.
 |---|---|
 | Event database | `%USERPROFILE%\.tally\tally.db` |
 | Classification rules | `%USERPROFILE%\.tally\rules.json` |
+| Custom categories | `%USERPROFILE%\.tally\categories.json` |
 | Settings | `%USERPROFILE%\.tally\settings.json` |
 | Reports | `reportsDirectory` setting (default `%USERPROFILE%\.tally\reports\`) |
 | Logs | `%USERPROFILE%\.tally\logs\tally.log` |

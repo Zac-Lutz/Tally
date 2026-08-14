@@ -243,9 +243,10 @@ public sealed class LiveWindow : Form
         try
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
+            var categories = ReportGenerator.LoadCategoriesSafe();
             var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
                 timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel(),
-                rules: LoadRulesSafe());
+                rules: LoadRulesSafe(), categories: categories, palette: new CategoryPalette(categories));
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
@@ -296,6 +297,22 @@ public sealed class LiveWindow : Form
             else if (msg.Type == "ruleDelete")
             {
                 DeleteRule(msg);
+            }
+            else if (msg.Type == "catAdd")
+            {
+                AddCategory(msg);
+            }
+            else if (msg.Type == "catColor")
+            {
+                SetCategoryColor(msg);
+            }
+            else if (msg.Type == "catRename")
+            {
+                RenameCategory(msg);
+            }
+            else if (msg.Type == "catDelete")
+            {
+                DeleteCategory(msg);
             }
             else if (msg.Type == "timerToggle")
             {
@@ -481,6 +498,128 @@ public sealed class LiveWindow : Form
             Note("couldn't delete that rule — see the log");
         }
     }
+
+    // "Add category" from the Categories tab: a name plus a colour, into categories.json. Adding a
+    // name that already exists just recolours it — the tab's add bar doubling as a colour fix is
+    // friendlier than an error.
+    private void AddCategory(EditMessage msg)
+    {
+        try
+        {
+            var name = msg.Category?.Trim();
+            if (string.IsNullOrEmpty(name) || NormalizeHex(msg.Value) is not { } hex)
+                return;
+
+            CategoriesFile.Upsert(TallyPaths.CategoriesPath, name, hex);
+            Log.Info($"Added category '{name}' ({hex}) from the live view");
+            Note($"category added — {name}");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to add a category from the live view", ex);
+            Note("couldn't add that category — see the log");
+        }
+    }
+
+    // A swatch changed on the Categories tab. Recolouring ANY name — including a shipped one —
+    // stores it as the user's own; the palette prefers those, so it takes effect everywhere.
+    private void SetCategoryColor(EditMessage msg)
+    {
+        try
+        {
+            var name = Decode(msg.Key)?.Trim();
+            if (string.IsNullOrEmpty(name) || NormalizeHex(msg.Value) is not { } hex)
+                return;
+
+            CategoriesFile.Upsert(TallyPaths.CategoriesPath, name, hex);
+            Log.Info($"Recoloured category '{name}' to {hex} from the live view");
+            Note($"colour saved — {name}");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to recolour a category from the live view", ex);
+            Note("couldn't save that colour — see the log");
+        }
+    }
+
+    // Renames a category everywhere it lives: its entry in categories.json (keeping the colour)
+    // and every rule that files under it. Reversible by renaming back, so no confirmation dialog —
+    // the note reports how many rules moved.
+    private void RenameCategory(EditMessage msg)
+    {
+        try
+        {
+            var oldName = Decode(msg.Key)?.Trim();
+            var newName = msg.Category?.Trim();
+            if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)
+                || string.Equals(oldName, newName, StringComparison.Ordinal))
+                return;
+
+            var renamedRules = File.Exists(TallyPaths.RulesPath)
+                ? RulesFile.RenameCategory(TallyPaths.RulesPath, oldName, newName)
+                : 0;
+            CategoriesFile.Rename(TallyPaths.CategoriesPath, oldName, newName);
+
+            Log.Info($"Renamed category '{oldName}' to '{newName}' ({renamedRules} rule(s)) from the live view");
+            Note(renamedRules > 0
+                ? $"renamed — {renamedRules} rule{(renamedRules == 1 ? "" : "s")} refiled under {newName}"
+                : $"category renamed — {newName}");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to rename a category from the live view", ex);
+            Note("couldn't rename that category — see the log");
+        }
+    }
+
+    // Deleting removes only the user's entry (name suggestion + colour). Rules using the name keep
+    // it — the confirmation says so, so "delete" can't read as bigger than it is.
+    private void DeleteCategory(EditMessage msg)
+    {
+        try
+        {
+            var name = Decode(msg.Key)?.Trim();
+            if (string.IsNullOrEmpty(name))
+                return;
+
+            var rulesUsing = LoadRulesSafe().Count(r => string.Equals(r.Category, name, StringComparison.OrdinalIgnoreCase));
+            var consequence = rulesUsing > 0
+                ? $"The {rulesUsing} rule{(rulesUsing == 1 ? "" : "s")} using it keep the name — only your colour and the suggestion go."
+                : "It leaves the suggestion list; its colour returns to standard.";
+            var answer = MessageBox.Show(
+                this,
+                $"Delete the category “{name}”?\n\n{consequence}",
+                "Delete category",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (answer != DialogResult.Yes)
+                return;
+
+            if (CategoriesFile.Remove(TallyPaths.CategoriesPath, name))
+            {
+                Log.Info($"Deleted category '{name}' from the live view");
+                Note("category deleted");
+            }
+
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to delete a category from the live view", ex);
+            Note("couldn't delete that category — see the log");
+        }
+    }
+
+    /// <summary>A colour the picker produced, normalized ("#rrggbb", lowercase) — or null.</summary>
+    private static string? NormalizeHex(string? value)
+        => CategoryPalette.HexToRgb(value) is not null
+            ? "#" + value!.Trim().TrimStart('#').ToLowerInvariant()
+            : null;
 
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

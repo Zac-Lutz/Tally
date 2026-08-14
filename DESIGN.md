@@ -51,6 +51,15 @@ Everything stays on this machine. No cloud, no telemetry.
   a typo'd pattern is refused with a note rather than silently classifying nothing. The tab is
   live-only: BuildMainInner takes the rules list, BuildHtml never passes one — a saved report is
   a record of a day, not of the app's configuration.
+- **Categories are user-definable; colours are data, not code.** `categories.json` holds
+  name+hex definitions (app-owned — the Categories tab is its editor, so it round-trips through
+  the serializer, unlike the comment-preserving rules.json). `CategoryPalette` resolves a
+  category's RGB: user definition (case-insensitive) → shipped hue → gray, and threads through
+  every badge/calendar render including saved HTML snapshots (the palette is loaded at generation
+  time and bakes in). The Categories tab unions custom + rule-used + baseline + built-in names;
+  recolouring ANY name stores an override, Rename also refiles rules
+  (`RulesFile.WithCategoryRenamed` — exact-match, in-place per rule), Delete removes only the
+  user's entry. Live-only, same gating as the Rules tab.
 - **Saved rules are placed by specificity, not appended blindly.** Rules are first-match-wins, so
   a rule written from the Unclassified tab lands where its breadth earns: a *window* rule (app +
   exact title) goes first — it names one thing and should beat the generic rules — while an *app*

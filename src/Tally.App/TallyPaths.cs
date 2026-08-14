@@ -7,6 +7,7 @@ public static class TallyPaths
 
     public static string DatabasePath => Path.Combine(Root, "tally.db");
     public static string RulesPath => Path.Combine(Root, "rules.json");
+    public static string CategoriesPath => Path.Combine(Root, "categories.json");
     public static string SettingsPath => Path.Combine(Root, "settings.json");
     public static string TicketOverridesPath => Path.Combine(Root, "ticket-overrides.json");
     public static string ReportsDirectory => Path.Combine(Root, "reports");
