@@ -67,10 +67,49 @@ public class RollupBuilderTests
 
     private static ClassifiedBlock CB(
         double startMin, double endMin, string category, string title,
-        string? ticket = null, string? subject = null)
+        string? ticket = null, string? subject = null, string process = "proc")
         => new(
-            new Block(T0.AddMinutes(startMin), T0.AddMinutes(endMin), "proc", title),
+            new Block(T0.AddMinutes(startMin), T0.AddMinutes(endMin), process, title),
             new Classification(category, null, ticket, subject, "rule"));
+
+    [Fact]
+    public void Rows_CarryTheAppTheTimeWasSpentIn_ClassifiedOrNot()
+    {
+        var rows = RollupBuilder.Build(
+        [
+            CB(0, 10, "Halo", "Tickets - Halo", process: "msedge"),
+            CB(10, 20, Classification.Unclassified, "Mystery window", process: "someapp"),
+        ]);
+
+        Assert.Equal("msedge", rows.Single(r => r.Category == "Halo").ProcessName);
+        Assert.Equal("someapp", rows.Single(r => r.Category == Classification.Unclassified).ProcessName);
+    }
+
+    [Fact]
+    public void AMergedTicketRow_ShowsTheAppThatEarnedTheMostTime()
+    {
+        // One ticket viewed from two apps merges into one row; the app is the dominant one.
+        var rows = RollupBuilder.Build(
+        [
+            CB(0, 5, "Halo", "Ticket #42 - quick look", ticket: "42", process: "chrome"),
+            CB(10, 40, "Halo", "Ticket #42 - real work", ticket: "42", process: "msedge"),
+        ]);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("msedge", row.ProcessName);
+    }
+
+    [Fact]
+    public void CallRows_CarryTheApp_AndTimerRows_HaveNone()
+    {
+        var call = Assert.Single(RollupBuilder.BuildCalls(
+            [new CallSpan(T0, T0.AddMinutes(30), "ms-teams", "Standup")]));
+        Assert.Equal("ms-teams", call.ProcessName);
+
+        var timer = Assert.Single(RollupBuilder.BuildTimers(
+            [new ManualTimer { Id = 1, Name = "Phone call", Start = T0, End = T0.AddMinutes(10) }]));
+        Assert.Null(timer.ProcessName);
+    }
 
     [Fact]
     public void DistinctBrowserTabs_EachBecomeTheirOwnRow()

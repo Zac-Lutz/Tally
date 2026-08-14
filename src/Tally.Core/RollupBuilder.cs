@@ -6,11 +6,13 @@ namespace Tally.Core;
 /// One aggregated rollup line: a category + specific activity with its summed time.
 /// <see cref="TicketRef"/> is the effective ticket to display (a manual override wins over the
 /// auto-detected one). <see cref="RowKey"/> is the stable identity for a per-day manual ticket
-/// override (null = not editable, e.g. call rows).
+/// override (null = not editable, e.g. call rows). <see cref="ProcessName"/> is the app the time
+/// was spent in — the dominant one when a row merges several — and null only where no app exists
+/// (a manual timer).
 /// </summary>
 public sealed record RollupRow(
     string Category, string? Client, string? TicketRef, string DetailName, TimeSpan Time,
-    string? RowKey = null);
+    string? RowKey = null, string? ProcessName = null);
 
 /// <summary>
 /// Builds the report rollup at per-activity granularity. Each distinct activity gets its own row:
@@ -36,7 +38,8 @@ public static class RollupBuilder
                     overrideTicket ?? g.Key.TicketRef,
                     detail,
                     TimeSpan.FromTicks(g.Sum(x => x.Block.Duration.Ticks)),
-                    TicketOverrideKey.ForRow(g.Key.Category, g.Key.TicketRef, detail));
+                    TicketOverrideKey.ForRow(g.Key.Category, g.Key.TicketRef, detail),
+                    DominantProcess(g));
             })
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
@@ -52,7 +55,7 @@ public static class RollupBuilder
     public static IReadOnlyList<RollupRow> BuildCalls(
         IReadOnlyList<CallSpan> calls, IReadOnlyDictionary<string, string>? ticketOverrides = null)
         => calls
-            .Select(c => (Category: CallApps.CategoryFor(c.ProcessName), Label: CallLabel(c), c.Duration))
+            .Select(c => (Category: CallApps.CategoryFor(c.ProcessName), Label: CallLabel(c), c.Duration, c.ProcessName))
             .GroupBy(x => (x.Category, x.Label))
             .Select(g =>
             {
@@ -66,7 +69,8 @@ public static class RollupBuilder
                 return new RollupRow(
                     g.Key.Category, g.Key.Label.Client, ticket, g.Key.Label.Name,
                     TimeSpan.FromTicks(g.Sum(x => x.Duration.Ticks)),
-                    rowKey);
+                    rowKey,
+                    g.First().ProcessName);
             })
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
@@ -107,6 +111,15 @@ public static class RollupBuilder
             ? (null, c.ProcessName)
             : (c.ProcessName, title);
     }
+
+    // The app a row's time was mostly spent in. A row usually has exactly one; a ticket viewed
+    // from two apps (grouping merges all its views) is represented by the one that earned the
+    // most time — the same "longest wins" rule DisplayName uses for the title.
+    private static string DominantProcess(IEnumerable<ClassifiedBlock> group)
+        => group
+            .GroupBy(b => b.Block.ProcessName)
+            .OrderByDescending(g => g.Sum(b => b.Block.Duration.Ticks))
+            .First().Key;
 
     // The within-(category, client, ticket) grouping key. Null for ticketed blocks so all views of
     // one ticket merge regardless of title; the subject for Teams chats; else the per-tab title.

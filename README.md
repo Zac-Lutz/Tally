@@ -275,7 +275,9 @@ way; this only changes the category it carries. (A Teams window showing neither 
 a call — the activity feed, the calendar — stays plain **Teams**.)
 
 The **Rollup** is per-activity, not per-category: each distinct browser tab, editor window,
-email, or Teams chat is its own row with time summed across the whole day (so several Halo
+email, or Teams chat is its own row with time summed across the whole day. Every Rollup and
+Timeline row leads with the **app** the time was spent in — categorized or not — so an
+unclassified stretch still says where it happened (so several Halo
 ticket tabs open at once each track separately). Halo tickets group by ticket number; Teams
 chats by name; everything else by window title, after stripping volatile title noise
 ("and N more pages", the trailing browser name, and an editor's leading unsaved-changes marker

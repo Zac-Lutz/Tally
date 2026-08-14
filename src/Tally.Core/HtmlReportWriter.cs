@@ -657,11 +657,13 @@ public static class HtmlReportWriter
             .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th></tr>\n");
+        sb.Append("<tr><th>App</th><th>Category</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var row in rows)
         {
-            sb.Append("<tr><td>").Append(CategoryBadge(row.Category, palette)).Append("</td>")
+            // The app always shows, classified or not — a manual timer is the one row with no app.
+            sb.Append("<tr><td>").Append(row.ProcessName is { } app ? Esc(app) : "<span class=\"muted\">—</span>").Append("</td>")
+              .Append("<td>").Append(CategoryBadge(row.Category, palette)).Append("</td>")
               .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
               .Append("<td>").Append(TicketCell(row, editable)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
@@ -710,7 +712,7 @@ public static class HtmlReportWriter
     private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, CategoryPalette? palette)
     {
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>Category</th><th>Title</th></tr>\n");
+        sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>App</th><th>Category</th><th>Title</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         // Newest first — most recent activity at the top.
         for (var i = blocks.Count - 1; i >= 0; i--)
@@ -719,6 +721,7 @@ public static class HtmlReportWriter
             sb.Append("<tr><td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td>")
+              .Append("<td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
               .Append("<td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
               .Append("<td>").Append(Esc(b.Block.Title)).Append("</td></tr>\n");
         }

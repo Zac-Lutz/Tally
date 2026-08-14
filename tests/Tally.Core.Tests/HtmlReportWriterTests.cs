@@ -59,6 +59,23 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void RollupAndTimeline_ShowTheApp_BeforeTheCategory()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+        [
+            CB(0, 30, "Development", "Program.cs", process: "Code"),
+            CB(30, 45, Classification.Unclassified, "Mystery window", process: "someapp"),
+        ], [], []);
+
+        // Both tables carry the App column, headed right before Category.
+        Assert.Contains("<th>App</th><th>Category</th>", md);                                    // rollup
+        Assert.Contains("<th class=\"num\">Duration</th><th>App</th><th>Category</th>", md);     // timeline
+        Assert.Contains("<td>Code</td>", md);
+        // Unclassified time still names its app — that's what makes it identifiable.
+        Assert.Contains("<td>someapp</td>", md);
+    }
+
+    [Fact]
     public void CategoriesTab_RendersInTheLiveView_WithCustomRuleAndBuiltInNames()
     {
         var categories = new CategoryDefinition[] { new("Documentation", "#8b5cf6") };
