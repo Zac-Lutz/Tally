@@ -47,11 +47,15 @@ suggestion card sitting next to your meetings; click **Log Time** on one and the
 prefilled. Nothing is entered automatically, re-uploading never touches entries you've already
 created, and once you log time from a suggestion it shows **Added**.
 
-**Export part of a day.** Clicking **Export timesheet** asks how much of the day to cover.
-**Everything so far** is the default; untick it to set a From and To — file the morning at lunch,
-then the afternoon at the end of the day. The entry count and hours update as you change the
-times, so you're choosing against what it will actually produce, and the window lands in the
-filename (`tally-2026-08-13-0800-1200.json`).
+**Review and edit before anything is written.** Clicking **Export timesheet** opens the export
+window: the range choice up top (**Everything so far** by default; untick it to set a From and
+To — file the morning at lunch, the afternoon at close), and below it **every entry the file
+will carry** — its times, hours, ticket, title, and description. All of it is editable in place:
+fix a title, rewrite a description, correct the hours, point an entry at a different ticket —
+so what arrives in att is ready to review and log, not something to clean up there. Editing the
+title or ticket rewrites the description for you until you've edited the description yourself,
+and the entry count and hours track your edits live. The chosen window lands in the filename
+(`tally-2026-08-13-0800-1200.json`).
 
 An entry belongs to the window it *started* in, so two slices never double-count a meeting that
 ran through the cut-off. One thing to know: importing into att **replaces that day's suggestions**,

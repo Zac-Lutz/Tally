@@ -52,9 +52,30 @@ public static class JsonExportWriter
         JsonExportContext context,
         IReadOnlyList<ManualTimer>? timers = null,
         SuggestionSlotOptions? slotOptions = null)
+        => BuildJson(date, BuildEntries(blocks, calls, timers, slotOptions), calls, timers ?? [], context);
+
+    /// <summary>
+    /// The export's entries in editable form — what the export dialog previews and lets the user
+    /// rewrite before <see cref="BuildJson(DateOnly, IReadOnlyList{ExportEntry}, IReadOnlyList{CallSpan}, IReadOnlyList{ManualTimer}, JsonExportContext)"/>
+    /// serializes them. An unedited round-trip produces the same document the one-shot overload does.
+    /// </summary>
+    public static IReadOnlyList<ExportEntry> BuildEntries(
+        IReadOnlyList<ClassifiedBlock> blocks,
+        IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer>? timers = null,
+        SuggestionSlotOptions? slotOptions = null)
+        => SuggestionSlotBuilder.Build(blocks, calls, timers, slotOptions).Select(ExportEntry.From).ToList();
+
+    /// <summary>Serializes entries — edited or not — enforcing every contract bound again, so a
+    /// hand-typed note or ticket can't produce a document the importer rejects.</summary>
+    public static string BuildJson(
+        DateOnly date,
+        IReadOnlyList<ExportEntry> entries,
+        IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ManualTimer> timers,
+        JsonExportContext context)
     {
-        var suggestions = SuggestionSlotBuilder.Build(blocks, calls, timers, slotOptions);
-        var slots = BuildSlots(suggestions, calls, timers ?? [], context.Machine);
+        var slots = BuildSlots(entries, calls, timers, context.Machine);
         var rangeStart = slots.Count > 0 ? slots[0].Date : date.ToString("yyyy-MM-dd");
         var rangeEnd = slots.Count > 0 ? slots[^1].Date : date.ToString("yyyy-MM-dd");
 
@@ -68,33 +89,34 @@ public static class JsonExportWriter
     }
 
     private static List<JsonSlot> BuildSlots(
-        IReadOnlyList<SuggestionSlot> suggestions, IReadOnlyList<CallSpan> calls,
+        IReadOnlyList<ExportEntry> entries, IReadOnlyList<CallSpan> calls,
         IReadOnlyList<ManualTimer> timers, string machine)
     {
         // Slot ids must be unique across the document or the import is rejected. The natural id
         // (start minute + bucket) collides when a target is returned to inside the same minute, so
         // uniqueness is enforced here rather than assumed.
         var taken = new HashSet<string>(StringComparer.Ordinal);
-        return suggestions.Select(s => BuildSlot(s, calls, timers, machine, taken)).ToList();
+        return entries.Select(e => BuildSlot(e, calls, timers, machine, taken)).ToList();
     }
 
     private static JsonSlot BuildSlot(
-        SuggestionSlot slot, IReadOnlyList<CallSpan> calls, IReadOnlyList<ManualTimer> timers,
+        ExportEntry entry, IReadOnlyList<CallSpan> calls, IReadOnlyList<ManualTimer> timers,
         string machine, HashSet<string> takenIds)
     {
+        var slot = entry.Slot;
         var start = slot.Start.ToLocalTime();
         var end = slot.End.ToLocalTime();
         var bucket = Bucket(slot.Category);
-        var items = BuildItems(slot);
-        var note = BuildNote(slot);
+        var items = BuildItems(entry);
+        var note = Cap(entry.Note, MaxNoteLength);
 
         return new JsonSlot(
             Id: UniqueId(start, bucket, takenIds),
             Date: start.ToString("yyyy-MM-dd"),
             Start: Iso(start),
             End: Iso(end),
-            // Reported (rounded) time, never measured: this is the number the timesheet books.
-            Hours: Hours(slot.Reported),
+            // The entry's hours — the reported (rounded) figure unless the reviewer changed it.
+            Hours: Hours(entry.Hours),
             Bucket: Cap(bucket, MaxBucketLength),
             Note: note,
             Evidence: BuildEvidence(slot, calls, timers),
@@ -114,26 +136,26 @@ public static class JsonExportWriter
             Machines: [new JsonMachine(Cap(machine, MaxMachineNameLength), Seconds(slot.Measured.TotalSeconds))]);
     }
 
-    private static string BuildNote(SuggestionSlot slot)
+    // The entry's work items. An untouched ticket keeps the slot's own list (every ticket its
+    // blocks named, biggest first); a reviewer's edit replaces that with exactly what they typed —
+    // one item, or none when they cleared it.
+    private static List<JsonItem> BuildItems(ExportEntry entry)
     {
-        var note = slot.Kind switch
+        if (!string.Equals(entry.Ticket, entry.Slot.TicketRef, StringComparison.Ordinal))
         {
-            SuggestionSlotKind.OddsAndEnds =>
-                $"Odds and ends — {DistinctActivities(slot)} short activities, none long enough to stand alone",
-            SuggestionSlotKind.Call => $"Call - {slot.Label}",
-            SuggestionSlotKind.Timer => $"Timer - {slot.Label}",
-            _ when slot.TicketRef is { } ticket => $"Ticket #{ticket} - {slot.Label}",
-            _ => $"{slot.Category} - {slot.Label}",
-        };
+            return entry.Ticket is { } ticket
+                ?
+                [
+                    new JsonItem(
+                        "wi",
+                        Cap("#" + ticket, MaxItemRefLength),
+                        Cap(entry.Title.Length > 0 ? entry.Title : $"Ticket #{ticket}", MaxItemTitleLength),
+                        string.Empty),
+                ]
+                : [];
+        }
 
-        return Cap(note, MaxNoteLength);
-    }
-
-    private static int DistinctActivities(SuggestionSlot slot)
-        => slot.Blocks.Select(b => TitleNormalizer.Normalize(b.Block.Title)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-
-    private static List<JsonItem> BuildItems(SuggestionSlot slot)
-        => slot.Blocks
+        return entry.Slot.Blocks
             .Where(b => b.EffectiveTicket is not null)
             .GroupBy(b => b.EffectiveTicket!)
             .OrderByDescending(g => g.Sum(b => b.Block.Duration.Ticks))
@@ -146,6 +168,7 @@ public static class JsonExportWriter
                 Cap(FirstNonEmptyTitle(g) ?? $"Ticket #{g.Key}", MaxItemTitleLength),
                 string.Empty))
             .ToList();
+    }
 
     private static string? FirstNonEmptyTitle(IEnumerable<ClassifiedBlock> blocks)
         => blocks
@@ -232,8 +255,8 @@ public static class JsonExportWriter
 
     /// <summary>Hours as the contract wants them: at most two decimals, and never zero (a slot
     /// that reports no time is rejected, and rounding a real activity to nothing loses work).</summary>
-    private static double Hours(TimeSpan reported)
-        => Math.Max(0.01, Math.Round(reported.TotalHours, 2));
+    private static double Hours(double hours)
+        => Math.Max(0.01, Math.Round(hours, 2));
 
     private static int Seconds(double seconds) => (int)Math.Round(seconds);
 

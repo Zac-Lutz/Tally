@@ -873,23 +873,21 @@ public sealed class LiveWindow : Form
 
             var date = DateOnly.FromDateTime(DateTime.Now);
             var data = await ReportGenerator.ComputeAsync(_dbOptions, date);
-            var wholeDay = SuggestionSlotBuilder.Build(data.Blocks, data.Calls, data.Timers);
-            if (wholeDay.Count == 0)
+            var entries = JsonExportWriter.BuildEntries(data.Blocks, data.Calls, data.Timers);
+            if (entries.Count == 0)
             {
                 Note("nothing to export yet");
                 return;
             }
 
-            // Ask which slice of the day this file covers before writing anything. Cancelling —
-            // or narrowing it down to nothing — leaves no file behind.
-            if (ExportRangeDialog.Ask(this, wholeDay) is not { } options)
+            // The export window: pick the slice AND review/edit every entry the file will carry.
+            // Cancelling — or narrowing it down to nothing — leaves no file behind.
+            if (ExportRangeDialog.Ask(this, entries) is not { } selection)
                 return;
-
-            var slots = SuggestionSlotBuilder.Build(data.Blocks, data.Calls, data.Timers, options);
 
             // The window rides in the filename so two slices of one day don't overwrite each other
             // and it's obvious afterwards which is which.
-            var slice = (options.WindowStart, options.WindowEnd) switch
+            var slice = (selection.From, selection.To) switch
             {
                 (null, null) => string.Empty,
                 ({ } f, null) => $"-from{f:HHmm}",
@@ -899,7 +897,7 @@ public sealed class LiveWindow : Form
 
             using var dialog = new SaveFileDialog
             {
-                Title = $"Export {slots.Count} timesheet {(slots.Count == 1 ? "entry" : "entries")} ({slots.Sum(s => s.Reported.TotalHours):0.00} h)",
+                Title = $"Export {selection.Entries.Count} timesheet {(selection.Entries.Count == 1 ? "entry" : "entries")} ({selection.Entries.Sum(e => e.Hours):0.00} h)",
                 FileName = $"tally-{date:yyyy-MM-dd}{slice}.json",
                 Filter = "Suggestion Export (*.json)|*.json",
                 InitialDirectory = _reportsDirectory,
@@ -909,9 +907,12 @@ public sealed class LiveWindow : Form
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
 
-            await File.WriteAllTextAsync(dialog.FileName, ReportGenerator.BuildExportJson(data, options));
-            Log.Info($"Exported {slots.Count} timesheet slots to {dialog.FileName}");
-            Note($"exported {slots.Count} entries");
+            var json = JsonExportWriter.BuildJson(
+                date, selection.Entries, data.Calls, data.Timers,
+                new JsonExportContext("tally", Environment.MachineName, DateTimeOffset.Now));
+            await File.WriteAllTextAsync(dialog.FileName, json);
+            Log.Info($"Exported {selection.Entries.Count} timesheet entries to {dialog.FileName}");
+            Note($"exported {selection.Entries.Count} entries");
         }
         catch (Exception ex)
         {

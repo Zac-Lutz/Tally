@@ -28,6 +28,76 @@ public class JsonExportWriterTests
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
 
+    // ---- The editable-entry path the export dialog uses ----
+
+    [Fact]
+    public void UneditedEntries_ProduceTheSameDocument_AsTheOneShotBuild()
+    {
+        ClassifiedBlock[] blocks =
+        [
+            CB(At(8, 0), At(9, 0), "Development", "VS"),
+            CB(At(9, 0), At(10, 0), "Halo", "Ticket #123 - VPN", ticket: "123"),
+        ];
+
+        var oneShot = JsonExportWriter.BuildJson(Date, blocks, [], Context);
+        var entries = JsonExportWriter.BuildEntries(blocks, []);
+        var roundTrip = JsonExportWriter.BuildJson(Date, entries, [], [], Context);
+
+        Assert.Equal(oneShot, roundTrip);
+    }
+
+    [Fact]
+    public void EditedNoteHoursAndTicket_LandInTheDocument()
+    {
+        var entries = JsonExportWriter.BuildEntries(
+            [CB(At(8, 0), At(9, 0), "Development", "VS")], []);
+        var edited = entries
+            .Select(e => e with { Note = "Refactored the export dialog", Hours = 1.5, Ticket = "555" })
+            .ToList();
+
+        var slot = Parse(JsonExportWriter.BuildJson(Date, edited, [], [], Context)).GetProperty("slots")[0];
+
+        Assert.Equal("Refactored the export dialog", slot.GetProperty("note").GetString());
+        Assert.Equal(1.5, slot.GetProperty("hours").GetDouble());
+        var item = Assert.Single(slot.GetProperty("items").EnumerateArray());
+        Assert.Equal("#555", item.GetProperty("ref").GetString());
+    }
+
+    [Fact]
+    public void ClearingTheTicket_RemovesTheWorkItems()
+    {
+        var entries = JsonExportWriter.BuildEntries(
+            [CB(At(8, 0), At(9, 0), "Halo", "Ticket #123 - VPN", ticket: "123")], []);
+        var edited = entries.Select(e => e with { Ticket = null }).ToList();
+
+        var slot = Parse(JsonExportWriter.BuildJson(Date, edited, [], [], Context)).GetProperty("slots")[0];
+
+        Assert.Equal(0, slot.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public void AHandTypedNovelOfANote_IsCappedToTheContract()
+    {
+        var entries = JsonExportWriter.BuildEntries(
+            [CB(At(8, 0), At(9, 0), "Development", "VS")], []);
+        var edited = entries.Select(e => e with { Note = new string('x', 900) }).ToList();
+
+        var slot = Parse(JsonExportWriter.BuildJson(Date, edited, [], [], Context)).GetProperty("slots")[0];
+
+        Assert.Equal(500, slot.GetProperty("note").GetString()!.Length);
+    }
+
+    [Fact]
+    public void EntryDefaults_MirrorTheSlot()
+    {
+        var entry = Assert.Single(JsonExportWriter.BuildEntries(
+            [CB(At(8, 0), At(9, 0), "Halo", "Ticket #123 - VPN", ticket: "123")], []));
+
+        Assert.Equal("123", entry.Ticket);
+        Assert.Equal(1.0, entry.Hours);
+        Assert.StartsWith("Ticket #123 - ", entry.Note);
+    }
+
     [Fact]
     public void EnvelopeMatchesSchemaVersion2()
     {

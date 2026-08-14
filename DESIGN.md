@@ -113,6 +113,15 @@ Everything stays on this machine. No cloud, no telemetry.
   rounding an activity to nothing deletes work, and a zero-hour slot is rejected on import anyway.
   `Measured` and `Reported` are separate fields so the Timesheet tab can show the rounding rather
   than let the file do it quietly.
+- **The export is reviewed as entries, then serialized — never edited as JSON.** `ExportEntry`
+  (Core) is a slot's editable surface: title, full note text, ticket, hours; times and evidence
+  stay measured fact. `JsonExportWriter.BuildEntries` → dialog edits → `BuildJson(entries…)`,
+  and an unedited round-trip byte-matches the one-shot build (tested). Every contract bound is
+  re-enforced at serialization, so a hand-typed note can't produce a rejected document. Edit
+  semantics: a title/ticket edit recomposes the note until the note itself is hand-edited (then
+  the reviewer's text wins); an edited ticket replaces the slot's work items with exactly what
+  was typed; hours pass through rounded, floor 0.01. The dialog's grid shows the current range's
+  entries; edits live on the entries, so changing the range never loses them.
 - **Consumer bounds are enforced when writing, not hoped for.** The importer rejects the whole
   document on any field error, so `JsonExportWriter` truncates and de-duplicates to the contract's
   caps (unique ids in `[A-Za-z0-9._-]`, hours > 0, ≤10 non-empty window titles, ≤20 evidence items
