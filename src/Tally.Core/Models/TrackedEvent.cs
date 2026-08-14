@@ -45,4 +45,8 @@ public sealed class TrackedEvent
     public EventKind Kind { get; set; }
     public string ProcessName { get; set; } = string.Empty;
     public string WindowTitle { get; set; } = string.Empty;
+
+    /// <summary>The page a browser window showed, as sanitized host/path — null for everything
+    /// that isn't a browser, and for address-bar text that wasn't a page.</summary>
+    public string? Url { get; set; }
 }

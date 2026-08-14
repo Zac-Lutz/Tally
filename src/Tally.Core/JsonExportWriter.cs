@@ -131,7 +131,7 @@ public static class JsonExportWriter
                 : Cap(note, MaxSummaryLength),
             Items: items,
             WindowTitles: BuildWindowTitles(slot),
-            Browser: [],     // no URL capture
+            Browser: [],     // URLs are captured but not exported yet (phase 3 of URL capture)
             Sessions: [],    // no structured repo/branch capture
             Machines: [new JsonMachine(Cap(machine, MaxMachineNameLength), Seconds(slot.Measured.TotalSeconds))]);
     }

@@ -33,6 +33,17 @@ public sealed class TallyDbContext(DbContextOptions<TallyDbContext> options) : D
             """);
         db.Database.ExecuteSqlRaw(
             "CREATE INDEX IF NOT EXISTS IX_manual_timers_Start ON manual_timers (Start);");
+
+        // URL capture added a column to events. SQLite has no ADD COLUMN IF NOT EXISTS, so the
+        // duplicate-column error on an already-migrated database is the expected no-op.
+        try
+        {
+            db.Database.ExecuteSqlRaw("ALTER TABLE events ADD COLUMN Url TEXT NULL;");
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            // Column already exists.
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -49,6 +60,7 @@ public sealed class TallyDbContext(DbContextOptions<TallyDbContext> options) : D
 
         events.Property(e => e.Kind).HasConversion<string>().HasMaxLength(16);
         events.Property(e => e.ProcessName).HasMaxLength(260);
+        events.Property(e => e.Url).HasMaxLength(300);
 
         var timers = modelBuilder.Entity<ManualTimer>();
         timers.ToTable("manual_timers");

@@ -31,6 +31,22 @@ public class RuleAuthoringTests
     }
 
     [Fact]
+    public void Build_CarriesTheUrl_OfTheRowsLongestBlock()
+    {
+        var rows = UnclassifiedBuilder.Build(
+        [
+            new ClassifiedBlock(
+                new Block(T0, T0.AddMinutes(2), "msedge", "Mystery page", "short.example.com/a"),
+                new Classification(Classification.Unclassified, null, null, null, null)),
+            new ClassifiedBlock(
+                new Block(T0.AddMinutes(10), T0.AddMinutes(30), "msedge", "Mystery page", "long.example.com/b"),
+                new Classification(Classification.Unclassified, null, null, null, null)),
+        ]);
+
+        Assert.Equal("long.example.com/b", Assert.Single(rows).Url);
+    }
+
+    [Fact]
     public void Build_IgnoresClassifiedBlocks()
     {
         var classified = new ClassifiedBlock(

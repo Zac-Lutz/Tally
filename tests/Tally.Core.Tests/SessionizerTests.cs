@@ -4,6 +4,29 @@ using Xunit;
 
 namespace Tally.Core.Tests;
 
+public class SessionizerUrlTests
+{
+    private static readonly DateTimeOffset T0 = new(2026, 8, 13, 9, 0, 0, TimeSpan.FromHours(-5));
+
+    private static TrackedEvent Ev(EventKind kind, double atSeconds, string process, string title, string? url = null)
+        => new() { Timestamp = T0.AddSeconds(atSeconds), Kind = kind, ProcessName = process, WindowTitle = title, Url = url };
+
+    [Fact]
+    public void ABlock_CarriesTheUrl_OfTheEventThatOpenedIt()
+    {
+        var result = Sessionizer.Build(
+        [
+            Ev(EventKind.Focus, 0, "msedge", "Tickets - Halo", "lutz.halopsa.com/tickets"),
+            Ev(EventKind.TitleChange, 300, "msedge", "Mail - Outlook", "outlook.office.com/mail"),
+            Ev(EventKind.Focus, 600, "devenv", "Fix.cs"),
+        ], T0.AddSeconds(900));
+
+        Assert.Equal("lutz.halopsa.com/tickets", result.Blocks[0].Url);
+        Assert.Equal("outlook.office.com/mail", result.Blocks[1].Url);
+        Assert.Null(result.Blocks[2].Url);   // not a browser — no URL, as before
+    }
+}
+
 public class SessionizerTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 12, 9, 0, 0, TimeSpan.FromHours(-5));

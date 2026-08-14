@@ -83,13 +83,30 @@ public sealed class ForegroundWatcher : IDisposable
 
         _lastProcess = processName;
         _lastTitle = windowTitle;
-        EventCaptured?.Invoke(new TrackedEvent
+        var trackedEvent = new TrackedEvent
         {
             Timestamp = DateTimeOffset.Now,
             Kind = kind,
             ProcessName = processName,
             WindowTitle = windowTitle,
-        });
+        };
+
+        // A browser event also gets the page from the address bar — read on the thread pool,
+        // because a WinEvent callback must return fast and a UI Automation query is not fast.
+        // The timestamp is already stamped, and readers order by timestamp, so the few
+        // milliseconds of delayed delivery change nothing.
+        if (BrowserUrlReader.IsBrowser(processName))
+        {
+            _ = Task.Run(() =>
+            {
+                trackedEvent.Url = BrowserUrlReader.TryRead(hwnd);
+                EventCaptured?.Invoke(trackedEvent);
+            });
+        }
+        else
+        {
+            EventCaptured?.Invoke(trackedEvent);
+        }
     }
 
     public void Dispose()

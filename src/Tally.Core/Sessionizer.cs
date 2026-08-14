@@ -53,6 +53,7 @@ public static class Sessionizer
 
         string? process = null;
         string? title = null;
+        string? url = null;
         DateTimeOffset? blockStart = null;
         DateTimeOffset? suspendedAt = null;
         string? suspendReason = null;
@@ -60,7 +61,7 @@ public static class Sessionizer
         void CloseBlock(DateTimeOffset end)
         {
             if (blockStart is { } start && process is not null && end > start)
-                blocks.Add(new Block(start, end, process, title ?? string.Empty));
+                blocks.Add(new Block(start, end, process, title ?? string.Empty, url));
             blockStart = null;
         }
 
@@ -76,6 +77,7 @@ public static class Sessionizer
                         CloseBlock(e.Timestamp);
                     process = e.ProcessName;
                     title = e.WindowTitle;
+                    url = e.Url;
                     if (suspendedAt is null)
                         blockStart = e.Timestamp;
                     break;

@@ -13,6 +13,13 @@ dotnet build Tally.slnx
 dotnet run --project src/Tally.App
 ```
 
+**Browser pages are captured too — privately.** For browser windows, Tally also reads the
+address bar (through Windows' built-in accessibility layer — no browser extension) and stores
+just the **site and page path**: everything after `?` is stripped before anything is written, so
+search terms and tokens never land in the database. The page shows under Uncategorized rows and
+as a hover on Timeline rows — the clue a vague tab title withholds. Like everything else, it
+never leaves the machine and ages out with the raw-history retention.
+
 The app lives in the system tray as a tally-marks icon that shows its state at a glance:
 **green** while tracking, **red** when paused. **Left-click** it to open the live view;
 **right-click** for:
@@ -125,7 +132,8 @@ reconciliation is yours to make. Tally is deliberately offline and never talks t
 The file is the Suggestion Export `schema_version: "2"`: a `source`/`range`/`slots` envelope.
 Every bound the importer enforces is enforced when writing (unique ids, hours above zero, capped
 titles and evidence), so a rejected upload should mean a real bug, not a long day. Fields Tally
-can't populate are honest: `browser` and `sessions` are always empty (no URL or repo capture).
+can't populate are honest: `browser` is empty for now (URLs are captured in the app but don't
+flow into the export yet) and `sessions` is always empty (no repo capture).
 `summary` is supplied only where it helps — a ticketed entry omits it so the ticket composes the
 note, a meeting always supplies it so its own name isn't outranked.
 

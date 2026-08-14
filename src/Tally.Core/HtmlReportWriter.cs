@@ -563,7 +563,11 @@ public static class HtmlReportWriter
         {
             sb.Append($"<tr data-p=\"{B64(row.ProcessName)}\" data-t=\"{B64(row.Title)}\">")
               .Append("<td>").Append(Esc(row.ProcessName)).Append("</td>")
-              .Append("<td>").Append(Esc(row.Title)).Append("</td>")
+              .Append("<td>").Append(Esc(row.Title));
+            // The page behind a mystery tab — often the clue the title withheld.
+            if (row.Url is { } url)
+                sb.Append($"<div class=\"uc-url muted\">{Esc(url)}</div>");
+            sb.Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td>");
             if (editable)
             {
@@ -912,9 +916,11 @@ public static class HtmlReportWriter
         for (var i = blocks.Count - 1; i >= 0; i--)
         {
             var b = blocks[i];
+            // The URL rides as a hover on the Detail cell — visible when needed, no column spent.
+            var urlTip = b.Block.Url is { } url ? $" title=\"{Esc(url)}\"" : string.Empty;
             sb.Append("<tr><td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
               .Append("<td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
-              .Append("<td>").Append(Esc(b.Block.Title)).Append("</td>")
+              .Append($"<td{urlTip}>").Append(Esc(b.Block.Title)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
               .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td></tr>\n");
@@ -1040,6 +1046,7 @@ public static class HtmlReportWriter
         .uc-cat:focus,.uc-scope:focus { outline:none; border-color:var(--accent); }
         .uc-save { font-size:13px; padding:5px 12px; white-space:nowrap; }
         .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; }
+        .uc-url { font-size:12px; word-break:break-all; }
         /* Rules tab: each row carries both its read view and its edit inputs; the row's
            "editing" class decides which shows. Patterns wrap so a long regex can't blow out
            the table. */

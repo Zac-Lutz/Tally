@@ -1,7 +1,8 @@
 namespace Tally.Core.Models;
 
-/// <summary>A contiguous stretch of foreground time in one window context. The title is kept verbatim.</summary>
-public sealed record Block(DateTimeOffset Start, DateTimeOffset End, string ProcessName, string Title)
+/// <summary>A contiguous stretch of foreground time in one window context. The title is kept
+/// verbatim; <see cref="Url"/> is the sanitized page a browser block showed, when known.</summary>
+public sealed record Block(DateTimeOffset Start, DateTimeOffset End, string ProcessName, string Title, string? Url = null)
 {
     public TimeSpan Duration => End - Start;
 }

@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF is referenced only for System.Windows.Automation (BrowserUrlReader) — the managed
+         UI Automation client. The self-contained publish already ships the desktop runtime, so
+         this costs nothing at distribution time. -->
+    <UseWPF>true</UseWPF>
     <RootNamespace>Tally.Capture</RootNamespace>
   </PropertyGroup>
 

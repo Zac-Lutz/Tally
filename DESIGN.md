@@ -19,6 +19,17 @@ Everything stays on this machine. No cloud, no telemetry.
   applies on the next tick). Manual timers are never purged — user-declared and unrebuildable.
   The durable record for aged-out days is the report files already written (the default daily
   auto-report covers this); persisting classified blocks as a queryable history is still slice 5.
+- **URLs come from the address bar via UI Automation, not an extension.** `BrowserUrlReader`
+  reads the focused browser window's first Edit control (the address bar precedes page content in
+  tree order for Chrome/Edge/Firefox) on a thread-pool thread — a WinEvent callback must return
+  fast — and the event records once the URL is attached (readers order by timestamp, so delayed
+  delivery is harmless). `UrlSanitizer` keeps host+path only: query strings and fragments — where
+  search terms and tokens live — are stripped before storage; non-pages (half-typed searches,
+  chrome:// internals) become null. Best-effort by design: any UIA failure just means no URL,
+  which is the pre-capture behavior. The managed `System.Windows.Automation` client is used
+  (COMReference needs Framework MSBuild; the self-contained publish ships WPF anyway). Events
+  gained an additive `Url` column (ALTER TABLE, duplicate-column swallowed). Phase 2 (site-based
+  rules, ticket-from-URL) and phase 3 (the export's `browser` field) build on this.
 - **No input-activity counting.** An earlier version counted key-downs/clicks per block as an
   "intensity" signal (counts only, never key identity). It was removed: the signal was weak and
   redundant with idle detection (reading, calls, and reviewing are low-input but real work), and
@@ -137,7 +148,8 @@ Everything stays on this machine. No cloud, no telemetry.
   of ≤64 chars, required item titles). Bucket slugs are sanitized because categories became free
   text with the triage tab. Environment fields (machine, generated_at) arrive via
   `JsonExportContext` so Core stays deterministic/testable. `browser`/`sessions` are always empty
-  (no URL/repo capture). `summary` is emitted only where it helps: omitted for a ticketed activity
+  (`browser` awaits the export phase of URL capture; no repo capture). `summary` is emitted only
+  where it helps: omitted for a ticketed activity
   slot so the consumer default-checks the work item, always supplied for a call/timer so the
   meeting's own name isn't outranked in the note by a ticket that happened to be on screen.
 - **An export window partitions by slot START, never by overlap.** Splitting a day (file the

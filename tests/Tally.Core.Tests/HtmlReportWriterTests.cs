@@ -222,6 +222,19 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void CapturedUrls_ShowOnUncategorizedRows_AndAsTimelineHovers()
+    {
+        var block = new ClassifiedBlock(
+            new Block(T0, T0.AddMinutes(20), "msedge", "Mystery page", "portal.example.com/dashboard"),
+            new Classification(Classification.Unclassified, null, null, null, null));
+
+        var md = HtmlReportWriter.BuildHtml(Date, [block], [], []);
+
+        Assert.Contains("<div class=\"uc-url muted\">portal.example.com/dashboard</div>", md);
+        Assert.Contains("<td title=\"portal.example.com/dashboard\">Mystery page</td>", md);
+    }
+
+    [Fact]
     public void RollupAndTimeline_ShowTheApp_BeforeTheCategory()
     {
         var md = HtmlReportWriter.BuildHtml(Date,

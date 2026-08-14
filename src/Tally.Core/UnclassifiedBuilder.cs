@@ -5,9 +5,10 @@ namespace Tally.Core;
 /// <summary>
 /// One activity that matched no rule, awaiting triage: the app, the window it ran in, and how long
 /// it ran today. <see cref="Title"/> is the normalized title — the same text the Rollup shows — so a
-/// rule drafted from a row matches what the user actually pointed at.
+/// rule drafted from a row matches what the user actually pointed at. <see cref="Url"/> is the page
+/// the row's longest browser block showed, when captured — the extra clue for naming a mystery tab.
 /// </summary>
-public sealed record UnclassifiedRow(string ProcessName, string Title, TimeSpan Time);
+public sealed record UnclassifiedRow(string ProcessName, string Title, TimeSpan Time, string? Url = null);
 
 /// <summary>
 /// Groups the day's unclassified blocks into triage rows: one row per (app, window title), summed
@@ -27,7 +28,11 @@ public static class UnclassifiedBuilder
             .Select(g => new UnclassifiedRow(
                 g.Key.ProcessName,
                 g.Key.Title,
-                TimeSpan.FromTicks(g.Sum(b => b.Block.Duration.Ticks))))
+                TimeSpan.FromTicks(g.Sum(b => b.Block.Duration.Ticks)),
+                g.Where(b => b.Block.Url is not null)
+                    .OrderByDescending(b => b.Block.Duration)
+                    .Select(b => b.Block.Url)
+                    .FirstOrDefault()))
             .Where(r => r.Time >= min)
             .OrderByDescending(r => r.Time)
             .ThenBy(r => r.Title, StringComparer.OrdinalIgnoreCase)
