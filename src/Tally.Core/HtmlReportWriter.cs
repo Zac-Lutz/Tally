@@ -215,7 +215,7 @@ public static class HtmlReportWriter
         AppendTimeline(sb, blocks, palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
-        AppendCalls(sb, calls);
+        AppendCalls(sb, calls, palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"timers\">\n");
         AppendTimers(sb, timers, editable, timerPanel);
@@ -746,7 +746,9 @@ public static class HtmlReportWriter
         return row.TicketRef is { } tk ? $"#{Esc(tk)}" : string.Empty;
     }
 
-    private static void AppendCalls(StringBuilder sb, IReadOnlyList<CallSpan> calls)
+    // Calls, Timeline, and the Rollup share one column shape — App, Category, Detail leading,
+    // Time trailing — so the eye lands on the same facts in the same place on every tab.
+    private static void AppendCalls(StringBuilder sb, IReadOnlyList<CallSpan> calls, CategoryPalette? palette)
     {
         if (calls.Count == 0)
         {
@@ -755,15 +757,18 @@ public static class HtmlReportWriter
         }
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>App</th><th>Title</th></tr>\n");
+        sb.Append("<tr><th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         foreach (var call in calls)
         {
-            sb.Append("<tr><td>").Append(ReportFormat.Clock(call.Start)).Append("</td>")
+            // The category is the one the call's rollup row carries (Teams - Call, Discord, …),
+            // so a call is filed identically wherever it shows.
+            sb.Append("<tr><td>").Append(Esc(call.ProcessName)).Append("</td>")
+              .Append("<td>").Append(CategoryBadge(CallApps.CategoryFor(call.ProcessName), palette)).Append("</td>")
+              .Append("<td>").Append(Esc(call.Title)).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(call.Start)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(call.End)).Append("</td>")
-              .Append("<td class=\"num\">").Append(ReportFormat.Duration(call.Duration)).Append("</td>")
-              .Append("<td>").Append(Esc(call.ProcessName)).Append("</td>")
-              .Append("<td>").Append(Esc(call.Title)).Append("</td></tr>\n");
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(call.Duration)).Append("</td></tr>\n");
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
@@ -772,18 +777,18 @@ public static class HtmlReportWriter
     private static void AppendTimeline(StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, CategoryPalette? palette)
     {
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
-        sb.Append("<tr><th>Start</th><th>End</th><th class=\"num\">Duration</th><th>App</th><th>Category</th><th>Title</th></tr>\n");
+        sb.Append("<tr><th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
         // Newest first — most recent activity at the top.
         for (var i = blocks.Count - 1; i >= 0; i--)
         {
             var b = blocks[i];
-            sb.Append("<tr><td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
-              .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
-              .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td>")
-              .Append("<td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
+            sb.Append("<tr><td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
               .Append("<td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
-              .Append("<td>").Append(Esc(b.Block.Title)).Append("</td></tr>\n");
+              .Append("<td>").Append(Esc(b.Block.Title)).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
+              .Append("<td>").Append(ReportFormat.Clock(b.Block.End)).Append("</td>")
+              .Append("<td class=\"num\">").Append(ReportFormat.Duration(b.Block.Duration)).Append("</td></tr>\n");
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");

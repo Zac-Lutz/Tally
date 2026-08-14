@@ -108,12 +108,28 @@ public class HtmlReportWriterTests
             CB(30, 45, Classification.Unclassified, "Mystery window", process: "someapp"),
         ], [], []);
 
-        // Both tables carry the App column, headed right before Category.
-        Assert.Contains("<th>App</th><th>Category</th>", md);                                    // rollup
-        Assert.Contains("<th class=\"num\">Duration</th><th>App</th><th>Category</th>", md);     // timeline
+        // Both tables carry the App column, headed right before Category; the Timeline shares the
+        // Rollup's shape (App, Category, Detail leading, Time trailing).
+        Assert.Contains("<th>App</th><th>Category</th>", md);
+        Assert.Contains("<th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th>", md);
         Assert.Contains("<td>Code</td>", md);
         // Unclassified time still names its app — that's what makes it identifiable.
         Assert.Contains("<td>someapp</td>", md);
+    }
+
+    [Fact]
+    public void CallsTab_SharesTheRollupShape_AndFilesTheCallUnderItsRollupCategory()
+    {
+        var md = HtmlReportWriter.BuildHtml(Date,
+            [CB(0, 30, "Development", "Program.cs", process: "Code")],
+            [new CallSpan(T0, T0.AddMinutes(45), "ms-teams", "Standup")],
+            []);
+
+        var calls = md[md.IndexOf("data-panel=\"calls\"", StringComparison.Ordinal)..];
+        Assert.Contains("<th>App</th><th>Category</th><th>Detail</th><th>Start</th><th>End</th><th class=\"num\">Time</th>", calls);
+        Assert.Contains("<td>ms-teams</td>", calls);
+        Assert.Contains("Teams - Call", calls);   // the same category its rollup row carries
+        Assert.Contains("<td>Standup</td>", calls);
     }
 
     [Fact]
