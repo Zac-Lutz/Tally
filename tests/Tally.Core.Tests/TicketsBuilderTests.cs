@@ -87,4 +87,40 @@ public class TicketsBuilderTests
     [Fact]
     public void ADayWithoutTickets_HasNoRows()
         => Assert.Empty(TicketsBuilder.Build([CB(0, 30, "Just browsing")]));
+
+    private static CallSpan Call(double startMin, double endMin, string title = "Standup")
+        => new(T0.AddMinutes(startMin), T0.AddMinutes(endMin), "ms-teams", title);
+
+    [Fact]
+    public void ACall_WithATicketTypedOnItsRollupRow_FilesUnderTheTicket()
+    {
+        var call = Call(0, 30);
+        var overrides = new Dictionary<string, string> { [RollupBuilder.CallOverrideKey(call)] = "88" };
+
+        var row = Assert.Single(TicketsBuilder.Build([], [call], overrides));
+
+        Assert.Equal("88", row.TicketRef);
+        Assert.Equal("ms-teams", row.ProcessName);
+        Assert.Equal(CallApps.TeamsCallCategory, row.Category);
+        Assert.Equal(TimeSpan.FromMinutes(30), row.Time);
+    }
+
+    [Fact]
+    public void ACall_WithoutATypedTicket_StaysOffTheTab()
+        => Assert.Empty(TicketsBuilder.Build([], [Call(0, 30)], new Dictionary<string, string>()));
+
+    [Fact]
+    public void ACallOverItsOwnTicketsWindows_NeverCountsTheSameMinuteTwice()
+    {
+        // The call (30m) runs over 20m of windows already on the same ticket: the row's time is
+        // the 30m of wall clock the ticket occupied, not 50m.
+        var call = Call(0, 30);
+        var overrides = new Dictionary<string, string> { [RollupBuilder.CallOverrideKey(call)] = "42" };
+
+        var row = Assert.Single(TicketsBuilder.Build(
+            [CB(5, 25, "Ticket 42", ticket: "42")], [call], overrides));
+
+        Assert.Equal(TimeSpan.FromMinutes(30), row.Time);
+        Assert.Equal(1, row.Visits);
+    }
 }

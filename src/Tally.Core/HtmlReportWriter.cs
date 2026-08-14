@@ -212,7 +212,7 @@ public static class HtmlReportWriter
         AppendTimeline(sb, blocks, palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"tickets\">\n");
-        AppendTickets(sb, TicketsBuilder.Build(blocks), palette);
+        AppendTickets(sb, TicketsBuilder.Build(blocks, calls, ticketOverrides), palette);
         sb.Append("</section>\n");
         sb.Append("<section class=\"panel\" data-panel=\"calls\">\n");
         AppendCalls(sb, calls, palette);

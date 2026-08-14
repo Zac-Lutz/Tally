@@ -63,8 +63,7 @@ public static class RollupBuilder
                 // target (app + name) so a ticket typed on a call re-applies on recompute. The key
                 // stays on the generic CallCategory: it's an identity, not a label, so renaming how
                 // a call is filed must not orphan a ticket already typed against it.
-                var activity = g.Key.Label.Client is { } client ? $"{client} / {g.Key.Label.Name}" : g.Key.Label.Name;
-                var rowKey = TicketOverrideKey.ForRow(CallCategory, null, activity);
+                var rowKey = TicketOverrideKey.ForRow(CallCategory, null, ActivityName(g.Key.Label));
                 var ticket = ticketOverrides is not null && ticketOverrides.TryGetValue(rowKey, out var t) ? t : null;
                 return new RollupRow(
                     g.Key.Category, g.Key.Label.Client, ticket, g.Key.Label.Name,
@@ -101,6 +100,16 @@ public static class RollupBuilder
     /// <summary>Rollup rows shorter than this are hidden as noise. The time still counts in the
     /// summary totals, the Timeline, and the JSON export — only the Rollup table drops them.</summary>
     public static readonly TimeSpan MinRollupDuration = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// The per-day override key a call's rollup row files its typed ticket under — shared with
+    /// the Tickets tab, so a ticket typed on a call row means the same call everywhere.
+    /// </summary>
+    public static string CallOverrideKey(CallSpan call)
+        => TicketOverrideKey.ForRow(CallCategory, null, ActivityName(CallLabel(call)));
+
+    private static string ActivityName((string? Client, string Name) label)
+        => label.Client is { } client ? $"{client} / {label.Name}" : label.Name;
 
     // A call's rollup label: the app on its own when the title adds nothing (empty, or just the app
     // name again), otherwise app + the cleaned window title (e.g. a Teams meeting or Discord channel).

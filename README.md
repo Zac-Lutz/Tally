@@ -66,9 +66,11 @@ rather than something you have to work out. The solid part of a block is the tim
 measured: a block that's mostly faint spanned an hour but only earned a few minutes of it.
 
 The **Tickets** tab is the day grouped by ticket number: one row per ticket a window title named
-(or you typed onto a Rollup row), with the app and window the most time went to, how many
-distinct sittings it took, first seen, last seen, and the total time — the "what did I actually
-touch today" list for time entry.
+or you typed onto a Rollup row — window activity and calls alike, so a meeting given a ticket
+number files under it too. Each row carries the app and window the most time went to, how many
+distinct sittings it took, first seen, last seen, and the total wall-clock the ticket occupied
+(a call over the ticket's own windows never counts the same minute twice) — the "what did I
+actually touch today" list for time entry.
 
 **Ticket work is tracked as an engagement, not a window.** Working a ticket means leaving its
 window — the remote session, the docs, the code — and coming back, so visits to the same ticket
