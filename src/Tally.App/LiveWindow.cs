@@ -244,7 +244,8 @@ public sealed class LiveWindow : Form
         {
             var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
             var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
-                timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel());
+                timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel(),
+                rules: LoadRulesSafe());
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
             _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
             var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
@@ -287,6 +288,14 @@ public sealed class LiveWindow : Form
             else if (msg.Type == "rule")
             {
                 SaveRule(msg);
+            }
+            else if (msg.Type == "ruleUpdate")
+            {
+                UpdateRule(msg);
+            }
+            else if (msg.Type == "ruleDelete")
+            {
+                DeleteRule(msg);
             }
             else if (msg.Type == "timerToggle")
             {
@@ -339,17 +348,157 @@ public sealed class LiveWindow : Form
 
     // Existing ids, so a new rule's generated id can't collide with one already in the file.
     private static IReadOnlyList<string> ExistingRuleIds()
+        => LoadRulesSafe().Select(r => r.Id).ToList();
+
+    // The current rules, in file order — the Rules tab renders these, and edits verify against
+    // them. A file that fails to load reads as empty rather than failing the refresh.
+    private static IReadOnlyList<ClassificationRule> LoadRulesSafe()
     {
         try
         {
-            return File.Exists(TallyPaths.RulesPath)
-                ? RulesFile.Load(TallyPaths.RulesPath).Select(r => r.Id).ToList()
-                : [];
+            return File.Exists(TallyPaths.RulesPath) ? RulesFile.Load(TallyPaths.RulesPath) : [];
         }
         catch (Exception ex)
         {
-            Log.Error("Failed to read existing rule ids — a generated id may need a suffix", ex);
+            Log.Error("Failed to load rules.json", ex);
             return [];
+        }
+    }
+
+    /// <summary>
+    /// The rule an edit or delete points at, re-read from the file: the message's index says which
+    /// rule, its id proves the table the click happened in wasn't stale. Rules shift position when
+    /// one is saved from the Unclassified tab, so acting on index alone could hit the wrong rule.
+    /// </summary>
+    private (int Index, ClassificationRule Rule)? TargetRule(EditMessage msg)
+    {
+        if (!int.TryParse(msg.Id, out var index))
+            return null;
+
+        var rules = LoadRulesSafe();
+        var id = Decode(msg.Key);
+        if (id is null || index < 0 || index >= rules.Count || rules[index].Id != id)
+        {
+            Note("the rules just changed — try that again");
+            _ = RefreshAsync();
+            return null;
+        }
+
+        return (index, rules[index]);
+    }
+
+    // An edit committed from the Rules tab. Validation happens here, where the file is written:
+    // a rule must keep a category and at least one pattern, and both patterns must compile —
+    // a typo'd regex would otherwise silently classify nothing.
+    private void UpdateRule(EditMessage msg)
+    {
+        try
+        {
+            if (TargetRule(msg) is not { } target)
+                return;
+
+            var (index, existing) = target;
+            var category = msg.Category?.Trim();
+            var process = NullIfEmpty(msg.Process);
+            var title = NullIfEmpty(msg.Title);
+            if (string.IsNullOrEmpty(category))
+            {
+                Note("a rule needs a category — nothing saved");
+                return;
+            }
+
+            if (process is null && title is null)
+            {
+                Note("a rule needs an app or window pattern — nothing saved");
+                return;
+            }
+
+            if (BadPattern(process) is not null || BadPattern(title) is not null)
+            {
+                Note("that pattern isn't a valid regex — nothing saved");
+                return;
+            }
+
+            var rule = existing with
+            {
+                Category = category,
+                ProcessPattern = process,
+                TitlePattern = title,
+                Client = NullIfEmpty(msg.Client),
+            };
+            RulesFile.ReplaceRuleAt(TallyPaths.RulesPath, index, rule);
+            Log.Info($"Updated classification rule '{rule.Id}' ({category}) from the live view");
+            Note($"rule updated — {category}");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to update a classification rule from the live view", ex);
+            Note("couldn't update that rule — see the log");
+        }
+    }
+
+    // Deleting a rule is cheap to undo in spirit (re-teach it from Unclassified) but still asks
+    // first, naming what the rule matched — mirroring how recorded-timer deletion behaves.
+    private void DeleteRule(EditMessage msg)
+    {
+        try
+        {
+            if (TargetRule(msg) is not { } found)
+                return;
+
+            var rule = found.Rule;
+            var matches = string.Join("   ", new[]
+            {
+                rule.ProcessPattern is { } p ? $"app: {p}" : null,
+                rule.TitlePattern is { } t ? $"window: {t}" : null,
+            }.Where(s => s is not null));
+
+            var answer = MessageBox.Show(
+                this,
+                $"Delete this rule?\n\n{rule.Category}\n{matches}\n\nIts activities go back to Unclassified, today and in any report generated from now on.",
+                "Delete rule",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (answer != DialogResult.Yes)
+                return;
+
+            // Re-resolve after the dialog: a rule saved from the Unclassified tab meanwhile would
+            // have shifted every index.
+            if (TargetRule(msg) is not { } current)
+                return;
+
+            RulesFile.RemoveRuleAt(TallyPaths.RulesPath, current.Index);
+            Log.Info($"Deleted classification rule '{rule.Id}' ({rule.Category}) from the live view");
+            Note("rule deleted");
+            _ = RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to delete a classification rule from the live view", ex);
+            Note("couldn't delete that rule — see the log");
+        }
+    }
+
+    private static string? NullIfEmpty(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>The reason a pattern fails to compile, or null when it's valid (or absent).</summary>
+    private static string? BadPattern(string? pattern)
+    {
+        if (pattern is null)
+            return null;
+
+        try
+        {
+            _ = new System.Text.RegularExpressions.Regex(pattern);
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
         }
     }
 
@@ -437,11 +586,13 @@ public sealed class LiveWindow : Form
 
     private static readonly JsonSerializerOptions EditMessageOptions = new() { PropertyNameCaseInsensitive = true };
 
-    // Every edit the live page can post: a ticket cell (Key/Value), a timer rename (Id/Value), or a
-    // rule saved from triage (Process/Title as base64, Scope, Category).
+    // Every edit the live page can post: a ticket cell (Key/Value), a timer rename (Id/Value), a
+    // rule saved from triage (Process/Title as base64, Scope, Category), or a Rules-tab edit or
+    // delete (Id = the rule's index, Key = its id as base64; the typed pattern/category/client
+    // values travel plain — they ride the JSON message, not an HTML attribute).
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
-        string? Process, string? Title, string? Scope, string? Category);
+        string? Process, string? Title, string? Scope, string? Category, string? Client);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>

@@ -68,6 +68,119 @@ public static partial class RulesFile
             : json.Insert(last + 1, $"{(json[last] == ',' ? "" : ",")}\n    {literal}");
     }
 
+    /// <summary>Removes the rule at <paramref name="index"/> (array order) from the file.</summary>
+    public static void RemoveRuleAt(string path, int index)
+        => File.WriteAllText(path, WithoutRuleAt(File.ReadAllText(path), index));
+
+    /// <summary>Rewrites the rule at <paramref name="index"/> (array order) in place in the file.</summary>
+    public static void ReplaceRuleAt(string path, int index, ClassificationRule rule)
+        => File.WriteAllText(path, WithRuleReplacedAt(File.ReadAllText(path), index, rule));
+
+    /// <summary>
+    /// The rules document with the rule at <paramref name="index"/> removed, as a text edit — every
+    /// other rule and every comment stays exactly as written. A comment that described the removed
+    /// rule is deliberately left behind: comments here often cover a group of rules, so guessing
+    /// which ones belonged to this rule risks deleting someone's note about its neighbour.
+    /// </summary>
+    public static string WithoutRuleAt(string json, int index)
+    {
+        var (open, close, spans) = RequireRuleSpans(json, index);
+        var (start, endExclusive) = (spans[index].Start, spans[index].End + 1);
+
+        // The separating comma goes with the rule: the one right after it, or — for the last
+        // rule — the one before. (No adjacent comma found leaves a trailing comma at most,
+        // which the reader allows.)
+        var after = endExclusive;
+        while (after < close && (json[after] == ' ' || json[after] == '\t'))
+            after++;
+        if (after < close && json[after] == ',')
+        {
+            endExclusive = after + 1;
+        }
+        else
+        {
+            var before = start - 1;
+            while (before > open && char.IsWhiteSpace(json[before]))
+                before--;
+            if (json[before] == ',')
+                start = before;
+        }
+
+        var result = json.Remove(start, endExclusive - start);
+
+        // If the rule owned its line, the splice leaves a line of pure indentation — drop it.
+        var lineStart = start == 0 ? 0 : result.LastIndexOf('\n', start - 1) + 1;
+        var lineEnd = start < result.Length ? result.IndexOf('\n', start) : -1;
+        var line = lineEnd < 0 ? result[lineStart..] : result[lineStart..lineEnd];
+        if (line.All(c => c is ' ' or '\t'))
+            result = result.Remove(lineStart, (lineEnd < 0 ? result.Length : lineEnd + 1) - lineStart);
+
+        return result;
+    }
+
+    /// <summary>
+    /// The rules document with the rule at <paramref name="index"/> rewritten in place — same
+    /// position (order is first-match-wins, so an edit must not move a rule), every other rule and
+    /// comment untouched. The rewritten rule takes the standard one-line shape; any custom
+    /// formatting inside that one rule's braces is the price of the edit.
+    /// </summary>
+    public static string WithRuleReplacedAt(string json, int index, ClassificationRule rule)
+    {
+        var (_, _, spans) = RequireRuleSpans(json, index);
+        var (start, end) = spans[index];
+        return json.Remove(start, end - start + 1).Insert(start, RuleLiteral(rule));
+    }
+
+    private static (int Open, int Close, List<(int Start, int End)> Spans) RequireRuleSpans(string json, int index)
+    {
+        if (!TryFindRulesArray(json, out var open, out var close))
+            throw new InvalidOperationException("The rules file has no \"rules\": [ ... ] array to edit.");
+
+        var spans = RuleSpans(json, open, close);
+        if (index < 0 || index >= spans.Count)
+            throw new ArgumentOutOfRangeException(nameof(index), index, $"The rules file has {spans.Count} rule(s).");
+
+        return (open, close, spans);
+    }
+
+    // The [Start, End] character span of each top-level { ... } inside the rules array, in array
+    // order — the same order Load returns, so an index means the same rule to both. Scanned with
+    // the reader's rules (strings and comments skipped), so braces inside a pattern can't confuse it.
+    private static List<(int Start, int End)> RuleSpans(string json, int open, int close)
+    {
+        var spans = new List<(int, int)>();
+        var depth = 0;
+        var start = -1;
+        for (var i = open + 1; i < close; i++)
+        {
+            switch (json[i])
+            {
+                case '"':
+                    i = SkipString(json, i);
+                    break;
+                case '/' when i + 1 < json.Length && (json[i + 1] == '/' || json[i + 1] == '*'):
+                    i = SkipComment(json, i);
+                    break;
+                case '{':
+                    if (depth++ == 0)
+                        start = i;
+                    break;
+                case '[':
+                    depth++;
+                    break;
+                case '}':
+                    if (--depth == 0)
+                        spans.Add((start, i));
+                    break;
+                case ']':
+                    depth--;
+                    break;
+            }
+        }
+
+        return spans;
+    }
+
     private static string RuleLiteral(ClassificationRule rule)
     {
         List<string> parts = [$"\"id\": {Str(rule.Id)}"];

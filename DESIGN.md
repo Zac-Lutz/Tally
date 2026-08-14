@@ -40,6 +40,17 @@ Everything stays on this machine. No cloud, no telemetry.
   tab teaches real rules. Old category names live on as colour aliases in `HtmlReportWriter`
   because rules.json is user-owned — an installed copy keeps its old names until its user updates
   them; only fresh installs get the new defaults.
+- **Rules are managed where their effects show.** The live view's Rules tab lists every rule in
+  match order and edits or deletes them in place (`RulesFile.WithRuleReplacedAt` /
+  `WithoutRuleAt`: text edits over the object spans the same string/comment-aware scanner finds,
+  so comments and untouched rules survive byte-for-byte; a comment above a deleted rule is
+  deliberately kept — comments often describe a group). An edit posts the rule's array index plus
+  its id, and the host re-reads the file and checks both before writing — indexes shift whenever
+  the Unclassified tab inserts a window rule at the top, so index alone could hit the wrong rule
+  (delete re-verifies again after its confirmation dialog). Regexes are compiled before saving;
+  a typo'd pattern is refused with a note rather than silently classifying nothing. The tab is
+  live-only: BuildMainInner takes the rules list, BuildHtml never passes one — a saved report is
+  a record of a day, not of the app's configuration.
 - **Saved rules are placed by specificity, not appended blindly.** Rules are first-match-wins, so
   a rule written from the Unclassified tab lands where its breadth earns: a *window* rule (app +
   exact title) goes first — it names one thing and should beat the generic rules — while an *app*

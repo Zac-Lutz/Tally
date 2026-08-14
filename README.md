@@ -231,9 +231,17 @@ dotnet test tests/Tally.Core.Tests
 
 ## Classification rules
 
-Most rules are easiest to add from the live view's **Unclassified** tab (above). To write one by
-hand, edit `%USERPROFILE%\.tally\rules.json` (created with starter rules on first run; comments
-allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
+Most rules are easiest to add from the live view's **Unclassified** tab (above), and managed from
+its **Rules** tab: every rule Tally classifies with, in the order they're tried (first match
+wins). **Edit** turns a row into fields — category, app pattern, window pattern, client — and
+**Save** applies it to today within seconds and to every report from then on (a bad regex is
+rejected with a note, nothing saved). **Delete** asks first; the rule's activities go back to
+Unclassified, where they can be taught a better rule. Edits rewrite just that one line of
+`rules.json` — comments and every other rule stay exactly as written. The Rules tab exists only
+in the live app; saved reports don't carry it.
+
+To write a rule by hand instead, edit `%USERPROFILE%\.tally\rules.json` (created with starter
+rules on first run; comments allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
 regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
 fields. Rules are re-read on every report generation, so edits apply immediately.
 

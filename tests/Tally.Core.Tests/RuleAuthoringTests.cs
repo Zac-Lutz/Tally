@@ -164,7 +164,8 @@ public class RuleAuthoringTests
         var updated = RulesFile.WithRule(RulesFile.DefaultRulesJson, rule);
 
         Assert.True(updated.IndexOf("admin-chrome", StringComparison.Ordinal)
-                    > updated.IndexOf("\"browser\"", StringComparison.Ordinal));
+                    > updated.IndexOf("\"visual-studio\"", StringComparison.Ordinal));
+        Assert.Contains("\"visual-studio\"", updated);   // guard: the anchor rule still exists
     }
 
     [Fact]

@@ -83,12 +83,13 @@ public static class HtmlReportWriter
         TimeSpan? gapThreshold = null,
         IReadOnlyList<ManualTimer>? timers = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null,
-        TimerPanelState? timerPanel = null)
+        TimerPanelState? timerPanel = null,
+        IReadOnlyList<ClassificationRule>? rules = null)
     {
         var sb = new StringBuilder();
         AppendMainInner(sb, date, blocks, calls, inactivePeriods, timers ?? [],
             gapThreshold ?? TimeSpan.FromMinutes(5), includeHeader: false, editable: true,
-            ticketOverrides: ticketOverrides, timerPanel: timerPanel);
+            ticketOverrides: ticketOverrides, timerPanel: timerPanel, rules: rules);
         return sb.ToString();
     }
 
@@ -109,6 +110,7 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
+        sb.Append("<script>").Append(RulesEditScript).Append("</script>\n");
         sb.Append("<script>").Append(TimerControlScript).Append("</script>\n");
         sb.Append("</body>\n</html>\n");
         return sb.ToString();
@@ -126,7 +128,8 @@ public static class HtmlReportWriter
         bool editable,
         IReadOnlyDictionary<string, string>? ticketOverrides,
         TimerPanelState? timerPanel = null,
-        bool showExport = false)
+        bool showExport = false,
+        IReadOnlyList<ClassificationRule>? rules = null)
     {
         if (includeHeader)
         {
@@ -144,7 +147,7 @@ public static class HtmlReportWriter
         }
 
         AppendSummary(sb, blocks, calls, inactivePeriods);
-        AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides, timerPanel);
+        AppendTabs(sb, blocks, calls, inactivePeriods, timers, threshold, editable, ticketOverrides, timerPanel, rules);
     }
 
     // Rollup / Calls / Timeline / Timers / Unclassified as switchable tabs (Rollup active by default)
@@ -154,7 +157,7 @@ public static class HtmlReportWriter
         StringBuilder sb, IReadOnlyList<ClassifiedBlock> blocks, IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods, IReadOnlyList<ManualTimer> timers,
         TimeSpan threshold, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
-        TimerPanelState? timerPanel)
+        TimerPanelState? timerPanel, IReadOnlyList<ClassificationRule>? rules = null)
     {
         var unclassified = UnclassifiedBuilder.Build(blocks);
         var (lostLines, lostTotal) = LostTime(blocks, inactivePeriods, threshold);
@@ -175,6 +178,10 @@ public static class HtmlReportWriter
         if (lostLines.Count > 0)
             sb.Append($"<span class=\"badge\">{ReportFormat.Duration(lostTotal)}</span>");
         sb.Append("</button>");
+        // The Rules tab exists only where rules were provided — the live view. A saved report is a
+        // record of a day; the app's current configuration doesn't belong in it.
+        if (rules is not null)
+            sb.Append("<button class=\"tab\" type=\"button\" data-tab=\"rules\">Rules</button>");
         sb.Append("</div>\n");
 
         // Always the whole day: choosing a slice belongs to the export itself, so this stays the
@@ -201,6 +208,73 @@ public static class HtmlReportWriter
         sb.Append("<section class=\"panel\" data-panel=\"lost\">\n");
         AppendLostTime(sb, lostLines, lostTotal);
         sb.Append("</section>\n");
+        if (rules is not null)
+        {
+            sb.Append("<section class=\"panel\" data-panel=\"rules\">\n");
+            AppendRules(sb, rules);
+            sb.Append("</section>\n");
+        }
+
+        // Category suggestions for the triage and rules inputs: categories seen today plus the
+        // shipped defaults, so the day's naming stays consistent (free text still wins — a
+        // datalist only proposes).
+        if (editable)
+        {
+            sb.Append("<datalist id=\"uc-cats\">");
+            foreach (var category in KnownCategories(blocks))
+                sb.Append($"<option value=\"{Esc(category)}\"></option>");
+            sb.Append("</datalist>\n");
+        }
+    }
+
+    // The rules manager: every rule in the order they're tried, each row editable in place or
+    // deletable. The page only toggles a row between its read view and its inputs; the C# host
+    // does the writing, and the refresh that follows re-renders the table from the file — so what
+    // the table shows is always what rules.json actually says.
+    private static void AppendRules(StringBuilder sb, IReadOnlyList<ClassificationRule> rules)
+    {
+        sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts today within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Unclassified.</p>\n");
+
+        if (rules.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">No rules yet — save one from the Unclassified tab.</p>\n");
+            return;
+        }
+
+        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Client</th><th></th></tr>\n</thead>\n<tbody>\n");
+
+        for (var i = 0; i < rules.Count; i++)
+        {
+            var rule = rules[i];
+            sb.Append($"<tr class=\"rl\" data-i=\"{i}\" data-id=\"{B64(rule.Id)}\">")
+              .Append($"<td class=\"num muted\">{i + 1}</td>")
+              .Append("<td>")
+              .Append($"<span class=\"rl-view\">{CategoryBadge(rule.Category)}</span>")
+              .Append($"<input class=\"rl-in rl-cat\" type=\"text\" list=\"uc-cats\" value=\"{Esc(rule.Category)}\" aria-label=\"Category\">")
+              .Append("</td>");
+            AppendRuleCell(sb, rule.ProcessPattern, "rl-proc", "any app", "App pattern (regex)");
+            AppendRuleCell(sb, rule.TitlePattern, "rl-title", "any window", "Window pattern (regex)");
+            AppendRuleCell(sb, rule.Client, "rl-client", "—", "Client (optional)");
+            sb.Append("<td class=\"num rl-actions\">")
+              .Append("<span class=\"rl-view\"><button class=\"uc-save rl-edit\" type=\"button\">Edit</button> <button class=\"tm-del rl-del\" type=\"button\">Delete</button></span>")
+              .Append("<span class=\"rl-in\"><button class=\"uc-save rl-ok\" type=\"button\">Save</button> <button class=\"tm-del rl-cancel\" type=\"button\">Cancel</button></span>")
+              .Append("</td></tr>\n");
+        }
+
+        sb.Append("</tbody>\n</table>\n</div>\n");
+        sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields.</p>\n");
+    }
+
+    // One value cell of a rules row: the read view (pattern as code, or a muted placeholder when
+    // absent) and the hidden input the row's edit mode reveals.
+    private static void AppendRuleCell(StringBuilder sb, string? value, string cssClass, string emptyText, string ariaLabel)
+    {
+        sb.Append("<td>")
+          .Append(value is null
+              ? $"<span class=\"rl-view muted\">{Esc(emptyText)}</span>"
+              : $"<span class=\"rl-view\"><code>{Esc(value)}</code></span>")
+          .Append($"<input class=\"rl-in {cssClass}\" type=\"text\" value=\"{Esc(value ?? string.Empty)}\" aria-label=\"{Esc(ariaLabel)}\">")
+          .Append("</td>");
     }
 
     /// <summary>
@@ -329,16 +403,6 @@ public static class HtmlReportWriter
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
-
-        if (!editable)
-            return;
-
-        // Suggests the categories already in use so the day's naming stays consistent (free text
-        // still wins — a datalist only proposes).
-        sb.Append("<datalist id=\"uc-cats\">");
-        foreach (var category in KnownCategories(blocks))
-            sb.Append($"<option value=\"{Esc(category)}\"></option>");
-        sb.Append("</datalist>\n");
     }
 
     // Categories seen today, plus the shipped defaults so a fresh day still offers sensible names.
@@ -692,6 +756,22 @@ public static class HtmlReportWriter
         .uc-cat:focus,.uc-scope:focus { outline:none; border-color:var(--accent); }
         .uc-save { font-size:13px; padding:5px 12px; white-space:nowrap; }
         .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; }
+        /* Rules tab: each row carries both its read view and its edit inputs; the row's
+           "editing" class decides which shows. Patterns wrap so a long regex can't blow out
+           the table. */
+        .rules code { font-size:12px; word-break:break-all; }
+        .rl .rl-in { display:none; }
+        tr.rl.editing .rl-view { display:none; }
+        tr.rl.editing .rl-in { display:inline-block; }
+        .rl input.rl-in { background:var(--bg); border:1px solid var(--border); border-radius:6px;
+          color:var(--fg); font:inherit; font-size:12px; padding:3px 6px; max-width:100%; }
+        .rl input.rl-in:focus { outline:none; border-color:var(--accent); }
+        .rl-cat { width:130px; }
+        .rl-proc { width:130px; }
+        .rl-title { width:230px; }
+        .rl-client { width:100px; }
+        .rl-actions { white-space:nowrap; }
+        .rl-actions .uc-save,.rl-actions .tm-del { font-size:12px; padding:4px 10px; }
         .cal { position:relative; margin:14px 0 4px; }
         .cal-hr { position:absolute; left:0; right:0; border-top:1px solid var(--border); }
         .cal-hr.half { border-top-style:dotted; opacity:.55; }
@@ -755,10 +835,11 @@ public static class HtmlReportWriter
         """;
 
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
-    // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category) so a
-    // refresh never wipes an in-progress edit; the next tick lands once focus moves on.
+    // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category) or a
+    // rules row is in edit mode — even unfocused, its inputs hold typed text a swap would erase —
+    // so a refresh never wipes an in-progress edit; the next tick lands once the edit concludes.
     private const string LiveUpdateScript =
-        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
+        "window.tallyUpdate=function(h){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'))return;if(document.querySelector('tr.rl.editing'))return;var y=window.scrollY;var m=document.getElementById('tally-live');if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};";
 
     // Editable cells: a ticket cell (.tk) posts {type:'ticket', key, value}; a timer-name cell (.tn)
     // posts {type:'timerName', id, value}. Committed on blur or Enter (which blurs). Delegated so the
@@ -859,6 +940,36 @@ public static class HtmlReportWriter
         var d=Math.max(0,Math.floor((Date.now()-s)/1000));
         var h=Math.floor(d/3600),m=Math.floor(d/60)%60,x=d%60;
         el.textContent=h>0?h+':'+pad(m)+':'+pad(x):pad(m)+':'+pad(x);},1000);
+        })();
+        """;
+
+    // The Rules tab. Edit toggles a row into its input view (the row's data never leaves the DOM);
+    // Save posts {type:'ruleUpdate', id:<index>, key:<b64 rule id>, category, process, title, client}
+    // with the typed values plain (they ride the JSON message, not an attribute). Delete posts
+    // {type:'ruleDelete', id, key} and the host asks for confirmation before touching the file. The
+    // index says which rule, the id proves the table wasn't stale — the host checks both.
+    private const string RulesEditScript =
+        """
+        (function(){
+        function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
+        function val(r,c){var i=r.querySelector('input.'+c);return i?i.value:'';}
+        document.addEventListener('click',function(e){
+        var t=e.target;if(!t.closest)return;
+        var b=t.closest('.rl-edit');
+        if(b){var r=b.closest('tr.rl');r.classList.add('editing');var c=r.querySelector('.rl-cat');if(c)c.focus();return;}
+        b=t.closest('.rl-cancel');
+        if(b){b.closest('tr.rl').classList.remove('editing');return;}
+        b=t.closest('.rl-del');
+        if(b){var r=b.closest('tr.rl');post({type:'ruleDelete',id:r.getAttribute('data-i'),key:r.getAttribute('data-id')});return;}
+        b=t.closest('.rl-ok');
+        if(b){var r=b.closest('tr.rl');
+        post({type:'ruleUpdate',id:r.getAttribute('data-i'),key:r.getAttribute('data-id'),
+        category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),client:val(r,'rl-client')});
+        r.classList.remove('editing');}});
+        document.addEventListener('keydown',function(e){
+        var r=e.target.closest?e.target.closest('tr.rl.editing'):null;if(!r)return;
+        if(e.key==='Enter'){e.preventDefault();var b=r.querySelector('.rl-ok');if(b)b.click();}
+        else if(e.key==='Escape'){r.classList.remove('editing');}});
         })();
         """;
 

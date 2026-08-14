@@ -18,6 +18,47 @@ public class HtmlReportWriterTests
             new Classification(category, client, ticket, subject, category == Classification.Unclassified ? null : "rule"));
 
     [Fact]
+    public void RulesTab_RendersInTheLiveView_WithEveryRuleInOrder()
+    {
+        var rules = new ClassificationRule[]
+        {
+            new() { Id = "first", TitlePattern = "Alpha > \"x\"", Category = "A" },
+            new() { Id = "second", ProcessPattern = "^b$", Category = "B", Client = "Acme" },
+        };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], [], rules: rules);
+
+        Assert.Contains("data-panel=\"rules\"", inner);
+        Assert.Contains("data-tab=\"rules\"", inner);
+        Assert.Contains("Alpha &gt; &quot;x&quot;", inner);   // pattern shown, escaped
+        Assert.Contains("Acme", inner);
+        // Row order is file order — the numbers say which rule wins a tie.
+        Assert.True(inner.IndexOf("data-id=\"" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("first")) + "\"", StringComparison.Ordinal)
+                    < inner.IndexOf("data-id=\"" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("second")) + "\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RulesTab_AbsentWhenNoRulesArePassed_AndFromSavedReports()
+    {
+        var withoutRules = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], []);
+        var saved = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "Alpha")], [], []);
+
+        Assert.DoesNotContain("data-panel=\"rules\"", withoutRules);
+        Assert.DoesNotContain("data-panel=\"rules\"", saved);
+        Assert.DoesNotContain("data-tab=\"rules\"", saved);
+    }
+
+    [Fact]
+    public void CategoryDatalist_IsPresentInTheLiveView_EvenWithNothingUnclassified()
+    {
+        // The Rules tab's category inputs use the same suggestions the triage tab does, so the
+        // datalist has to exist even on a fully classified day.
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], []);
+
+        Assert.Contains("<datalist id=\"uc-cats\">", inner);
+    }
+
+    [Fact]
     public void ProducesSelfContainedHtmlDocument()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
