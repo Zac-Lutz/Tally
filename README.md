@@ -395,11 +395,18 @@ Update"** shortcut on the Desktop). That's the whole thing — it:
 
 So a routine update is: double-click, press Enter. Nothing to remember.
 
+**The window only shows things worth acting on.** The build tools narrate every step and warn
+twice per run that nothing was code-signed — which is just a description of how we publish, not a
+problem (see the unsigned-installer note above). All of that is filtered out, so a clean publish
+prints its five step headings and the final "Published" line, and nothing else. Warnings and
+errors are never filtered: if something appears, it's for you.
+
 Prefer the terminal, or need a bigger version jump? The script still takes arguments:
 
 ```powershell
 ./Publish-Tally.ps1                  # auto-bump the patch (same as the double-click)
 ./Publish-Tally.ps1 -Version 1.3.0   # pin an exact version for a minor/major jump
+./Publish-Tally.ps1 -ShowAllOutput   # unfiltered - every line the build tools emit
 ```
 
 The token is only ever read from your environment or the encrypted per-user file — never stored

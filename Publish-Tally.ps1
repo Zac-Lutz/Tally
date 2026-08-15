@@ -8,6 +8,10 @@
 # Manual use (still supported):
 #   ./Publish-Tally.ps1                  # auto-bump the patch (1.2.0 -> 1.2.1)
 #   ./Publish-Tally.ps1 -Version 1.3.0   # pin an exact version (for a bigger jump)
+#   ./Publish-Tally.ps1 -ShowAllOutput   # unfiltered build output, for diagnosing a failure
+#
+# A clean run prints its step headings and nothing else: the build tools' routine narration is
+# filtered out so that anything left on screen is worth reading. Warnings and errors always show.
 #
 # The token is never stored in the repo or the app, only in an encrypted per-user file outside the
 # repo. After this runs, installed apps pick up the new version automatically within a launch or two.
@@ -16,11 +20,65 @@
 param(
     [string] $Version,                     # blank = auto-bump the patch from the latest release
     [string] $Token = $env:GITHUB_TOKEN,   # blank = use the saved token, or prompt once and save it
-    [string] $Runtime = 'win-x64'
+    [string] $Runtime = 'win-x64',
+    [switch] $ShowAllOutput                # print every line the build tools emit, unfiltered
 )
 
 $ErrorActionPreference = 'Stop'
+# Native tools write progress to stderr as a matter of course; without this, PowerShell 7 can treat
+# a routine line as a terminating error the moment it is redirected into the pipeline for filtering.
+$PSNativeCommandUseErrorActionPreference = $false
 $repo = 'https://github.com/Zac-Lutz/Tally'
+
+# Velopack narrates everything it does, and two of its warnings are simply descriptions of how we
+# publish rather than problems: we hold no code-signing certificate, so it says so once per bundle
+# and draws a Code-sign bar that necessarily sits at 0%. Nothing there is actionable — the only
+# consequence is a SmartScreen prompt on a FRESH install, which the README explains — and printing
+# it every time trains the eye to ignore the window where a real warning would appear.
+#
+# So this list is deliberately narrow: it names lines known to mean nothing, and EVERYTHING else
+# still prints. If a signing certificate is ever configured, a genuine signing failure reads
+# differently and comes straight through.
+$script:BenignOutput = @(
+    'No signing parameters provided'   # no certificate configured; see "Auto-update" in README.md
+    'Code-sign application'            # that step's progress bar, therefore always 0%
+)
+
+# True for output a person should read: not blank, not known-benign, not routine chatter.
+function Test-WorthShowing([string] $line) {
+    if ($ShowAllOutput) { return $true }
+    if ([string]::IsNullOrWhiteSpace($line)) { return $false }
+    foreach ($benign in $script:BenignOutput) {
+        if ($line -like "*$benign*") { return $false }
+    }
+
+    # A warning or error always survives, whatever else it looks like. Velopack stamps the level
+    # inside the timestamp — "[09:15:56 WRN] ..." — so the bracket is not next to the level.
+    if ($line -match '\s(WRN|ERR|FTL)\]') { return $true }
+
+    # Routine narration and finished progress bars say only "still working", which the script's
+    # own step messages already say more clearly.
+    if ($line -match '\sINF\]') { return $false }
+    if ($line -match '-{5,}\s+\d+%') { return $false }
+    return $true
+}
+
+# Runs a build tool, showing only what's worth reading, and stops the publish if it fails.
+function Invoke-BuildStep {
+    param(
+        [Parameter(Mandatory)] [string] $Exe,
+        [Parameter(Mandatory)] [string[]] $Arguments,
+        [Parameter(Mandatory)] [string] $FailureMessage,
+        [switch] $AllowFailure             # the step is an optimization; publishing survives without it
+    )
+
+    & $Exe @Arguments 2>&1 | ForEach-Object {
+        $line = "$_"
+        if (Test-WorthShowing $line) { Write-Host $line }
+    }
+
+    if ($LASTEXITCODE -ne 0 -and -not $AllowFailure) { throw $FailureMessage }
+}
 
 # Token resolution: an explicit -Token / $env:GITHUB_TOKEN wins; otherwise use the encrypted file
 # saved on the first run; otherwise prompt once (masked) and save it encrypted for this user.
@@ -87,34 +145,42 @@ Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $dist | Out-Null
 
 Write-Host "Publishing self-contained ($Runtime)..."
-& $dotnet publish (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj') -c Release -r $Runtime --self-contained -o $publish
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+Invoke-BuildStep $dotnet @(
+    'publish', (Join-Path $PSScriptRoot 'src/Tally.App/Tally.App.csproj'),
+    '-c', 'Release', '-r', $Runtime, '--self-contained', '-o', $publish,
+    '--nologo', '-v', 'quiet'
+) 'dotnet publish failed'
 
-# Pull existing releases so vpk can build small delta updates. Empty/no-op on the first publish.
+# Pull existing releases so vpk can build small delta updates. Empty/no-op on the first publish —
+# and a failure here only costs users a bigger download, so it must never stop the publish.
 Write-Host 'Fetching existing releases (for delta updates)...'
-& $vpk download github --repoUrl $repo --token $Token --outputDir $dist 2>&1 | Out-Host
+Invoke-BuildStep $vpk @(
+    'download', 'github', '--repoUrl', $repo, '--token', $Token, '--outputDir', $dist
+) 'vpk download failed' -AllowFailure
 
 Write-Host "Packing v$Version..."
-& $vpk pack `
-    --packId Tally `
-    --packTitle 'Tally' `
-    --packAuthors 'Tally' `
-    --packVersion $Version `
-    --packDir $publish `
-    --mainExe 'tally.exe' `
-    --icon (Join-Path $PSScriptRoot 'src/Tally.App/Assets/tally.ico') `
-    --outputDir $dist
-if ($LASTEXITCODE -ne 0) { throw 'vpk pack failed' }
+Invoke-BuildStep $vpk @(
+    'pack',
+    '--packId', 'Tally',
+    '--packTitle', 'Tally',
+    '--packAuthors', 'Tally',
+    '--packVersion', $Version,
+    '--packDir', $publish,
+    '--mainExe', 'tally.exe',
+    '--icon', (Join-Path $PSScriptRoot 'src/Tally.App/Assets/tally.ico'),
+    '--outputDir', $dist
+) 'vpk pack failed'
 
 Write-Host 'Uploading and publishing the GitHub release...'
-& $vpk upload github `
-    --repoUrl $repo `
-    --token $Token `
-    --publish `
-    --releaseName "Tally $Version" `
-    --tag $Version `
-    --outputDir $dist
-if ($LASTEXITCODE -ne 0) { throw 'vpk upload failed' }
+Invoke-BuildStep $vpk @(
+    'upload', 'github',
+    '--repoUrl', $repo,
+    '--token', $Token,
+    '--publish',
+    '--releaseName', "Tally $Version",
+    '--tag', $Version,
+    '--outputDir', $dist
+) 'vpk upload failed'
 
 Write-Host ''
 Write-Host "Published Tally $Version to $repo/releases."
