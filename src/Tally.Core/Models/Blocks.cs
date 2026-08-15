@@ -52,6 +52,9 @@ public sealed record Classification(
     /// <summary>Left off the Timesheet, the export, and the Tickets tab — and, because that is
     /// what "not time to account for" means, out of the Active total too.</summary>
     public bool ExcludedFromTimesheet => ExcludeFrom is ExcludeScope.Timesheet or ExcludeScope.All;
+
+    /// <summary>Left out of the Timeline's record of what was on screen.</summary>
+    public bool ExcludedFromTimeline => ExcludeFrom is ExcludeScope.Timeline or ExcludeScope.All;
 }
 
 /// <summary>

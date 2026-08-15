@@ -27,15 +27,27 @@ public class ExclusionRuleTests
     private static string Page(params ClassifiedBlock[] blocks)
         => HtmlReportWriter.BuildMainInner(new DateOnly(2026, 8, 15), blocks, [], []);
 
+    // The Timeline panel alone. A title can legitimately appear elsewhere on the page — the
+    // Timesheet draws its blocks with a tooltip — so "is it in the Timeline" has to ask the
+    // Timeline, not the document.
+    private static string TimelinePanel(params ClassifiedBlock[] blocks)
+    {
+        var html = Page(blocks);
+        var start = html.IndexOf("data-panel=\"timeline\"", StringComparison.Ordinal);
+        var end = html.IndexOf("data-panel=\"tickets\"", StringComparison.Ordinal);
+        return html[start..end];
+    }
+
     // ---- the rule reaching the classification ----
 
     [Theory]
-    [InlineData(ExcludeScope.None, false, false)]
-    [InlineData(ExcludeScope.Rollup, true, false)]
-    [InlineData(ExcludeScope.Timesheet, false, true)]
-    [InlineData(ExcludeScope.All, true, true)]
+    [InlineData(ExcludeScope.None, false, false, false)]
+    [InlineData(ExcludeScope.Rollup, true, false, false)]
+    [InlineData(ExcludeScope.Timesheet, false, true, false)]
+    [InlineData(ExcludeScope.Timeline, false, false, true)]
+    [InlineData(ExcludeScope.All, true, true, true)]
     public void AScope_DecidesWhichAccountsLeaveTheTimeOut(
-        ExcludeScope scope, bool fromRollup, bool fromTimesheet)
+        ExcludeScope scope, bool fromRollup, bool fromTimesheet, bool fromTimeline)
     {
         var classifier = new Classifier([
             new ClassificationRule
@@ -47,6 +59,7 @@ public class ExclusionRuleTests
         var classification = classifier.Classify("chrome", "Some video - YouTube");
         Assert.Equal(fromRollup, classification.ExcludedFromRollup);
         Assert.Equal(fromTimesheet, classification.ExcludedFromTimesheet);
+        Assert.Equal(fromTimeline, classification.ExcludedFromTimeline);
     }
 
     [Fact]
@@ -170,15 +183,36 @@ public class ExclusionRuleTests
     [Theory]
     [InlineData(ExcludeScope.Rollup, "not in rollup")]
     [InlineData(ExcludeScope.Timesheet, "not on timesheet")]
-    [InlineData(ExcludeScope.All, "excluded")]
-    public void TheTimeline_KeepsExcludedActivity_AndNamesWhatItIsMissingFrom(
+    public void TheTimeline_KeepsActivityExcludedElsewhere_AndNamesWhatItIsMissingFrom(
         ExcludeScope scope, string tag)
     {
-        var html = Page(Block("chrome", "Some video - YouTube", 40, scope));
+        var timeline = TimelinePanel(Block("chrome", "Some video - YouTube", 40, scope));
 
-        Assert.Contains("Some video - YouTube", html);   // the day's record keeps it
-        Assert.Contains("tl-excluded", html);
-        Assert.Contains($"<span class=\"tl-ex-tag\">{tag}</span>", html);
+        Assert.Contains("Some video - YouTube", timeline);   // the day's record keeps it
+        Assert.Contains("tl-excluded", timeline);
+        Assert.Contains($"<span class=\"tl-ex-tag\">{tag}</span>", timeline);
+    }
+
+    [Theory]
+    [InlineData(ExcludeScope.Timeline)]
+    [InlineData(ExcludeScope.All)]
+    public void ExcludingFromTheTimeline_TakesTheRowOutOfIt(ExcludeScope scope)
+    {
+        var timeline = TimelinePanel(Block("chrome", "Some video - YouTube", 40, scope), Work("Ticket 495308", 20));
+
+        Assert.DoesNotContain("Some video - YouTube", timeline);
+        Assert.Contains("Ticket 495308", timeline);   // the rest of the record reads normally
+    }
+
+    [Fact]
+    public void ExcludingFromTheTimelineOnly_StillCountsEverywhereElse()
+    {
+        // The Timeline is the blow-by-blow; hiding noise there says nothing about billing.
+        var blocks = new[] { Block("spotify", "Spotify", 30, ExcludeScope.Timeline, category: "Music") };
+
+        Assert.Contains(RollupBuilder.Build(blocks), r => r.Category == "Music");
+        Assert.Contains(SuggestionSlotBuilder.Build(blocks), s => s.Category == "Music");
+        Assert.Contains("<div class=\"v\">30m</div><div class=\"l\">Active</div>", Page(blocks));
     }
 
     [Fact]
@@ -194,6 +228,7 @@ public class ExclusionRuleTests
     [Theory]
     [InlineData(ExcludeScope.Rollup, "rollup")]
     [InlineData(ExcludeScope.Timesheet, "timesheet")]
+    [InlineData(ExcludeScope.Timeline, "timeline")]
     [InlineData(ExcludeScope.All, "all")]
     public void AnExcludingRule_RoundTripsThroughTheRulesFile(ExcludeScope scope, string written)
     {

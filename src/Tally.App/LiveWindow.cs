@@ -409,7 +409,8 @@ public sealed class LiveWindow : Form
     {
         ExcludeScope.Rollup => ", not in the Rollup",
         ExcludeScope.Timesheet => ", not on the Timesheet",
-        ExcludeScope.All => ", excluded from both",
+        ExcludeScope.Timeline => ", not in the Timeline",
+        ExcludeScope.All => ", excluded everywhere",
         _ => string.Empty,
     };
 

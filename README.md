@@ -178,28 +178,35 @@ Saved reports show the same Uncategorized list read-only — a record of what st
 ## Excluding what isn't work
 
 Not everything you do at the machine belongs on a timesheet — and some of it doesn't belong in the
-summary either. Every rule has an **Exclude** setting, in the Rules tab and on each Uncategorized
-row as you save one. It has three choices:
+summary or the blow-by-blow either. Every rule carries **two dropdowns**, in the Rules tab and on
+each Uncategorized row as you save one:
 
-| Exclude | What it does |
+1. **Include** or **Exclude**.
+2. What that applies to. Include offers only *Counted*; Exclude offers the four below.
+
+| Exclude from | What it does |
 | --- | --- |
 | **Rollup** | Hidden from the Rollup only. Still on the Timesheet, still in the export, still counted as Active — this is tidying one view, not disowning the time. |
 | **Timesheet** | Off the Timesheet, out of the export, and off the Tickets tab. The Rollup still shows where the time went. |
-| **All** | Both of the above. |
+| **Timeline** | Off the Timeline. For activity that's just noise to read past — it still counts everywhere else. |
+| **All** | All three: no tab mentions it. |
 
-Nothing stops being recorded. The **Timeline** always lists it, dimmed and tagged with what it's
-missing from (`not in rollup`, `not on timesheet`, `excluded`), because the Timeline is the record
-of what actually happened.
+Anything still shown that's excluded elsewhere is dimmed on the Timeline and tagged with what it's
+missing from (`not in rollup`, `not on timesheet`).
 
 An **Excluded card** appears at the top with the total of everything kept off the timesheet, and
 that time comes out of **Active** while staying in **Total** — so the day still adds up and you can
-see where the difference went. A Rollup-only exclusion doesn't touch those numbers: it's still on
-your timesheet, so calling it anything but Active would contradict the file you upload.
+see where the difference went. Rollup-only and Timeline-only exclusions don't touch those numbers:
+they're still on your timesheet, so calling them anything but Active would contradict the file you
+upload.
 
 Excluded time is not "lost time" either: you told Tally what it was, so it has nothing to report.
 
 Choosing **Exclude** when saving a rule from Uncategorized lets you leave the category blank —
 Tally files it as "Excluded". Deciding something is never work is a complete thought on its own.
+
+Everything is still **recorded** whatever you exclude: exclusions change which tabs show the time,
+never whether Tally captured it. Clear the exclusion and the time reappears everywhere.
 
 ## Lost time
 

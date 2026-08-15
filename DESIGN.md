@@ -49,17 +49,19 @@ Everything stays on this machine. No cloud, no telemetry.
   video) is marked by setting `excludeFrom` on the rule that already matches it, rather than by a
   second list of anti-rules — first-match-wins keeps meaning one thing, and the row that decides
   what something *is* is the row that decides where it counts. `ExcludeScope` is
-  `None | Rollup | Timesheet | All`, because the two exclusions answer different questions:
+  `None | Rollup | Timesheet | Timeline | All`, because the exclusions answer different questions:
   *Rollup* tidies one view and the time still bills, *Timesheet* keeps it off the timesheet, the
-  export, and the Tickets tab. `ClassificationRule.ExcludeFrom` rides into
-  `Classification.ExcludeFrom`, and `RollupBuilder`, `SuggestionSlotBuilder`, and `TicketsBuilder`
-  each drop what their own scope excludes, **themselves**. That placement is the point: the export
+  export, and the Tickets tab, and *Timeline* drops it from the blow-by-blow that is only ever
+  read past. `ClassificationRule.ExcludeFrom` rides into
+  `Classification.ExcludeFrom`, and `RollupBuilder`, `SuggestionSlotBuilder`, `TicketsBuilder`,
+  and the Timeline each drop what their own scope excludes, **themselves**. That placement is the point: the export
   shares the Timesheet's slot builder, so filtering there makes it impossible for the file to
-  disagree with the screen that reviewed it, and no future caller can forget to ask. The Timeline
-  is the one view that keeps everything — it is the record of what happened, not of what gets
-  billed — and names what each row is missing from, so an absence reads as a decision rather than
-  a bug. Lost time and Uncategorized need no filter: an excluded block carries a category, so it
-  is already neither. The summary follows the **Timesheet** scope (`Excluded` card, subtracted
+  disagree with the screen that reviewed it, and no future caller can forget to ask. A row still
+  shown on the Timeline names what it is missing from, so an absence elsewhere reads as a decision
+  rather than a bug. Lost time and Uncategorized need no filter: an excluded block carries a
+  category, so it is already neither. Excluding is always a *display* decision — capture is
+  untouched, so clearing a rule's exclusion brings the time back everywhere.
+  The summary follows the **Timesheet** scope (`Excluded` card, subtracted
   from `Active`, still inside `Total`, omitted when zero): a Rollup-only exclusion is still on the
   timesheet, so calling it anything but Active would contradict the exported file — and with that
   rule the Timesheet tab's "actually measured" figure equals the Active card exactly.
@@ -69,6 +71,13 @@ Everything stays on this machine. No cloud, no telemetry.
   have over one misspelled word. An exclusion saved from Uncategorized may skip the category (the
   host names it "Excluded") because deciding something is never work is a complete thought without
   also filing it.
+- **The exclusion is chosen with two dropdowns, not one list.** A single list reading "Counted,
+  Rollup, Timesheet, Timeline, All" never says which of those mean *exclude* — the reader has to
+  already know. Picking Include or Exclude first makes the sentence read itself, and the second
+  dropdown then offers only what that choice permits: one option under Include, the four scopes
+  under Exclude. The page renders the pair already agreeing, so `ExcludeModeScript` only handles
+  the user changing their mind, and it finds the scope select by walking forward from the mode
+  select rather than by container — the same pair sits in a `div`, a `span`, and a `td`.
 - **The Rollup is a list of categories, collapsed.** A day has a handful of categories and dozens
   of activities, so the tab opens as one line per category — biggest first, its total on the right
   — and expands on click to that category's activities, longest first. It answers "where did the

@@ -3,10 +3,7 @@ using Tally.Core.Models;
 
 namespace Tally.Core;
 
-/// <summary>
-/// Which accounts of the day a rule's matching activity stays out of. The Timeline is absent by
-/// design: it records what happened, so nothing is ever hidden from it.
-/// </summary>
+/// <summary>Which accounts of the day a rule's matching activity stays out of.</summary>
 public enum ExcludeScope
 {
     /// <summary>Counted everywhere — what an ordinary rule does.</summary>
@@ -20,7 +17,13 @@ public enum ExcludeScope
     /// is time to bill — while the Rollup still shows where the day went.</summary>
     Timesheet,
 
-    /// <summary>Both: the day's accounts leave it out entirely.</summary>
+    /// <summary>
+    /// Kept off the Timeline. The Timeline is the blow-by-blow record of what was on screen, so
+    /// this is for activity that is simply noise to read past — it still counts everywhere else.
+    /// </summary>
+    Timeline,
+
+    /// <summary>All three: no account of the day mentions it.</summary>
     All,
 }
 

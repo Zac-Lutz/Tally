@@ -119,6 +119,7 @@ public static class HtmlReportWriter
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
         sb.Append("<script>").Append(RulesEditScript).Append("</script>\n");
+        sb.Append("<script>").Append(ExcludeModeScript).Append("</script>\n");
         sb.Append("<script>").Append(CategoriesScript).Append("</script>\n");
         sb.Append("<script>").Append(SettingsScript).Append("</script>\n");
         sb.Append("<script>").Append(TimerControlScript).Append("</script>\n");
@@ -276,7 +277,7 @@ public static class HtmlReportWriter
           .Append("<input class=\"rl-new-proc\" type=\"text\" placeholder=\"App pattern (regex)\" aria-label=\"New rule app pattern\">")
           .Append("<input class=\"rl-new-title\" type=\"text\" placeholder=\"Window pattern (regex)\" aria-label=\"New rule window pattern\">")
           .Append("<input class=\"rl-new-client\" type=\"text\" placeholder=\"Client (optional)\" aria-label=\"New rule client\">")
-          .Append(ExcludeSelect("rl-new-exclude", ExcludeScope.None, "New rule exclusion"))
+          .Append(ExcludeControls("rl-new-exclude", ExcludeScope.None, "New rule"))
           .Append("<button class=\"uc-save rl-add-btn\" type=\"button\">Add rule</button>")
           .Append("</div>\n");
 
@@ -304,7 +305,9 @@ public static class HtmlReportWriter
               .Append(rule.ExcludeFrom is ExcludeScope.None
                   ? "<span class=\"rl-view muted\">—</span>"
                   : $"<span class=\"rl-view rl-ex-yes\">{Esc(ExcludeScopeLabel(rule.ExcludeFrom))}</span>")
-              .Append(ExcludeSelect("rl-in rl-exclude", rule.ExcludeFrom, "Exclude from"))
+              .Append("<span class=\"rl-in ex-pair\">")
+              .Append(ExcludeControls("rl-exclude", rule.ExcludeFrom, "Counted or excluded"))
+              .Append("</span>")
               .Append("</td>");
             sb.Append("<td class=\"num rl-actions\">")
               .Append("<span class=\"rl-view\"><button class=\"uc-save rl-edit\" type=\"button\">Edit</button> <button class=\"tm-del rl-del\" type=\"button\">Delete</button></span>")
@@ -584,7 +587,7 @@ public static class HtmlReportWriter
                   .Append("<td><select class=\"uc-scope\" aria-label=\"Applies to\">")
                   .Append($"<option value=\"app\">Any {Esc(row.ProcessName)} window</option>")
                   .Append("<option value=\"window\">Only this window</option></select></td>")
-                  .Append("<td>").Append(ExcludeSelect("uc-exclude", ExcludeScope.None, "Exclude from")).Append("</td>")
+                  .Append("<td class=\"ex-pair\">").Append(ExcludeControls("uc-exclude", ExcludeScope.None, "Counted or excluded")).Append("</td>")
                   .Append("<td class=\"num\"><button class=\"uc-save\" type=\"button\">Save rule</button></td>");
             }
 
@@ -970,6 +973,9 @@ public static class HtmlReportWriter
         for (var i = blocks.Count - 1; i >= 0; i--)
         {
             var b = blocks[i];
+            if (b.Classification.ExcludedFromTimeline)
+                continue;
+
             // The URL rides as a hover on the Detail cell — visible when needed, no column spent.
             var urlTip = b.Block.Url is { } url ? $" title=\"{Esc(url)}\"" : string.Empty;
             // The Timeline keeps excluded activity — it is the record of what happened — but names
@@ -989,28 +995,52 @@ public static class HtmlReportWriter
         sb.Append("</tbody>\n</table>\n</div>\n");
     }
 
-    // The one control that picks an exclusion, shared by the Rules tab (add bar and each row) and
-    // the Uncategorized tab's triage, so the four places that offer the choice can't drift apart.
-    private static string ExcludeSelect(string cssClass, ExcludeScope selected, string ariaLabel)
+    /// <summary>The scopes an exclusion can name, in the order they're offered.</summary>
+    private static readonly ExcludeScope[] ExcludableScopes =
+        [ExcludeScope.Rollup, ExcludeScope.Timesheet, ExcludeScope.Timeline, ExcludeScope.All];
+
+    // The control that decides where an activity counts, shared by the Rules tab (add bar and each
+    // row) and the Uncategorized tab's triage, so the places offering the choice can't drift apart.
+    //
+    // It is two dropdowns rather than one list, because a single list of "Counted, Rollup,
+    // Timesheet, Timeline, All" never says which of those mean *exclude* — the reader has to
+    // already know. Choosing Include or Exclude first makes the sentence read itself, and the
+    // second dropdown then only offers what that choice permits. The page renders the pair already
+    // agreeing; the script only has to keep them agreeing as the first one changes.
+    private static string ExcludeControls(string cssPrefix, ExcludeScope selected, string ariaLabel)
     {
-        var sb = new StringBuilder($"<select class=\"{cssClass}\" aria-label=\"{Esc(ariaLabel)}\">");
-        foreach (var scope in (ExcludeScope[])[ExcludeScope.None, ExcludeScope.Rollup, ExcludeScope.Timesheet, ExcludeScope.All])
+        var excluding = selected is not ExcludeScope.None;
+        var sb = new StringBuilder();
+
+        sb.Append($"<select class=\"{cssPrefix}-mode ex-mode\" aria-label=\"{Esc(ariaLabel)}\">")
+          .Append($"<option value=\"include\"{(excluding ? "" : " selected")}>Include</option>")
+          .Append($"<option value=\"exclude\"{(excluding ? " selected" : "")}>Exclude</option>")
+          .Append("</select>");
+
+        sb.Append($"<select class=\"{cssPrefix} ex-scope\" aria-label=\"{Esc(ariaLabel)} scope\">");
+        if (excluding)
         {
-            var value = scope is ExcludeScope.None ? string.Empty : scope.ToString().ToLowerInvariant();
-            var label = scope is ExcludeScope.None ? "Counted" : ExcludeScopeLabel(scope);
-            sb.Append($"<option value=\"{value}\"{(scope == selected ? " selected" : "")}>{Esc(label)}</option>");
+            foreach (var scope in ExcludableScopes)
+            {
+                var value = scope.ToString().ToLowerInvariant();
+                sb.Append($"<option value=\"{value}\"{(scope == selected ? " selected" : "")}>{Esc(ExcludeScopeLabel(scope))}</option>");
+            }
+        }
+        else
+        {
+            sb.Append("<option value=\"\" selected>Counted</option>");
         }
 
         return sb.Append("</select>").ToString();
     }
 
     // What a Timeline row says about being left out, named after the account it's missing from so
-    // the row explains its own absence rather than just flagging it.
+    // the row explains its own absence rather than just flagging it. Scopes that take the row off
+    // the Timeline never reach here — there is no row left to tag.
     private static string ExcludeTag(ExcludeScope scope) => scope switch
     {
         ExcludeScope.Rollup => "<span class=\"tl-ex-tag\">not in rollup</span>",
         ExcludeScope.Timesheet => "<span class=\"tl-ex-tag\">not on timesheet</span>",
-        ExcludeScope.All => "<span class=\"tl-ex-tag\">excluded</span>",
         _ => string.Empty,
     };
 
@@ -1019,6 +1049,7 @@ public static class HtmlReportWriter
     {
         ExcludeScope.Rollup => "Rollup",
         ExcludeScope.Timesheet => "Timesheet",
+        ExcludeScope.Timeline => "Timeline",
         ExcludeScope.All => "All",
         _ => "—",
     };
@@ -1133,11 +1164,14 @@ public static class HtmlReportWriter
           background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--fg);
           font-size:11px; font-weight:600; text-transform:none; letter-spacing:0; }
         .hint { color:var(--muted); margin:0 0 12px; }
-        .uc-cat,.uc-scope { background:var(--bg); border:1px solid var(--border); border-radius:6px;
-          color:var(--fg); font:inherit; font-size:13px; padding:3px 6px; }
+        .uc-cat,.uc-scope,.ex-mode,.ex-scope { background:var(--bg); border:1px solid var(--border);
+          border-radius:6px; color:var(--fg); font:inherit; font-size:13px; padding:3px 6px; }
         .uc-cat { width:150px; }
         .uc-cat::placeholder { color:var(--muted); }
-        .uc-cat:focus,.uc-scope:focus { outline:none; border-color:var(--accent); }
+        .uc-cat:focus,.uc-scope:focus,.ex-mode:focus,.ex-scope:focus { outline:none; border-color:var(--accent); }
+        /* Include/Exclude, then what it applies to — kept side by side so they read as one phrase. */
+        .ex-mode { margin-right:5px; }
+        .ex-pair { white-space:nowrap; }
         .uc-save { font-size:13px; padding:5px 12px; white-space:nowrap; }
         .uc-save:disabled { background:var(--border); color:var(--muted); cursor:default; }
         .uc-url { font-size:12px; word-break:break-all; }
@@ -1155,13 +1189,8 @@ public static class HtmlReportWriter
         .rl-proc { width:130px; }
         .rl-title { width:230px; }
         .rl-client { width:100px; }
-        /* The Exclude cell is a checkbox, so it opts out of the text-input styling above. */
-        .rl input.rl-exclude { width:auto; padding:0; background:none; border:none;
-          accent-color:var(--accent); cursor:pointer; }
         .rl-ex-yes { color:var(--accent); font-weight:600; }
-        .rl-ex-label { display:inline-flex; align-items:center; gap:6px; color:var(--muted);
-          font-size:13px; white-space:nowrap; cursor:pointer; }
-        .rl-ex-label input { accent-color:var(--accent); cursor:pointer; }
+        .rl .ex-mode,.rl .ex-scope { font-size:12px; padding:3px 5px; }
         .rl-actions { white-space:nowrap; }
         .rl-actions .uc-save,.rl-actions .tm-del { font-size:12px; padding:4px 10px; }
         /* Rollup groups: a category line per row, its activities hidden until it's clicked. They
@@ -1304,6 +1333,31 @@ public static class HtmlReportWriter
         window.tallyShowTab=function(n){window.__tallyTab=n;apply();};
         document.addEventListener('click',function(e){var t=e.target.closest?e.target.closest('.tab'):null;if(!t)return;window.__tallyTab=t.getAttribute('data-tab');apply();});
         document.addEventListener('DOMContentLoaded',apply);
+        })();
+        """;
+
+    // Keeps the Include/Exclude dropdown and the scope beside it agreeing. Include has exactly one
+    // scope — "Counted" — so the second dropdown offers nothing to get wrong; choosing Exclude
+    // fills it with the accounts an activity can be kept out of. The page renders the pair already
+    // agreeing, so this only handles the user changing their mind. The scope select is found by
+    // walking forward from the mode select rather than by container, because the three places that
+    // use this pair sit in a div, a span, and a table cell.
+    private const string ExcludeModeScript =
+        """
+        (function(){
+        var SCOPES=[['rollup','Rollup'],['timesheet','Timesheet'],['timeline','Timeline'],['all','All']];
+        document.addEventListener('change',function(e){
+        var m=e.target;if(!m.classList||!m.classList.contains('ex-mode'))return;
+        var s=m.nextElementSibling;
+        while(s&&!(s.classList&&s.classList.contains('ex-scope')))s=s.nextElementSibling;
+        if(!s)return;
+        var keep=s.value;s.innerHTML='';
+        if(m.value==='exclude'){
+        for(var i=0;i<SCOPES.length;i++){
+        var o=document.createElement('option');o.value=SCOPES[i][0];o.textContent=SCOPES[i][1];s.appendChild(o);}
+        s.value=keep||SCOPES[0][0];
+        if(!s.value)s.value=SCOPES[0][0];}
+        else{var n=document.createElement('option');n.value='';n.textContent='Counted';s.appendChild(n);s.value='';}});
         })();
         """;
 
@@ -1496,6 +1550,10 @@ public static class HtmlReportWriter
         excludeFrom:sel(bar,'rl-new-exclude')});
         bar.querySelectorAll('input').forEach(function(i){i.value='';});
         bar.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});
+        // Resetting the mode select back to Include leaves the scope beside it still listing
+        // exclusions, so tell it the mode changed and let one place rebuild the pair.
+        var md=bar.querySelector('.ex-mode');
+        if(md)md.dispatchEvent(new Event('change',{bubbles:true}));
         return;}
         b=t.closest('.rl-del');
         if(b){var r=b.closest('tr.rl');post({type:'ruleDelete',id:r.getAttribute('data-i'),key:r.getAttribute('data-id')});return;}
