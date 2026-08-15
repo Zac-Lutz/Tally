@@ -190,7 +190,7 @@ public class ClassifierTests
             new ClassificationRule
             {
                 Id = "acme-vpn",
-                TitlePattern = "AnyConnect",
+                MatchPattern = "AnyConnect",
                 Category = "Remote Support",
                 Client = "Acme Corp",
             },

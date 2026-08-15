@@ -275,9 +275,7 @@ public static class HtmlReportWriter
         sb.Append("<div class=\"rl-addbar\">")
           .Append("<input class=\"rl-new-cat\" type=\"text\" list=\"uc-cats\" placeholder=\"Category\" aria-label=\"New rule category\">")
           .Append("<input class=\"rl-new-proc\" type=\"text\" placeholder=\"App pattern (regex)\" aria-label=\"New rule app pattern\">")
-          .Append("<input class=\"rl-new-title\" type=\"text\" placeholder=\"Window pattern (regex)\" aria-label=\"New rule window pattern\">")
-          .Append("<input class=\"rl-new-url\" type=\"text\" placeholder=\"Page pattern (regex)\" aria-label=\"New rule page pattern\">")
-          .Append("<input class=\"rl-new-client\" type=\"text\" placeholder=\"Client (optional)\" aria-label=\"New rule client\">")
+          .Append("<input class=\"rl-new-match\" type=\"text\" placeholder=\"Window or page pattern (regex)\" aria-label=\"New rule window or page pattern\">")
           .Append(ExcludeControls("rl-new-exclude", ExcludeScope.None, "New rule"))
           .Append("<button class=\"uc-save rl-add-btn\" type=\"button\">Add rule</button>")
           .Append("</div>\n");
@@ -290,14 +288,14 @@ public static class HtmlReportWriter
 
         // The columns are declared up front because the table lays out to these widths rather than
         // to its contents (table-layout:fixed in the CSS). A row switching into edit mode swaps
-        // short read-only text for six inputs; left to size itself the table would grow past the
+        // short read-only text for inputs; left to size itself the table would grow past the
         // window and put a horizontal scrollbar under the whole tab, which is what editing a rule
         // used to do. Fixed columns also mean the headings stay put as rows open and close.
         sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n")
           .Append("<colgroup><col class=\"rl-c-num\"><col class=\"rl-c-cat\"><col class=\"rl-c-proc\">")
-          .Append("<col class=\"rl-c-title\"><col class=\"rl-c-url\"><col class=\"rl-c-client\">")
+          .Append("<col class=\"rl-c-match\">")
           .Append("<col class=\"rl-c-ex\"><col class=\"rl-c-act\"></colgroup>\n")
-          .Append("<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Page matches</th><th>Client</th><th>Exclude</th><th></th></tr>\n</thead>\n<tbody>\n");
+          .Append("<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window or page matches</th><th>Counting</th><th></th></tr>\n</thead>\n<tbody>\n");
 
         for (var i = 0; i < rules.Count; i++)
         {
@@ -309,13 +307,11 @@ public static class HtmlReportWriter
               .Append($"<input class=\"rl-in rl-cat\" type=\"text\" list=\"uc-cats\" value=\"{Esc(rule.Category)}\" aria-label=\"Category\">")
               .Append("</td>");
             AppendRuleCell(sb, rule.ProcessPattern, "rl-proc", "any app", "App pattern (regex)");
-            AppendRuleCell(sb, rule.TitlePattern, "rl-title", "any window", "Window pattern (regex)");
-            AppendRuleCell(sb, rule.UrlPattern, "rl-url", "any page", "Page pattern (regex)");
-            AppendRuleCell(sb, rule.Client, "rl-client", "—", "Client (optional)");
+            AppendRuleCell(sb, rule.MatchPattern, "rl-match", "anything", "Window or page pattern (regex)");
             sb.Append("<td>")
               .Append(rule.ExcludeFrom is ExcludeScope.None
-                  ? "<span class=\"rl-view muted\">—</span>"
-                  : $"<span class=\"rl-view rl-ex-yes\">{Esc(ExcludeScopeLabel(rule.ExcludeFrom))}</span>")
+                  ? "<span class=\"rl-view muted\">Counted</span>"
+                  : $"<span class=\"rl-view rl-ex-yes\">{Esc(CountingLabel(rule.ExcludeFrom))}</span>")
               .Append("<span class=\"rl-in ex-pair\">")
               .Append(ExcludeControls("rl-exclude", rule.ExcludeFrom, "Counted or excluded"))
               .Append("</span>")
@@ -327,7 +323,7 @@ public static class HtmlReportWriter
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
-        sb.Append("<p class=\"hint\">A blank app, window or page pattern means “any”; a rule needs at least one of the three, and every one it has must match. <strong>Page</strong> matches the website address as Tally stores it — host and path, no <code>?</code> query — so <code>^halo\\.lutz\\.us</code> is any Halo page. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> work in a window <em>or</em> page pattern; the window's win when a rule has both. <strong>Exclude</strong> chooses which account of the day leaves the activity out: <em>Rollup</em> tidies that tab while the time still bills, <em>Timesheet</em> keeps it off the timesheet, the export, and the Tickets tab, and <em>All</em> does both. The Timeline always shows it, so the day's record stays honest.</p>\n");
+        sb.Append("<p class=\"hint\">A blank pattern means “any”; a rule needs at least one of the two, and both the ones it has must match. <strong>Window or page</strong> is tried against the window title <em>and</em> against the website address as Tally stores it — host and path, no <code>?</code> query — and either one matching is enough, so <code>^halo\\.lutz\\.us</code> catches any Halo page and <code>Ticket (?&lt;ticket&gt;\\d+)</code> catches the ticket whether the number is in the title or the address. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> are read from whichever matched, the title first. A captured client names the customer on the Rollup. <strong>Counting</strong> chooses which account of the day leaves the activity out: <em>Rollup</em> tidies that tab while the time still bills, <em>Timesheet</em> keeps it off the timesheet, the export, and the Tickets tab, <em>Timeline</em> keeps it out of the blow-by-blow, and <em>All</em> does all three.</p>\n");
     }
 
     // The Settings tab — the WinForms dialog's contents, moved into the page so configuration
@@ -433,13 +429,16 @@ public static class HtmlReportWriter
     }
 
     // One value cell of a rules row: the read view (pattern as code, or a muted placeholder when
-    // absent) and the hidden input the row's edit mode reveals.
+    // absent) and the hidden input the row's edit mode reveals. A pattern too long for its column
+    // is cut off with an ellipsis rather than wrapped, so every rule stays one line and the list
+    // can be read down; the title attribute is what makes the cut-off half recoverable, and the
+    // row's own edit box shows the whole thing.
     private static void AppendRuleCell(StringBuilder sb, string? value, string cssClass, string emptyText, string ariaLabel)
     {
         sb.Append("<td>")
           .Append(value is null
               ? $"<span class=\"rl-view muted\">{Esc(emptyText)}</span>"
-              : $"<span class=\"rl-view\"><code>{Esc(value)}</code></span>")
+              : $"<span class=\"rl-view\" title=\"{Esc(value)}\"><code>{Esc(value)}</code></span>")
           .Append($"<input class=\"rl-in {cssClass}\" type=\"text\" value=\"{Esc(value ?? string.Empty)}\" aria-label=\"{Esc(ariaLabel)}\">")
           .Append("</td>");
     }
@@ -1072,6 +1071,21 @@ public static class HtmlReportWriter
         _ => "—",
     };
 
+    /// <summary>
+    /// What a rule's row says under "Counting". The dropdowns beside it read as a pair —
+    /// <em>Exclude</em> then <em>Timesheet</em> — but the read-only cell is on its own, and
+    /// "Timesheet" alone under that heading would say the opposite of what the rule does. So the
+    /// cell states the outcome instead of naming the scope.
+    /// </summary>
+    internal static string CountingLabel(ExcludeScope scope) => scope switch
+    {
+        ExcludeScope.Rollup => "Not in Rollup",
+        ExcludeScope.Timesheet => "Not on Timesheet",
+        ExcludeScope.Timeline => "Not on Timeline",
+        ExcludeScope.All => "Excluded",
+        _ => "Counted",
+    };
+
     private static void Card(StringBuilder sb, string label, string value)
         => sb.Append($"<div class=\"card\"><div class=\"v\">{value}</div><div class=\"l\">{label}</div></div>\n");
 
@@ -1202,19 +1216,26 @@ public static class HtmlReportWriter
            run a shade smaller than the ones on the other tabs. */
         .rules { table-layout:fixed; }
         .rules th,.rules td { padding-left:8px; padding-right:8px; }
-        .rules code { font-size:12px; word-break:break-all; }
+        /* Every cell is one line: a regex too long for its column is cut with an ellipsis
+           (hover for the rest) instead of wrapping. Wrapping made rows different heights, which
+           is what turns a list of rules into something you read one row at a time rather than
+           scanning down. */
+        .rules td,.rules th { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .rules code { font-size:12px; }
         col.rl-c-num { width:34px; }
-        col.rl-c-cat { width:13%; }
-        col.rl-c-proc { width:13%; }
-        col.rl-c-title { width:17.5%; }
-        col.rl-c-url { width:17.5%; }
-        col.rl-c-client { width:9%; }
+        col.rl-c-cat { width:15%; }
+        col.rl-c-proc { width:15%; }
+        /* The pattern is the part of a rule worth reading, so it gets what the other columns
+           don't need — folding the window and page patterns into one is what freed it. */
+        col.rl-c-match { width:38%; }
         /* The last two hold controls of a known size, so they take pixels and leave the rest of
-           the width to the patterns, which are the part worth reading. The exclude column is
-           sized for its longest pair — Exclude + Timesheet — not for the shorter "Counted" a
-           row shows when it is included. */
+           the width to the patterns, which are the part worth reading. Both are sized for their
+           edit state, which is the wider one: Exclude + Timesheet rather than the shorter
+           "Counted" an included row shows, and Save + Cancel rather than Edit + Delete. */
         col.rl-c-ex { width:168px; }
-        col.rl-c-act { width:100px; }
+        col.rl-c-act { width:124px; }
+        /* A button is never worth an ellipsis — it either fits or the column is wrong. */
+        .rl-actions { text-overflow:clip; }
         .rl .rl-in { display:none; }
         tr.rl.editing .rl-view { display:none; }
         tr.rl.editing .rl-in { display:inline-block; }
@@ -1269,8 +1290,7 @@ public static class HtmlReportWriter
         .rl-addbar input:focus { outline:none; border-color:var(--accent); }
         .rl-new-cat { width:140px; }
         .rl-new-proc { width:150px; }
-        .rl-new-title { width:220px; }
-        .rl-new-client { width:110px; }
+        .rl-new-match { width:300px; }
         /* Settings tab: the dialog's layout, in page idiom. */
         .st-form { max-width:560px; }
         .st-row { display:flex; align-items:center; gap:10px; margin:8px 0; }
@@ -1577,10 +1597,10 @@ public static class HtmlReportWriter
         var newVal=function(c){var i=bar.querySelector(c);return i?i.value.trim():'';};
         var cat=newVal('.rl-new-cat');
         if(!cat){var f=bar.querySelector('.rl-new-cat');if(f)f.focus();return;}
-        var proc=newVal('.rl-new-proc'),ti=newVal('.rl-new-title'),ur=newVal('.rl-new-url');
-        if(!proc&&!ti&&!ur){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
-        post({type:'ruleAdd',category:cat,process:proc,title:ti,url:ur,
-        client:newVal('.rl-new-client'),excludeFrom:sel(bar,'rl-new-exclude')});
+        var proc=newVal('.rl-new-proc'),mt=newVal('.rl-new-match');
+        if(!proc&&!mt){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
+        post({type:'ruleAdd',category:cat,process:proc,match:mt,
+        excludeFrom:sel(bar,'rl-new-exclude')});
         bar.querySelectorAll('input').forEach(function(i){i.value='';});
         bar.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});
         // Resetting the mode select back to Include leaves the scope beside it still listing
@@ -1593,8 +1613,8 @@ public static class HtmlReportWriter
         b=t.closest('.rl-ok');
         if(b){var r=b.closest('tr.rl');
         post({type:'ruleUpdate',id:r.getAttribute('data-i'),key:r.getAttribute('data-id'),
-        category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),url:val(r,'rl-url'),
-        client:val(r,'rl-client'),excludeFrom:sel(r,'rl-exclude')});
+        category:val(r,'rl-cat'),process:val(r,'rl-proc'),match:val(r,'rl-match'),
+        excludeFrom:sel(r,'rl-exclude')});
         r.classList.remove('editing');}});
         document.addEventListener('keydown',function(e){
         var r=e.target.closest?e.target.closest('tr.rl.editing'):null;if(!r)return;

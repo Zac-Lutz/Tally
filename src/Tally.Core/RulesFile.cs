@@ -5,6 +5,20 @@ using System.Text.RegularExpressions;
 
 namespace Tally.Core;
 
+/// <summary>
+/// Where a newly written rule belongs among the ones already there. First match wins, so this is
+/// the difference between a rule taking effect and a broader rule above it swallowing everything
+/// it was meant to catch.
+/// </summary>
+public enum RulePlacement
+{
+    /// <summary>Names one particular window or page: goes first, above everything.</summary>
+    Specific,
+
+    /// <summary>Names a whole website: goes below the specific rules, above the app-only ones.</summary>
+    Site,
+}
+
 /// <summary>Loads the user-editable classification rules from JSON (comments allowed).</summary>
 public static partial class RulesFile
 {
@@ -46,14 +60,59 @@ public static partial class RulesFile
     private static readonly JsonSerializerOptions LiteralOptions =
         new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    private sealed record RulesDocument(List<ClassificationRule> Rules);
+    private sealed record RulesDocument(List<RuleEntry> Rules);
+
+    /// <summary>
+    /// A rule as the file may spell it, kept separate from the model so that a file written before
+    /// window and page patterns merged still loads. Either old key is read as the one pattern a
+    /// rule now has.
+    /// </summary>
+    private sealed class RuleEntry
+    {
+        public required string Id { get; init; }
+        public string? ProcessPattern { get; init; }
+        public string? MatchPattern { get; init; }
+
+        /// <summary>Older spelling of <see cref="MatchPattern"/>, when it only read the title.</summary>
+        public string? TitlePattern { get; init; }
+
+        /// <summary>Older spelling of <see cref="MatchPattern"/>, when it only read the page.</summary>
+        public string? UrlPattern { get; init; }
+
+        public required string Category { get; init; }
+        public string? Client { get; init; }
+        public ExcludeScope ExcludeFrom { get; init; }
+
+        public ClassificationRule ToRule() => new()
+        {
+            Id = Id,
+            ProcessPattern = ProcessPattern,
+            MatchPattern = Pattern(),
+            Category = Category,
+            Client = Client,
+            ExcludeFrom = ExcludeFrom,
+        };
+
+        // A rule carrying both old patterns used to need both to match. There is no way to say
+        // that any more, so the two are joined as alternatives — the rule keeps matching everything
+        // it used to and may now match a little more, which is the safe direction: the activity
+        // stays classified rather than falling back to Uncategorized.
+        private string? Pattern() => (MatchPattern, TitlePattern, UrlPattern) switch
+        {
+            ({ } m, _, _) => m,
+            (null, { } t, { } u) => $"(?:{t})|(?:{u})",
+            (null, { } t, null) => t,
+            (null, null, { } u) => u,
+            _ => null,
+        };
+    }
 
     public static IReadOnlyList<ClassificationRule> Load(string path) => Parse(File.ReadAllText(path));
 
     public static IReadOnlyList<ClassificationRule> Parse(string json)
     {
         var document = JsonSerializer.Deserialize<RulesDocument>(json, JsonOptions);
-        return document?.Rules ?? [];
+        return document?.Rules.Select(e => e.ToRule()).ToList() ?? [];
     }
 
     public static void WriteDefault(string path) => File.WriteAllText(path, DefaultRulesJson);
@@ -62,10 +121,10 @@ public static partial class RulesFile
     /// Adds a rule to the rules file, leaving everything else — comments included — exactly as it
     /// was. Creates the file from the defaults first if it's missing.
     /// </summary>
-    public static void AddRule(string path, ClassificationRule rule)
+    public static void AddRule(string path, ClassificationRule rule, RulePlacement placement = RulePlacement.Specific)
     {
         var json = File.Exists(path) ? File.ReadAllText(path) : DefaultRulesJson;
-        File.WriteAllText(path, WithRule(json, rule));
+        File.WriteAllText(path, WithRule(json, rule, placement));
     }
 
     /// <summary>
@@ -73,28 +132,34 @@ public static partial class RulesFile
     /// comments, spacing, and every other rule survive untouched.
     /// <para>
     /// Position is earned by specificity, because the first matching rule wins, and there are three
-    /// tiers: a rule with a title pattern goes <b>first</b> (it names one window), a page rule goes
-    /// <b>after the title rules</b> (it names one site — broader than a window, narrower than an
-    /// app), and an app-only rule goes <b>last</b> (it covers everything that app does, so it must
-    /// not shadow the specific rules already there).
+    /// tiers: a rule naming one particular thing goes <b>first</b>, a rule naming a whole website
+    /// goes <b>after the other match rules</b> (broader than a window, narrower than an app), and
+    /// an app-only rule goes <b>last</b>, since it covers everything that app does and must not
+    /// shadow the specific rules already there.
     /// <para>
-    /// The middle tier is why a page rule isn't simply put on top: a site rule for halo.lutz.us
-    /// would otherwise outrank the title rule that pulls the ticket number out of a Halo window,
-    /// and the tickets would quietly stop being extracted.
+    /// The middle tier is why a site rule isn't simply put on top: a rule for halo.lutz.us would
+    /// otherwise outrank the rule that pulls the ticket number out of a Halo window, and the
+    /// tickets would quietly stop being extracted. That is the one thing to preserve here.
+    /// Which tier a rule belongs to used to be readable from its shape, when a title pattern and a
+    /// page pattern were separate fields; now that they are one field, the caller has to say.
     /// </para>
     /// </para>
     /// </summary>
-    public static string WithRule(string json, ClassificationRule rule)
+    public static string WithRule(string json, ClassificationRule rule, RulePlacement placement = RulePlacement.Specific)
     {
         if (!TryFindRulesArray(json, out var open, out var close))
             throw new InvalidOperationException("The rules file has no \"rules\": [ ... ] array to add to.");
 
         var literal = RuleLiteral(rule);
-        if (rule.TitlePattern is not null)
+        if (rule.MatchPattern is not null && placement is RulePlacement.Specific)
             return json.Insert(open + 1, $"\n    {literal},");
 
-        if (rule.UrlPattern is not null && LastTitleRuleEnd(json, open, close) is { } afterTitles)
-            return json.Insert(afterTitles + 1, $"{(json[afterTitles] == ',' ? "" : ",")}\n    {literal}");
+        if (rule.MatchPattern is not null
+            && placement is RulePlacement.Site
+            && LastMatchRuleEnd(json, open, close) is { } afterMatches)
+        {
+            return json.Insert(afterMatches + 1, $"{(json[afterMatches] == ',' ? "" : ",")}\n    {literal}");
+        }
 
         // Appending: land right after the last rule, not after the array's closing indentation,
         // so the separating comma stays on that rule's line instead of stranded on its own.
@@ -104,10 +169,10 @@ public static partial class RulesFile
             : json.Insert(last + 1, $"{(json[last] == ',' ? "" : ",")}\n    {literal}");
     }
 
-    // The character index the last title-pattern rule ends on, or null when there are none (in
-    // which case a page rule simply appends like an app rule would). Read from the parsed rules so
-    // "has a title pattern" means the same thing here as it does to the classifier.
-    private static int? LastTitleRuleEnd(string json, int open, int close)
+    // The character index the last rule with a match pattern ends on, or null when there are none
+    // (in which case a site rule simply appends like an app rule would). Read from the parsed rules
+    // so "has a match pattern" means the same thing here as it does to the classifier.
+    private static int? LastMatchRuleEnd(string json, int open, int close)
     {
         var spans = RuleSpans(json, open, close);
         var rules = Parse(json);
@@ -115,7 +180,7 @@ public static partial class RulesFile
             return null;   // the file didn't parse the way it scanned; fall back to appending
 
         for (var i = rules.Count - 1; i >= 0; i--)
-            if (rules[i].TitlePattern is not null)
+            if (rules[i].MatchPattern is not null)
                 return spans[i].End;
 
         return null;
@@ -273,10 +338,8 @@ public static partial class RulesFile
         List<string> parts = [$"\"id\": {Str(rule.Id)}"];
         if (rule.ProcessPattern is { } process)
             parts.Add($"\"processPattern\": {Str(process)}");
-        if (rule.TitlePattern is { } title)
-            parts.Add($"\"titlePattern\": {Str(title)}");
-        if (rule.UrlPattern is { } url)
-            parts.Add($"\"urlPattern\": {Str(url)}");
+        if (rule.MatchPattern is { } match)
+            parts.Add($"\"matchPattern\": {Str(match)}");
         parts.Add($"\"category\": {Str(rule.Category)}");
         if (rule.Client is { } client)
             parts.Add($"\"client\": {Str(client)}");
@@ -382,36 +445,38 @@ public static partial class RulesFile
     public const string DefaultRulesJson =
         """
         {
-          // Ordered, first match wins. processPattern / titlePattern are case-insensitive regexes.
-          // Named groups (?<ticket>...) and (?<client>...) in titlePattern extract those fields.
+          // Ordered, first match wins. processPattern / matchPattern are case-insensitive regexes.
+          // matchPattern is tried against the window title and against the page address (host and
+          // path, no ?query); either one matching is enough. Named groups (?<ticket>...) and
+          // (?<client>...) in matchPattern extract those fields.
           "rules": [
-            { "id": "halo-ticket", "titlePattern": "Ticket\\s*#?(?<ticket>\\d{3,})", "category": "Halo" },
+            { "id": "halo-ticket", "matchPattern": "Ticket\\s*#?(?<ticket>\\d{3,})", "category": "Halo" },
             // HaloPSA's web app titles itself with unbranded breadcrumbs — "Tickets > Management >
             // <view>", ending in the ticket number when one is open — so the module names anchor
             // the match, and a trailing number is captured as the ticket.
-            { "id": "halo-ticket-tab", "titlePattern": "^Tickets\\s*>.*>\\s*(?<ticket>\\d{3,})", "category": "Halo" },
-            { "id": "halo-tab", "titlePattern": "^(Tickets|Clients|Users|Sites|Assets|Opportunities|Projects|Contracts|Suppliers|Invoices|Quotations|Reports|Configuration|Knowledge Base)\\s*>", "category": "Halo" },
-            { "id": "halo", "titlePattern": "Halo\\s?PSA", "category": "Halo" },
+            { "id": "halo-ticket-tab", "matchPattern": "^Tickets\\s*>.*>\\s*(?<ticket>\\d{3,})", "category": "Halo" },
+            { "id": "halo-tab", "matchPattern": "^(Tickets|Clients|Users|Sites|Assets|Opportunities|Projects|Contracts|Suppliers|Invoices|Quotations|Reports|Configuration|Knowledge Base)\\s*>", "category": "Halo" },
+            { "id": "halo", "matchPattern": "Halo\\s?PSA", "category": "Halo" },
             // IT Glue pages title themselves "<page> — IT Glue" (em-dash in the web app; hyphen and
             // en-dash allowed too), or lead with the product name.
-            { "id": "itglue", "titlePattern": "(^|[-\\u2013\\u2014]\\s*)IT Glue\\b", "category": "IT Glue" },
-            { "id": "screenconnect-client", "titlePattern": "^(?<client>.+?)\\s+[-\\u2013\\u2014].*(ScreenConnect|ConnectWise Control)", "category": "ScreenConnect" },
-            { "id": "screenconnect", "titlePattern": "ScreenConnect|ConnectWise Control", "category": "ScreenConnect" },
+            { "id": "itglue", "matchPattern": "(^|[-\\u2013\\u2014]\\s*)IT Glue\\b", "category": "IT Glue" },
+            { "id": "screenconnect-client", "matchPattern": "^(?<client>.+?)\\s+[-\\u2013\\u2014].*(ScreenConnect|ConnectWise Control)", "category": "ScreenConnect" },
+            { "id": "screenconnect", "matchPattern": "ScreenConnect|ConnectWise Control", "category": "ScreenConnect" },
             // Outlook wherever it's read: the desktop app (olk = new Outlook, outlook = classic) by
             // process, and OWA in a browser tab by its "Mail - <name> - Outlook" title shape. The
             // leading dash keeps a page merely mentioning Outlook from being claimed.
             { "id": "outlook-app", "processPattern": "^(olk|outlook)$", "category": "Outlook" },
-            { "id": "owa", "titlePattern": "(^|[-\\u2013\\u2014]\\s*)Outlook\\b", "category": "Outlook" },
+            { "id": "owa", "matchPattern": "(^|[-\\u2013\\u2014]\\s*)Outlook\\b", "category": "Outlook" },
             // Teams window titles carry the focused chat/channel: "Chat | <name> | Microsoft Teams".
             // Capture that name as the subject so the rollup separates each conversation. Filed as
             // "Teams - Chat" so it reads apart from "Teams - Call" (which calls carry) on a
             // timesheet; a Teams window with no conversation in its title stays plain "Teams".
-            { "id": "teams-chat", "processPattern": "^(ms-teams|msteams|Teams)$", "titlePattern": "^(?:Chat \\| )?(?<subject>.+?)\\s*\\| Microsoft Teams", "category": "Teams - Chat" },
+            { "id": "teams-chat", "processPattern": "^(ms-teams|msteams|Teams)$", "matchPattern": "^(?:Chat \\| )?(?<subject>.+?)\\s*\\| Microsoft Teams", "category": "Teams - Chat" },
             { "id": "teams", "processPattern": "^(ms-teams|msteams|Teams)$", "category": "Teams" },
             // Discord titles the focused channel, DM or view: "#channel | Server - Discord",
             // "@someone - Discord", "Friends - Discord". Capturing it as the subject separates each
             // conversation on the rollup; a bare "Discord" falls through to the rule below.
-            { "id": "discord-channel", "processPattern": "^Discord$", "titlePattern": "^(?<subject>.+?)\\s*-\\s*Discord$", "category": "Discord" },
+            { "id": "discord-channel", "processPattern": "^Discord$", "matchPattern": "^(?<subject>.+?)\\s*-\\s*Discord$", "category": "Discord" },
             { "id": "discord", "processPattern": "^Discord$", "category": "Discord" },
             // RingCentral ships under several executable names (the app, the older phone client,
             // meetings), so this matches the prefix rather than one exact name.

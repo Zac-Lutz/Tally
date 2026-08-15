@@ -35,23 +35,24 @@ public sealed record ClassificationRule
     public string? ProcessPattern { get; init; }
 
     /// <summary>
-    /// Regex matched against the window title. Named groups <c>(?&lt;ticket&gt;)</c>,
-    /// <c>(?&lt;client&gt;)</c>, and <c>(?&lt;subject&gt;)</c> are extracted into the
-    /// classification. Null = any title.
+    /// Regex matched against the window title and against the page the browser was showing, as
+    /// stored — host and path, no scheme and no query string (see <see cref="UrlSanitizer"/>).
+    /// <b>Either matching is enough.</b> Named groups <c>(?&lt;ticket&gt;)</c>,
+    /// <c>(?&lt;client&gt;)</c>, and <c>(?&lt;subject&gt;)</c> are extracted from whichever
+    /// matched. Null = match anything.
+    /// <para>
+    /// This was two fields once, a title pattern and a page pattern, and a rule carrying both had
+    /// to satisfy both. Wanting both at once turned out to be rare, while the two-field form cost
+    /// a column on the Rules tab and a decision on every rule written. Reading either also covers
+    /// the case the split handled badly: a browser whose title still names the tab you just left
+    /// while its address bar already names the one you are on.
+    /// </para>
     /// </summary>
-    public string? TitlePattern { get; init; }
-
-    /// <summary>
-    /// Regex matched against the page the browser was showing, as stored — host and path, no
-    /// scheme and no query string (see <see cref="UrlSanitizer"/>). Named groups work as they do
-    /// in <see cref="TitlePattern"/>. Null = any page; set, it can only ever match a browser
-    /// block, because nothing else has a page.
-    /// </summary>
-    public string? UrlPattern { get; init; }
+    public string? MatchPattern { get; init; }
 
     public required string Category { get; init; }
 
-    /// <summary>Static client assignment; a <c>(?&lt;client&gt;)</c> capture in TitlePattern wins over this.</summary>
+    /// <summary>Static client assignment; a <c>(?&lt;client&gt;)</c> capture wins over this.</summary>
     public string? Client { get; init; }
 
     /// <summary>
@@ -68,62 +69,54 @@ public sealed class Classifier
     // Rules are user-edited regexes; a timeout keeps a pathological pattern from wedging reports.
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(250);
 
-    private readonly List<(ClassificationRule Rule, Regex? Process, Regex? Title, Regex? Url)> _rules;
+    private readonly List<(ClassificationRule Rule, Regex? Process, Regex? Match)> _rules;
 
     public Classifier(IEnumerable<ClassificationRule> rules)
     {
         _rules = rules
-            .Select(rule => (rule, Compile(rule.ProcessPattern), Compile(rule.TitlePattern), Compile(rule.UrlPattern)))
+            .Select(rule => (rule, Compile(rule.ProcessPattern), Compile(rule.MatchPattern)))
             .ToList();
     }
 
     /// <summary>
-    /// The first rule whose every pattern matches. <paramref name="url"/> is the page a browser
-    /// block was showing, when one was captured; a rule naming a page can only match a block that
-    /// has one.
+    /// The first rule whose app pattern matches and whose match pattern is true of the window
+    /// title or of the page. <paramref name="url"/> is the page a browser block was showing, when
+    /// one was captured; a block without one is simply judged on its title.
     /// </summary>
     public Classification Classify(string processName, string title, string? url = null)
     {
-        foreach (var (rule, processRegex, titleRegex, urlRegex) in _rules)
+        foreach (var (rule, processRegex, matchRegex) in _rules)
         {
             // A rule with no patterns would match everything; treat it as inert.
-            if (processRegex is null && titleRegex is null && urlRegex is null)
+            if (processRegex is null && matchRegex is null)
                 continue;
 
             if (processRegex is not null && !SafeIsMatch(processRegex, processName))
                 continue;
 
-            Match? titleMatch = null;
-            if (titleRegex is not null)
+            Match? hit = null;
+            if (matchRegex is not null)
             {
-                titleMatch = SafeMatch(titleRegex, title);
-                if (titleMatch is not { Success: true })
+                // The title is tried first, so its captures are the ones that win when both could
+                // match — it is the more specific evidence, and the one a ticket number is usually
+                // written into. The page is what answers when the title is empty, generic, or
+                // still naming the tab the user just left.
+                hit = Successful(SafeMatch(matchRegex, title))
+                      ?? (url is null ? null : Successful(SafeMatch(matchRegex, url)));
+                if (hit is null)
                     continue;
             }
 
-            Match? urlMatch = null;
-            if (urlRegex is not null)
-            {
-                // No page means nothing for the pattern to be true of — a rule about a website
-                // must not quietly match the file explorer.
-                if (url is null)
-                    continue;
-
-                urlMatch = SafeMatch(urlRegex, url);
-                if (urlMatch is not { Success: true })
-                    continue;
-            }
-
-            // The title is the more specific evidence when a rule reads both, so its captures win
-            // and the page fills in whatever the title didn't name.
-            var ticket = GroupValue(titleMatch, "ticket") ?? GroupValue(urlMatch, "ticket");
-            var client = GroupValue(titleMatch, "client") ?? GroupValue(urlMatch, "client") ?? rule.Client;
-            var subject = GroupValue(titleMatch, "subject") ?? GroupValue(urlMatch, "subject");
-            return new Classification(rule.Category, client, ticket, subject, rule.Id, rule.ExcludeFrom);
+            var client = GroupValue(hit, "client") ?? rule.Client;
+            return new Classification(
+                rule.Category, client, GroupValue(hit, "ticket"), GroupValue(hit, "subject"),
+                rule.Id, rule.ExcludeFrom);
         }
 
         return new Classification(Classification.Unclassified, null, null, null, null);
     }
+
+    private static Match? Successful(Match? match) => match is { Success: true } ? match : null;
 
     private static Regex? Compile(string? pattern)
         => pattern is null ? null : new Regex(pattern, RegexOptions.IgnoreCase, RegexTimeout);

@@ -388,7 +388,13 @@ public sealed class LiveWindow : Form
             };
             var rule = RuleDraft.Create(
                 process, title, match, category, ExistingRuleIds(), excludeFrom, url);
-            RulesFile.AddRule(TallyPaths.RulesPath, rule);
+            // A site rule has to land below the rules that name one particular window, or it
+            // outranks them: "any Halo page" above "the Halo window with a ticket number in it"
+            // silently stops the ticket numbers coming through.
+            RulesFile.AddRule(
+                TallyPaths.RulesPath,
+                rule,
+                match is RuleMatch.Site ? RulePlacement.Site : RulePlacement.Specific);
             Log.Info($"Saved classification rule '{rule.Id}' ({category}{ExcludeSuffix(excludeFrom)}) from the live view");
             Note($"rule saved — {category}{ExcludeSuffix(excludeFrom)}");
             _ = RefreshAsync();
@@ -475,33 +481,34 @@ public sealed class LiveWindow : Form
             var (index, existing) = target;
             var category = msg.Category?.Trim();
             var process = NullIfEmpty(msg.Process);
-            var title = NullIfEmpty(msg.Title);
-            var url = NullIfEmpty(msg.Url);
+            var match = NullIfEmpty(msg.Match);
             if (string.IsNullOrEmpty(category))
             {
                 Note("a rule needs a category — nothing saved");
                 return;
             }
 
-            if (process is null && title is null && url is null)
+            if (process is null && match is null)
             {
-                Note("a rule needs an app, window or page pattern — nothing saved");
+                Note("a rule needs an app or a window or page pattern — nothing saved");
                 return;
             }
 
-            if (BadPattern(process) is not null || BadPattern(title) is not null || BadPattern(url) is not null)
+            if (BadPattern(process) is not null || BadPattern(match) is not null)
             {
                 Note("that pattern isn't a valid regex — nothing saved");
                 return;
             }
 
+            // Client is deliberately absent: the Rules tab stopped offering it, so an edit must
+            // carry forward whatever the file already says rather than read a control that is no
+            // longer there and clear it. A client still reaches a rule through a (?<client>…)
+            // capture, or by being typed into rules.json by hand.
             var rule = existing with
             {
                 Category = category,
                 ProcessPattern = process,
-                TitlePattern = title,
-                UrlPattern = url,
-                Client = NullIfEmpty(msg.Client),
+                MatchPattern = match,
                 ExcludeFrom = ScopeOf(msg),
             };
             RulesFile.ReplaceRuleAt(TallyPaths.RulesPath, index, rule);
@@ -529,7 +536,7 @@ public sealed class LiveWindow : Form
             var matches = string.Join("   ", new[]
             {
                 rule.ProcessPattern is { } p ? $"app: {p}" : null,
-                rule.TitlePattern is { } t ? $"window: {t}" : null,
+                rule.MatchPattern is { } m ? $"window or page: {m}" : null,
             }.Where(s => s is not null));
 
             var answer = MessageBox.Show(
@@ -569,21 +576,20 @@ public sealed class LiveWindow : Form
         {
             var category = msg.Category?.Trim();
             var process = NullIfEmpty(msg.Process);
-            var title = NullIfEmpty(msg.Title);
-            var url = NullIfEmpty(msg.Url);
+            var match = NullIfEmpty(msg.Match);
             if (string.IsNullOrEmpty(category))
             {
                 Note("a rule needs a category — nothing added");
                 return;
             }
 
-            if (process is null && title is null && url is null)
+            if (process is null && match is null)
             {
-                Note("a rule needs an app, window or page pattern — nothing added");
+                Note("a rule needs an app or a window or page pattern — nothing added");
                 return;
             }
 
-            if (BadPattern(process) is not null || BadPattern(title) is not null || BadPattern(url) is not null)
+            if (BadPattern(process) is not null || BadPattern(match) is not null)
             {
                 Note("that pattern isn't a valid regex — nothing added");
                 return;
@@ -593,10 +599,8 @@ public sealed class LiveWindow : Form
             {
                 Id = RuleDraft.ManualId(category, ExistingRuleIds()),
                 ProcessPattern = process,
-                TitlePattern = title,
-                UrlPattern = url,
+                MatchPattern = match,
                 Category = category,
-                Client = NullIfEmpty(msg.Client),
                 ExcludeFrom = ScopeOf(msg),
             };
             RulesFile.AddRule(TallyPaths.RulesPath, rule);
@@ -948,15 +952,16 @@ public sealed class LiveWindow : Form
     private static readonly JsonSerializerOptions EditMessageOptions = new() { PropertyNameCaseInsensitive = true };
 
     // Every edit the live page can post: a ticket cell (Key/Value), a timer rename (Id/Value), a
-    // rule saved from triage (Process/Title as base64, Scope, Category, Exclude), a Rules-tab
-    // add/edit/delete (Id = the rule's index, Key = its id as base64; typed values travel plain —
-    // they ride the JSON message, not an HTML attribute), or the Settings tab's whole form
-    // (Start/Stop hotkeys, Times comma-joined, Retention in days).
+    // rule saved from triage (Process/Title/Url as base64 — the activity being filed, which the
+    // draft turns into a pattern — plus Scope, Category, Exclude), a Rules-tab add/edit/delete
+    // (Id = the rule's index, Key = its id as base64, Match = the pattern as typed; typed values
+    // travel plain — they ride the JSON message, not an HTML attribute), or the Settings tab's
+    // whole form (Start/Stop hotkeys, Times comma-joined, Retention in days).
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
-        string? Process, string? Title, string? Scope, string? Category, string? Client,
+        string? Process, string? Title, string? Scope, string? Category,
         string? Start, string? Stop, string? Times, string? Retention, string? ExcludeFrom = null,
-        string? Url = null);
+        string? Url = null, string? Match = null);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>

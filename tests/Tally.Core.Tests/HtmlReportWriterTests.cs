@@ -22,8 +22,8 @@ public class HtmlReportWriterTests
     {
         var rules = new ClassificationRule[]
         {
-            new() { Id = "first", TitlePattern = "Alpha > \"x\"", Category = "A" },
-            new() { Id = "second", ProcessPattern = "^b$", Category = "B", Client = "Acme" },
+            new() { Id = "first", MatchPattern = "Alpha > \"x\"", Category = "A" },
+            new() { Id = "second", ProcessPattern = "^b$", Category = "B" },
         };
 
         var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], [], rules: rules);
@@ -31,7 +31,7 @@ public class HtmlReportWriterTests
         Assert.Contains("data-panel=\"rules\"", inner);
         Assert.Contains("data-tab=\"rules\"", inner);
         Assert.Contains("Alpha &gt; &quot;x&quot;", inner);   // pattern shown, escaped
-        Assert.Contains("Acme", inner);
+        Assert.Contains("^b$", inner);
         // Row order is file order — the numbers say which rule wins a tie.
         Assert.True(inner.IndexOf("data-id=\"" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("first")) + "\"", StringComparison.Ordinal)
                     < inner.IndexOf("data-id=\"" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("second")) + "\"", StringComparison.Ordinal));
@@ -42,7 +42,7 @@ public class HtmlReportWriterTests
     {
         var rules = new ClassificationRule[]
         {
-            new() { Id = "first", TitlePattern = "Alpha", Category = "A" },
+            new() { Id = "first", MatchPattern = "Alpha", Category = "A" },
         };
 
         var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], [], rules: rules);
@@ -51,7 +51,7 @@ public class HtmlReportWriterTests
         // A colgroup plus table-layout:fixed is what stops a row full of inputs from growing the
         // table past the window and putting a horizontal scrollbar under the tab.
         Assert.Contains("<colgroup><col class=\"rl-c-num\">", inner);
-        foreach (var col in new[] { "rl-c-cat", "rl-c-proc", "rl-c-title", "rl-c-url", "rl-c-client", "rl-c-ex", "rl-c-act" })
+        foreach (var col in new[] { "rl-c-cat", "rl-c-proc", "rl-c-match", "rl-c-ex", "rl-c-act" })
         {
             Assert.Contains($"<col class=\"{col}\">", inner);
             Assert.Contains($"col.{col} {{ width:", shell);
@@ -62,6 +62,73 @@ public class HtmlReportWriterTests
         // here is what the columns would have had to grow to accommodate.
         Assert.Contains(".rl input.rl-in", shell);
         Assert.Contains("width:100%;", shell);
+        // One line per rule: a pattern too long for its column is cut, not wrapped.
+        Assert.Contains("text-overflow:ellipsis; white-space:nowrap;", shell);
+    }
+
+    [Fact]
+    public void RulesTab_HasNoClientColumn_ButAPatternCanStillCaptureOne()
+    {
+        var rules = new ClassificationRule[]
+        {
+            new() { Id = "sc", MatchPattern = "^(?<client>.+?) - ScreenConnect", Category = "Remote", Client = "Typed Co" },
+        };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Remote", "Acme - ScreenConnect")], [], [], rules: rules);
+        var shell = HtmlReportWriter.BuildLiveShell();
+
+        // The column and its add-bar field are gone from the tab...
+        Assert.DoesNotContain("<th>Client</th>", inner);
+        Assert.DoesNotContain("rl-new-client", inner);
+        Assert.DoesNotContain("rl-client", inner);
+        Assert.DoesNotContain("Typed Co", inner);
+        // ...and no rule message carries a client, so saving an edit can't clear the one a rule
+        // already has — the host keeps it rather than reading a control that no longer exists.
+        Assert.DoesNotContain("client:", shell);
+        // The capture is untouched: it is what still names a customer on the Rollup.
+        Assert.Contains("(?&lt;client&gt;…)", inner);
+    }
+
+    [Fact]
+    public void RulesTab_HasOneMatchColumn_NotAWindowOneAndAPageOne()
+    {
+        var rules = new ClassificationRule[]
+        {
+            new() { Id = "halo", MatchPattern = @"^halo\.lutz\.us", Category = "Halo" },
+        };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Halo", "T")], [], [], rules: rules);
+        var shell = HtmlReportWriter.BuildLiveShell();
+
+        Assert.Contains("<th>Window or page matches</th>", inner);
+        Assert.DoesNotContain("<th>Window matches</th>", inner);
+        Assert.DoesNotContain("<th>Page matches</th>", inner);
+        Assert.Contains("rl-new-match", inner);
+        Assert.DoesNotContain("rl-new-title", inner);
+        Assert.DoesNotContain("rl-new-url", inner);
+        // One field means one value on the message; a stale title/url pair would be read as empty
+        // by the host and quietly wipe the pattern.
+        Assert.Contains("match:val(r,'rl-match')", shell);
+        Assert.DoesNotContain("title:val(r,'rl-title')", shell);
+    }
+
+    [Fact]
+    public void CountingColumn_SaysTheOutcome_NotTheScopeItIsExcludedFrom()
+    {
+        // "Exclude" was the wrong heading once the control could also say Include, and a cell
+        // reading "Timesheet" under a heading about counting says the opposite of the truth.
+        var rules = new ClassificationRule[]
+        {
+            new() { Id = "in", MatchPattern = "a", Category = "A" },
+            new() { Id = "out", MatchPattern = "b", Category = "B", ExcludeFrom = ExcludeScope.Timesheet },
+        };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [], rules: rules);
+
+        Assert.Contains("<th>Counting</th>", inner);
+        Assert.DoesNotContain("<th>Exclude</th>", inner);
+        Assert.Contains("Counted", inner);
+        Assert.Contains("Not on Timesheet", inner);
     }
 
     [Fact]
@@ -120,7 +187,7 @@ public class HtmlReportWriterTests
     public void RulesTab_CarriesAnAddBar()
     {
         var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "T")], [], [],
-            rules: [new ClassificationRule { Id = "x", TitlePattern = "t", Category = "X" }]);
+            rules: [new ClassificationRule { Id = "x", MatchPattern = "t", Category = "X" }]);
 
         Assert.Contains("rl-add-btn", inner);
         Assert.Contains("rl-new-cat", inner);
@@ -298,7 +365,7 @@ public class HtmlReportWriterTests
     public void CategoriesTab_RendersInTheLiveView_WithCustomRuleAndBuiltInNames()
     {
         var categories = new CategoryDefinition[] { new("Documentation", "#8b5cf6") };
-        var rules = new ClassificationRule[] { new() { Id = "h", TitlePattern = "x", Category = "Halo" } };
+        var rules = new ClassificationRule[] { new() { Id = "h", MatchPattern = "x", Category = "Halo" } };
 
         var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Halo", "T")], [], [],
             rules: rules, categories: categories, palette: new CategoryPalette(categories));

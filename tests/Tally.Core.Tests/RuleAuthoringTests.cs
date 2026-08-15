@@ -103,7 +103,7 @@ public class RuleAuthoringTests
         var rule = RuleDraft.Create("notepad", "Runbook.txt - Notepad", RuleMatch.App, "Documentation");
 
         Assert.Equal("^notepad$", rule.ProcessPattern);
-        Assert.Null(rule.TitlePattern);          // any window of that app
+        Assert.Null(rule.MatchPattern);          // any window of that app
         Assert.Equal("Documentation", rule.Category);
     }
 
@@ -113,7 +113,7 @@ public class RuleAuthoringTests
         var rule = RuleDraft.Create("brave", "Pricing - Acme and 3 more pages", RuleMatch.Window, "Browsing");
 
         Assert.Equal("^brave$", rule.ProcessPattern);
-        Assert.Equal("Pricing - Acme", rule.TitlePattern);   // normalized, as the row displayed it
+        Assert.Equal("Pricing - Acme", rule.MatchPattern);   // normalized, as the row displayed it
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class RuleAuthoringTests
         var rule = RuleDraft.Create("", "Daily standup", RuleMatch.App, "Meetings");
 
         Assert.Null(rule.ProcessPattern);
-        Assert.Equal("Daily standup", rule.TitlePattern);
+        Assert.Equal("Daily standup", rule.MatchPattern);
     }
 
     // ---- RulesFile.WithRule ----

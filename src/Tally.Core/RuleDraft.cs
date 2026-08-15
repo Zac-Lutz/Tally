@@ -47,7 +47,7 @@ public static class RuleDraft
             return new ClassificationRule
             {
                 Id = UniqueId(trimmedCategory, host, existingIds),
-                UrlPattern = $"^{EscapeLiteral(host)}(?:/|$)",
+                MatchPattern = $"^{EscapeLiteral(host)}(?:/|$)",
                 Category = trimmedCategory,
                 ExcludeFrom = excludeFrom,
             };
@@ -58,15 +58,15 @@ public static class RuleDraft
 
         // No process name to key on (rare) — fall back to matching the title, whatever was asked for.
         var byWindow = match == RuleMatch.Window || process is null;
-        var titlePattern = byWindow && activity.Length > 0 ? EscapeLiteral(activity) : null;
-        if (process is null && titlePattern is null)
+        var matchPattern = byWindow && activity.Length > 0 ? EscapeLiteral(activity) : null;
+        if (process is null && matchPattern is null)
             throw new ArgumentException("A rule needs an app or a window title to match.", nameof(processName));
 
         return new ClassificationRule
         {
-            Id = UniqueId(trimmedCategory, titlePattern is not null ? activity : processName, existingIds),
+            Id = UniqueId(trimmedCategory, matchPattern is not null ? activity : processName, existingIds),
             ProcessPattern = process,
-            TitlePattern = titlePattern,
+            MatchPattern = matchPattern,
             Category = trimmedCategory,
             ExcludeFrom = excludeFrom,
         };

@@ -126,26 +126,42 @@ Everything stays on this machine. No cloud, no telemetry.
   dropping whole lines, not by truncating, so a note too long for the importer loses its least
   important line rather than ending mid-word. Editing one field no longer rewrites another: the
   fields stopped being derived from each other the moment they stopped repeating each other.
-- **A rule can match the page, and specificity gained a middle tier because of it.** `urlPattern`
-  joins `processPattern` and `titlePattern` as a third conjunct — every pattern a rule carries
-  must match — and it reads the address as stored, host and path with no query string. It is the
-  sturdier way to recognise a web app: a tab's title changes with every click while its address
-  holds still, which is exactly why the triage tab now offers "any page on this site" as a third
-  scope and drafts it with no app or title pattern at all (the same page in a second browser is
-  the same work). A rule naming a page can never match a non-browser block, because a null page
-  isn't something a pattern can be true of.
+- **A rule can match the page, and specificity gained a middle tier because of it.** A rule's
+  pattern reads the address as stored, host and path with no query string. It is the sturdier way
+  to recognise a web app: a tab's title changes with every click while its address holds still,
+  which is exactly why the triage tab offers "any page on this site" as a third scope and drafts
+  it with no app pattern at all (the same page in a second browser is the same work).
   <br>
-  Placement is the subtle part. Rules were sorted into two tiers — title rules on top, app rules
-  at the bottom — and a site rule belongs between them: broader than one window, narrower than a
-  whole app. Dropping it on top instead would have been quietly destructive, because a
-  `^halo\.lutz\.us` rule would outrank the breadcrumb-title rule that reads the ticket number out
-  of a Halo window, and the tickets would stop being extracted with nothing to show that anything
-  had changed. `WithRule` therefore inserts a page rule after the last title rule, falling back to
-  appending when there are none.
+  Placement is the subtle part. Rules sort into three tiers — a rule naming one particular thing
+  on top, a site rule below those, an app-only rule at the bottom. Dropping a site rule on top
+  instead would be quietly destructive, because a `^halo\.lutz\.us` rule would outrank the
+  breadcrumb-title rule that reads the ticket number out of a Halo window, and the tickets would
+  stop being extracted with nothing to show that anything had changed. `WithRule` therefore takes
+  a `RulePlacement` and inserts a site rule after the last match rule, falling back to appending
+  when there are none.
+- **The window pattern and the page pattern became one.** They were two fields, ANDed, and a rule
+  could carry either or both. Wanting both at once turned out to be rare — of fifty real rules,
+  none did — while the split cost a column on the Rules tab and a decision on every rule written.
+  So `matchPattern` is now tried against the title *and* the address, and either matching is
+  enough. Old files keep working: `titlePattern` and `urlPattern` are both read as
+  `matchPattern`, and a rule that carried both becomes the alternation of the two — widening it
+  rather than narrowing it, so activity stays classified instead of falling back to Uncategorized.
   <br>
-  When a rule reads both a title and a page, the title's captures win and the page fills the gaps:
-  the title is the more specific evidence, and a rule usually carries a page pattern to say
-  *where* while the title says *what*.
+  The title is tried first, so its captures win when both could match: it is the more specific
+  evidence, and a ticket number written into a window title names the ticket being worked where a
+  path might only be a list. Measured against 7,377 real captured events, the merge moved 6 of
+  them — every one a case where a stale multi-tab browser title disagreed with the address, and
+  the address was right — and left the count of events carrying a ticket number unchanged at 164.
+  <br>
+  It does widen one thing, worth stating plainly: an address-shaped pattern is no longer confined
+  to addresses, so `^halo\.lutz\.us` will now also match a File Explorer window named after the
+  site. That is a fair trade rather than a bug, and there is a test pinning it so it stays a
+  decision rather than a surprise.
+  <br>
+  The column that chose this was headed **Exclude**, which stopped being true once the control
+  offered Include as well; it is now **Counting**, and the read-only cell states the outcome
+  ("Not on Timesheet") rather than naming the scope, since "Timesheet" under a heading about
+  counting says the opposite of what the rule does.
 - **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
   (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
   bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains

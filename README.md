@@ -193,11 +193,15 @@ Saved reports show the same Uncategorized list read-only — a record of what st
 ## Excluding what isn't work
 
 Not everything you do at the machine belongs on a timesheet — and some of it doesn't belong in the
-summary or the blow-by-blow either. Every rule carries **two dropdowns**, in the Rules tab and on
-each Uncategorized row as you save one:
+summary or the blow-by-blow either. Every rule carries **two dropdowns**, under the Rules tab's
+**Counting** column and on each Uncategorized row as you save one:
 
 1. **Include** or **Exclude**.
 2. What that applies to. Include offers only *Counted*; Exclude offers the four below.
+
+A rule's row reads back the outcome rather than the scope — *Counted*, *Not on Timesheet*,
+*Excluded* — because "Timesheet" on its own under a heading about counting says the opposite of
+what the rule does.
 
 | Exclude from | What it does |
 | --- | --- |
@@ -324,7 +328,7 @@ dotnet test tests/Tally.Core.Tests
 
 Most rules are easiest to add from the live view's **Uncategorized** tab (above), and managed from
 its **Rules** tab: every rule Tally classifies with, in the order they're tried (first match
-wins). **Edit** turns a row into fields — category, app pattern, window pattern, client — and
+wins). **Edit** turns a row into fields — category, app pattern, window-or-page pattern — and
 **Save** applies it to today within seconds and to every report from then on (a bad regex is
 rejected with a note, nothing saved). **Delete** asks first; the rule's activities go back to
 Uncategorized, where they can be taught a better rule. Edits rewrite just that one line of
@@ -332,21 +336,26 @@ Uncategorized, where they can be taught a better rule. Edits rewrite just that o
 in the live app; saved reports don't carry it.
 
 **Rules can also be written by hand, in the tab.** The bar at the top of the Rules tab takes a
-category, any of an app / window / page pattern (regexes), and an optional client — **Add rule**
-places it by specificity, exactly as a saved rule would land: one naming a window goes to the
-top, one naming a site after those, an app-wide one to the bottom.
+category, an app pattern and a window-or-page pattern (regexes) — **Add rule** places it by
+specificity, exactly as a saved rule would land: one naming a window or page goes to the top, a
+site rule saved from triage after those, an app-wide one to the bottom.
 
-**Matching the page, not the title.** A rule can carry a **page pattern** matched against the
-website address as Tally stores it — host and path, nothing after the `?`. So
-`^halo\.lutz\.us` is any Halo page and `^github\.com/[^/]+/[^/]+/issues/(?<ticket>\d+)` files
-GitHub issues under their number. This is usually the sturdier way to recognise a web app: a
-tab's title changes with every click, its address doesn't.
+**One pattern, matched against the window title and the page.** A rule carries a single
+**window-or-page pattern**, tried against the window title *and* against the website address as
+Tally stores it — host and path, nothing after the `?` — and **either one matching is enough**.
+So `^halo\.lutz\.us` catches any Halo page, `^github\.com/[^/]+/[^/]+/issues/(?<ticket>\d+)`
+files GitHub issues under their number, and `Halo\s?PSA` catches the window whether or not a
+page was captured. Reading both is usually the sturdier way to recognise a web app: a tab's
+title changes with every click, and lags behind when you switch tabs, while its address doesn't.
 
-A rule may have any combination of the three patterns and **every one it has must match** — so
-`processPattern: "^msedge$"` plus a page pattern means "that site, in Edge". A rule with a page
-pattern can only ever match a browser tab, because nothing else has a page. Named groups work in
-a page pattern exactly as in a window pattern; when a rule has both, the window's captures win
-and the page fills in whatever the title didn't name.
+The app pattern is still a separate condition and **both must hold** — `processPattern:
+"^msedge$"` plus `^halo\.lutz\.us` means "that site, in Edge". Named groups are read from
+whichever half matched, the title first, since a ticket number in a window title names the ticket
+being worked where a path might only be a list.
+
+*(These were two fields once, a window pattern and a page pattern, that both had to match. If
+your `rules.json` still spells them `titlePattern` or `urlPattern`, it keeps working — each is
+read as the one pattern, and a rule carrying both becomes "either of these".)*
 
 One thing the page can't tell you: **Halo ticket numbers**. Halo keeps the ticket in the query
 string (`/ticket?id=…`), which is stripped before storage, so every Halo ticket page looks like
@@ -362,10 +371,13 @@ the Timesheet calendar, and saved reports); **Rename** refiles every rule using 
 the name keep it. Stored in `%USERPROFILE%\.tally\categories.json`.
 
 To write a rule by hand instead, edit `%USERPROFILE%\.tally\rules.json` (created with starter
-rules on first run; comments allowed). Ordered, first match wins;
-`processPattern`/`titlePattern`/`urlPattern` are case-insensitive regexes; named groups
-`(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those fields. Rules are re-read
-on every report generation, so edits apply immediately.
+rules on first run; comments allowed). Ordered, first match wins; `processPattern` and
+`matchPattern` are case-insensitive regexes, and `matchPattern` is tried against the window title
+*and* against the page address — either one matching is enough. Named groups `(?<ticket>...)`,
+`(?<client>...)`, and `(?<subject>...)` extract those fields from whichever matched, the title
+first. Files written before the two patterns merged still load: `titlePattern` and `urlPattern`
+are both read as `matchPattern`. Rules are re-read on every report generation, so edits apply
+immediately.
 
 **The starter rules know the web apps by their titles.** A Halo tab is recognized by its
 breadcrumb-shaped title (`Tickets > Management > …` — a trailing number is captured as the

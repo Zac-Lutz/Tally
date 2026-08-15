@@ -12,10 +12,10 @@ public class RuleEditingTests
         {
           // header comment — must survive every edit
           "rules": [
-            { "id": "a", "titlePattern": "Alpha", "category": "A" },
+            { "id": "a", "matchPattern": "Alpha", "category": "A" },
             // note about b (and about c below it)
             { "id": "b", "processPattern": "^b$", "category": "B" },
-            { "id": "c", "titlePattern": "\\[work\\] > done", "category": "C" }
+            { "id": "c", "matchPattern": "\\[work\\] > done", "category": "C" }
           ]
         }
         """;
@@ -53,7 +53,7 @@ public class RuleEditingTests
     [Fact]
     public void Remove_TheOnlyRule_LeavesAnEmptyButValidRulesArray()
     {
-        var updated = RulesFile.WithoutRuleAt("""{ "rules": [ { "id": "solo", "titlePattern": "x", "category": "S" } ] }""", 0);
+        var updated = RulesFile.WithoutRuleAt("""{ "rules": [ { "id": "solo", "matchPattern": "x", "category": "S" } ] }""", 0);
 
         Assert.Empty(LoadRules(updated));
     }
@@ -61,7 +61,7 @@ public class RuleEditingTests
     [Fact]
     public void Remove_IsNotFooledByBracesInsideAPattern()
     {
-        var json = """{ "rules": [ { "id": "curly", "titlePattern": "\\{\\}", "category": "X" }, { "id": "plain", "titlePattern": "y", "category": "Y" } ] }""";
+        var json = """{ "rules": [ { "id": "curly", "matchPattern": "\\{\\}", "category": "X" }, { "id": "plain", "matchPattern": "y", "category": "Y" } ] }""";
 
         var updated = RulesFile.WithoutRuleAt(json, 0);
 
@@ -113,32 +113,32 @@ public class RuleEditingTests
         var edited = new ClassificationRule
         {
             Id = "c",
-            TitlePattern = """^(Tickets|Clients)\s*>.*"quoted"\\end""",
+            MatchPattern = """^(Tickets|Clients)\s*>.*"quoted"\\end""",
             Category = "C",
         };
 
         var updated = RulesFile.WithRuleReplacedAt(ThreeRules, 2, edited);
 
-        Assert.Equal(edited.TitlePattern, LoadRules(updated)[2].TitlePattern);
+        Assert.Equal(edited.MatchPattern, LoadRules(updated)[2].MatchPattern);
     }
 
     [Fact]
     public void Replace_CanAddAndDropOptionalFields()
     {
         // b gains a client and a title pattern, loses its process pattern.
-        var edited = new ClassificationRule { Id = "b", TitlePattern = "Beta", Category = "B", Client = "Acme" };
+        var edited = new ClassificationRule { Id = "b", MatchPattern = "Beta", Category = "B", Client = "Acme" };
 
         var rules = LoadRules(RulesFile.WithRuleReplacedAt(ThreeRules, 1, edited));
 
         Assert.Equal("Acme", rules[1].Client);
-        Assert.Equal("Beta", rules[1].TitlePattern);
+        Assert.Equal("Beta", rules[1].MatchPattern);
         Assert.Null(rules[1].ProcessPattern);
     }
 
     [Fact]
     public void Replace_OutOfRange_Throws()
         => Assert.Throws<ArgumentOutOfRangeException>(() => RulesFile.WithRuleReplacedAt(
-            ThreeRules, 9, new ClassificationRule { Id = "x", TitlePattern = "x", Category = "X" }));
+            ThreeRules, 9, new ClassificationRule { Id = "x", MatchPattern = "x", Category = "X" }));
 
     // ---- WithCategoryRenamed ----
 
@@ -147,9 +147,9 @@ public class RuleEditingTests
         {
           "rules": [
             // both a-rules move together
-            { "id": "a1", "titlePattern": "Alpha", "category": "A" },
+            { "id": "a1", "matchPattern": "Alpha", "category": "A" },
             { "id": "b1", "processPattern": "^b$", "category": "B" },
-            { "id": "a2", "titlePattern": "Alef", "category": "A" }
+            { "id": "a2", "matchPattern": "Alef", "category": "A" }
           ]
         }
         """;
@@ -163,7 +163,7 @@ public class RuleEditingTests
         var rules = LoadRules(updated);
         Assert.Equal(["a1", "b1", "a2"], rules.Select(r => r.Id));   // order untouched
         Assert.Equal(["Admin", "B", "Admin"], rules.Select(r => r.Category));
-        Assert.Equal("Alpha", rules[0].TitlePattern);                // everything else kept
+        Assert.Equal("Alpha", rules[0].MatchPattern);                // everything else kept
         Assert.Contains("// both a-rules move together", updated);
     }
 
