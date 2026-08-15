@@ -274,6 +274,7 @@ public static class HtmlReportWriter
           .Append("<input class=\"rl-new-proc\" type=\"text\" placeholder=\"App pattern (regex)\" aria-label=\"New rule app pattern\">")
           .Append("<input class=\"rl-new-title\" type=\"text\" placeholder=\"Window pattern (regex)\" aria-label=\"New rule window pattern\">")
           .Append("<input class=\"rl-new-client\" type=\"text\" placeholder=\"Client (optional)\" aria-label=\"New rule client\">")
+          .Append("<label class=\"rl-ex-label\"><input class=\"rl-new-exclude\" type=\"checkbox\"> Exclude</label>")
           .Append("<button class=\"uc-save rl-add-btn\" type=\"button\">Add rule</button>")
           .Append("</div>\n");
 
@@ -283,7 +284,7 @@ public static class HtmlReportWriter
             return;
         }
 
-        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Client</th><th></th></tr>\n</thead>\n<tbody>\n");
+        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Client</th><th>Exclude</th><th></th></tr>\n</thead>\n<tbody>\n");
 
         for (var i = 0; i < rules.Count; i++)
         {
@@ -297,6 +298,12 @@ public static class HtmlReportWriter
             AppendRuleCell(sb, rule.ProcessPattern, "rl-proc", "any app", "App pattern (regex)");
             AppendRuleCell(sb, rule.TitlePattern, "rl-title", "any window", "Window pattern (regex)");
             AppendRuleCell(sb, rule.Client, "rl-client", "—", "Client (optional)");
+            sb.Append("<td>")
+              .Append(rule.Exclude
+                  ? "<span class=\"rl-view rl-ex-yes\">Excluded</span>"
+                  : "<span class=\"rl-view muted\">—</span>")
+              .Append($"<input class=\"rl-in rl-exclude\" type=\"checkbox\"{(rule.Exclude ? " checked" : "")} aria-label=\"Exclude from Rollup, Timesheet and export\">")
+              .Append("</td>");
             sb.Append("<td class=\"num rl-actions\">")
               .Append("<span class=\"rl-view\"><button class=\"uc-save rl-edit\" type=\"button\">Edit</button> <button class=\"tm-del rl-del\" type=\"button\">Delete</button></span>")
               .Append("<span class=\"rl-in\"><button class=\"uc-save rl-ok\" type=\"button\">Save</button> <button class=\"tm-del rl-cancel\" type=\"button\">Cancel</button></span>")
@@ -304,7 +311,7 @@ public static class HtmlReportWriter
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
-        sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields.</p>\n");
+        sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields. <strong>Exclude</strong> keeps matching activity out of the Rollup, the Timesheet, and the export — the Timeline still shows it, so the day's record stays honest.</p>\n");
     }
 
     // The Settings tab — the WinForms dialog's contents, moved into the page so configuration
@@ -552,11 +559,11 @@ public static class HtmlReportWriter
         }
 
         if (editable)
-            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to today straight away, and to every day from here.</p>\n");
+            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to today straight away, and to every day from here. Tick <strong>Exclude</strong> for anything that is never work — it drops out of the Rollup, the Timesheet, and the export, and still shows in the Timeline.</p>\n");
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n<tr><th>App</th><th>Window</th><th class=\"num\">Time</th>");
         if (editable)
-            sb.Append("<th>Category</th><th>Applies to</th><th></th>");
+            sb.Append("<th>Category</th><th>Applies to</th><th>Exclude</th><th></th>");
         sb.Append("</tr>\n</thead>\n<tbody>\n");
 
         foreach (var row in rows)
@@ -575,6 +582,7 @@ public static class HtmlReportWriter
                   .Append("<td><select class=\"uc-scope\" aria-label=\"Applies to\">")
                   .Append($"<option value=\"app\">Any {Esc(row.ProcessName)} window</option>")
                   .Append("<option value=\"window\">Only this window</option></select></td>")
+                  .Append("<td><label class=\"rl-ex-label\"><input class=\"uc-exclude\" type=\"checkbox\" aria-label=\"Exclude from Rollup, Timesheet and export\"> Exclude</label></td>")
                   .Append("<td class=\"num\"><button class=\"uc-save\" type=\"button\">Save rule</button></td>");
             }
 
@@ -685,7 +693,12 @@ public static class HtmlReportWriter
         TimeSpan lostTotal,
         int uncategorizedCount)
     {
-        var active = TimeSpan.FromTicks(blocks.Sum(b => b.Block.Duration.Ticks));
+        // Excluded time is recorded and real, so it stays in Total; it just isn't work, so it
+        // leaves Active — which is the figure the Rollup and Timesheet below now agree with.
+        var excluded = TimeSpan.FromTicks(
+            blocks.Where(b => b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
+        var active = TimeSpan.FromTicks(
+            blocks.Where(b => !b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactive.Sum(p => p.Duration.Ticks));
 
@@ -701,10 +714,14 @@ public static class HtmlReportWriter
         // "how much is unaccounted for" figure; Uncategorized is the count of activities still
         // needing a rule — their tabs hold the detail.
         sb.Append("<div class=\"cards\">\n");
-        Card(sb, "Total", ReportFormat.Duration(active + inactiveTime));
+        Card(sb, "Total", ReportFormat.Duration(active + excluded + inactiveTime));
         Card(sb, "Active", ReportFormat.Duration(active));
         Card(sb, "Calls", ReportFormat.Duration(callTime));
         Card(sb, "Inactive", ReportFormat.Duration(inactiveTime));
+        // Only worth a card once there's something in it — a permanent 0s would be noise for
+        // anyone who never writes an excluding rule.
+        if (excluded > TimeSpan.Zero)
+            Card(sb, "Excluded", ReportFormat.Duration(excluded));
         Card(sb, "Lost time", ReportFormat.Duration(lostTotal));
         Card(sb, "Uncategorized", uncategorizedCount.ToString());
         sb.Append("</div>\n");
@@ -918,7 +935,12 @@ public static class HtmlReportWriter
             var b = blocks[i];
             // The URL rides as a hover on the Detail cell — visible when needed, no column spent.
             var urlTip = b.Block.Url is { } url ? $" title=\"{Esc(url)}\"" : string.Empty;
-            sb.Append("<tr><td>").Append(CategoryBadge(b.Classification.Category, palette)).Append("</td>")
+            // The Timeline keeps excluded activity — it is the record of what happened — but says
+            // so, otherwise a row here that is missing from every total looks like a bug.
+            var excludedRow = b.Classification.Excluded ? " class=\"tl-excluded\"" : string.Empty;
+            sb.Append($"<tr{excludedRow}><td>").Append(CategoryBadge(b.Classification.Category, palette))
+              .Append(b.Classification.Excluded ? "<span class=\"tl-ex-tag\">excluded</span>" : string.Empty)
+              .Append("</td>")
               .Append("<td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
               .Append($"<td{urlTip}>").Append(Esc(b.Block.Title)).Append("</td>")
               .Append("<td>").Append(ReportFormat.Clock(b.Block.Start)).Append("</td>")
@@ -1061,8 +1083,20 @@ public static class HtmlReportWriter
         .rl-proc { width:130px; }
         .rl-title { width:230px; }
         .rl-client { width:100px; }
+        /* The Exclude cell is a checkbox, so it opts out of the text-input styling above. */
+        .rl input.rl-exclude { width:auto; padding:0; background:none; border:none;
+          accent-color:var(--accent); cursor:pointer; }
+        .rl-ex-yes { color:var(--accent); font-weight:600; }
+        .rl-ex-label { display:inline-flex; align-items:center; gap:6px; color:var(--muted);
+          font-size:13px; white-space:nowrap; cursor:pointer; }
+        .rl-ex-label input { accent-color:var(--accent); cursor:pointer; }
         .rl-actions { white-space:nowrap; }
         .rl-actions .uc-save,.rl-actions .tm-del { font-size:12px; padding:4px 10px; }
+        /* Timeline rows an excluding rule matched: still listed, visibly set apart, so a row that
+           is missing from every total reads as deliberate rather than lost. */
+        tr.tl-excluded { opacity:.55; }
+        .tl-ex-tag { color:var(--muted); font-size:11px; margin-left:6px;
+          text-transform:uppercase; letter-spacing:.04em; }
         /* Categories tab: the add bar on top, then a row per category with its colour swatch.
            Rows follow the Rules tab's view/edit toggle. */
         .ct-addbar { display:flex; align-items:center; gap:10px; margin:0 0 14px; }
@@ -1323,7 +1357,8 @@ public static class HtmlReportWriter
         """;
 
     // The Rules tab. Edit toggles a row into its input view (the row's data never leaves the DOM);
-    // Save posts {type:'ruleUpdate', id:<index>, key:<b64 rule id>, category, process, title, client}
+    // Save posts {type:'ruleUpdate', id:<index>, key:<b64 rule id>, category, process, title,
+    // client, exclude}
     // with the typed values plain (they ride the JSON message, not an attribute). Delete posts
     // {type:'ruleDelete', id, key} and the host asks for confirmation before touching the file. The
     // index says which rule, the id proves the table wasn't stale — the host checks both.
@@ -1335,6 +1370,7 @@ public static class HtmlReportWriter
         (function(){
         function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
         function val(r,c){var i=r.querySelector('input.'+c);return i?i.value:'';}
+        function chk(r,c){var i=r.querySelector('input.'+c);return !!(i&&i.checked);}
         document.addEventListener('click',function(e){
         var t=e.target;if(!t.closest)return;
         var b=t.closest('.rl-edit');
@@ -1348,15 +1384,17 @@ public static class HtmlReportWriter
         if(!cat){var f=bar.querySelector('.rl-new-cat');if(f)f.focus();return;}
         var proc=newVal('.rl-new-proc'),ti=newVal('.rl-new-title');
         if(!proc&&!ti){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
-        post({type:'ruleAdd',category:cat,process:proc,title:ti,client:newVal('.rl-new-client')});
-        bar.querySelectorAll('input').forEach(function(i){i.value='';});
+        post({type:'ruleAdd',category:cat,process:proc,title:ti,client:newVal('.rl-new-client'),
+        exclude:chk(bar,'rl-new-exclude')});
+        bar.querySelectorAll('input').forEach(function(i){i.value='';i.checked=false;});
         return;}
         b=t.closest('.rl-del');
         if(b){var r=b.closest('tr.rl');post({type:'ruleDelete',id:r.getAttribute('data-i'),key:r.getAttribute('data-id')});return;}
         b=t.closest('.rl-ok');
         if(b){var r=b.closest('tr.rl');
         post({type:'ruleUpdate',id:r.getAttribute('data-i'),key:r.getAttribute('data-id'),
-        category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),client:val(r,'rl-client')});
+        category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),client:val(r,'rl-client'),
+        exclude:chk(r,'rl-exclude')});
         r.classList.remove('editing');}});
         document.addEventListener('keydown',function(e){
         var r=e.target.closest?e.target.closest('tr.rl.editing'):null;if(!r)return;
@@ -1459,9 +1497,13 @@ public static class HtmlReportWriter
         })();
         """;
 
-    // "Save rule" in the Unclassified tab: posts {type:'rule', process, title, scope, category} to the
-    // host, which writes it into rules.json. The app + window travel as the base64 the row carries, so
-    // nothing is re-derived from display text. An empty category focuses the field instead of posting.
+    // "Save rule" in the Unclassified tab: posts {type:'rule', process, title, scope, category,
+    // exclude} to the host, which writes it into rules.json. The app + window travel as the base64
+    // the row carries, so nothing is re-derived from display text. An empty category focuses the
+    // field instead of posting — unless Exclude is ticked, which is a complete decision on its own
+    // and lets the host name the category.
+    // This handler sees every .uc-save button on the page, the Rules tab's included; those rows
+    // carry no .uc-cat, so they fall out here and their own script handles them.
     private const string RuleSaveScript =
         """
         (function(){
@@ -1469,11 +1511,12 @@ public static class HtmlReportWriter
         var b=e.target.closest?e.target.closest('.uc-save'):null;if(!b||b.disabled)return;
         var r=b.closest('tr');if(!r)return;
         var c=r.querySelector('.uc-cat');var s=r.querySelector('.uc-scope');
+        var x=r.querySelector('.uc-exclude');var ex=!!(x&&x.checked);
         var v=c?c.value.trim():'';
-        if(!v){if(c)c.focus();return;}
+        if(!v&&!ex){if(c)c.focus();return;}
         if(!window.chrome||!window.chrome.webview)return;
         b.disabled=true;b.textContent='Saved';
-        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),scope:s?s.value:'app',category:v});});
+        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),scope:s?s.value:'app',category:v,exclude:ex});});
         })();
         """;
 

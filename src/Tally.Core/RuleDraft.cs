@@ -24,7 +24,8 @@ public static class RuleDraft
         string title,
         RuleMatch match,
         string category,
-        IEnumerable<string>? existingIds = null)
+        IEnumerable<string>? existingIds = null,
+        bool exclude = false)
     {
         var trimmedCategory = category.Trim();
         if (trimmedCategory.Length == 0)
@@ -45,6 +46,7 @@ public static class RuleDraft
             ProcessPattern = process,
             TitlePattern = titlePattern,
             Category = trimmedCategory,
+            Exclude = exclude,
         };
     }
 

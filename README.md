@@ -154,7 +154,8 @@ hand-editing `rules.json`:
 
 1. Type a **Category** (the box suggests the ones you already use — any text is fine).
 2. Pick what it **applies to** — *any window of that app*, or *only this window*.
-3. Click **Save rule**.
+3. Tick **Exclude** if this is never work (see below). You can leave the category blank when you do.
+4. Click **Save rule**.
 
 The rule is written to `rules.json` straight away, and the next refresh (a few seconds) reclassifies
 the whole day: the row leaves Uncategorized and shows up in the Rollup under its new category. Every
@@ -167,6 +168,19 @@ generic), and an **app** rule goes to the **bottom** (it covers everything that 
 must not swallow rules you already had). Your comments and existing rules are left untouched.
 
 Saved reports show the same Uncategorized list read-only — a record of what still needs a rule.
+
+## Excluding what isn't work
+
+Not everything you do at the machine belongs on a timesheet. Tick **Exclude** on a rule — in the
+Rules tab, or as you save one from Uncategorized — and whatever it matches drops out of the
+**Rollup**, the **Timesheet**, and the **export**.
+
+It does *not* stop being recorded. The **Timeline** still lists it, dimmed and tagged `excluded`,
+because the Timeline is the record of what actually happened. An **Excluded card** appears at the
+top of the page with the total, and that time comes out of **Active** while staying in **Total** —
+so the day still adds up and you can always see where the difference went.
+
+Excluded time is not "lost time" either: you told Tally what it was, so it has nothing to report.
 
 ## Lost time
 

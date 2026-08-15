@@ -366,8 +366,12 @@ public sealed class LiveWindow : Form
     {
         var process = Decode(msg.Process) ?? string.Empty;
         var title = Decode(msg.Title) ?? string.Empty;
-        var category = msg.Category?.Trim();
-        if (string.IsNullOrEmpty(category) || (process.Length == 0 && title.Length == 0))
+        // Excluding something is a complete decision without naming it, so the category is
+        // optional there and defaults to the one word that describes what was decided.
+        var category = msg.Category?.Trim() is { Length: > 0 } typed
+            ? typed
+            : msg.Exclude ? ExcludedCategory : null;
+        if (category is null || (process.Length == 0 && title.Length == 0))
             return;
 
         try
@@ -375,10 +379,10 @@ public sealed class LiveWindow : Form
             var match = string.Equals(msg.Scope, "window", StringComparison.OrdinalIgnoreCase)
                 ? RuleMatch.Window
                 : RuleMatch.App;
-            var rule = RuleDraft.Create(process, title, match, category, ExistingRuleIds());
+            var rule = RuleDraft.Create(process, title, match, category, ExistingRuleIds(), msg.Exclude);
             RulesFile.AddRule(TallyPaths.RulesPath, rule);
-            Log.Info($"Saved classification rule '{rule.Id}' ({category}) from the live view");
-            Note($"rule saved — {category}");
+            Log.Info($"Saved classification rule '{rule.Id}' ({category}{(msg.Exclude ? ", excluded" : "")}) from the live view");
+            Note(msg.Exclude ? $"rule saved — {category}, excluded" : $"rule saved — {category}");
             _ = RefreshAsync();
         }
         catch (Exception ex)
@@ -387,6 +391,9 @@ public sealed class LiveWindow : Form
             Note("couldn't save that rule — see the log");
         }
     }
+
+    /// <summary>The category an excluding rule takes when the user didn't name one.</summary>
+    private const string ExcludedCategory = "Excluded";
 
     // Existing ids, so a new rule's generated id can't collide with one already in the file.
     private static IReadOnlyList<string> ExistingRuleIds()
@@ -467,10 +474,11 @@ public sealed class LiveWindow : Form
                 ProcessPattern = process,
                 TitlePattern = title,
                 Client = NullIfEmpty(msg.Client),
+                Exclude = msg.Exclude,
             };
             RulesFile.ReplaceRuleAt(TallyPaths.RulesPath, index, rule);
-            Log.Info($"Updated classification rule '{rule.Id}' ({category}) from the live view");
-            Note($"rule updated — {category}");
+            Log.Info($"Updated classification rule '{rule.Id}' ({category}{(msg.Exclude ? ", excluded" : "")}) from the live view");
+            Note(msg.Exclude ? $"rule updated — {category}, excluded" : $"rule updated — {category}");
             _ = RefreshAsync();
         }
         catch (Exception ex)
@@ -559,10 +567,11 @@ public sealed class LiveWindow : Form
                 TitlePattern = title,
                 Category = category,
                 Client = NullIfEmpty(msg.Client),
+                Exclude = msg.Exclude,
             };
             RulesFile.AddRule(TallyPaths.RulesPath, rule);
-            Log.Info($"Added classification rule '{rule.Id}' ({category}) from the Rules tab");
-            Note($"rule added — {category}");
+            Log.Info($"Added classification rule '{rule.Id}' ({category}{(msg.Exclude ? ", excluded" : "")}) from the Rules tab");
+            Note(msg.Exclude ? $"rule added — {category}, excluded" : $"rule added — {category}");
             _ = RefreshAsync();
         }
         catch (Exception ex)
@@ -909,14 +918,14 @@ public sealed class LiveWindow : Form
     private static readonly JsonSerializerOptions EditMessageOptions = new() { PropertyNameCaseInsensitive = true };
 
     // Every edit the live page can post: a ticket cell (Key/Value), a timer rename (Id/Value), a
-    // rule saved from triage (Process/Title as base64, Scope, Category), a Rules-tab add/edit/
-    // delete (Id = the rule's index, Key = its id as base64; typed values travel plain — they
-    // ride the JSON message, not an HTML attribute), or the Settings tab's whole form
+    // rule saved from triage (Process/Title as base64, Scope, Category, Exclude), a Rules-tab
+    // add/edit/delete (Id = the rule's index, Key = its id as base64; typed values travel plain —
+    // they ride the JSON message, not an HTML attribute), or the Settings tab's whole form
     // (Start/Stop hotkeys, Times comma-joined, Retention in days).
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
         string? Process, string? Title, string? Scope, string? Category, string? Client,
-        string? Start, string? Stop, string? Times, string? Retention);
+        string? Start, string? Stop, string? Times, string? Retention, bool Exclude = false);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>

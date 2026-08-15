@@ -44,6 +44,23 @@ Everything stays on this machine. No cloud, no telemetry.
   change usually then dedupes away, so the near-duplicate pair this used to emit collapses into
   one correct row. Non-browser windows report their title accurately on arrival and still record
   synchronously.
+- **Excluding is a property of a rule, and the builders enforce it.** Time at the machine that
+  isn't work to account for (a personal tab, music, a lunchtime video) is marked by ticking
+  `exclude` on the rule that already matches it, rather than by a second list of anti-rules —
+  first-match-wins keeps meaning one thing, and the row that decides what something *is* is the
+  row that decides whether it counts. `ClassificationRule.Exclude` rides into
+  `Classification.Excluded`, and `RollupBuilder`, `SuggestionSlotBuilder`, and `TicketsBuilder`
+  each drop excluded blocks **themselves**. That placement is the point: the export shares the
+  Timesheet's slot builder, so filtering there makes it impossible for the file to disagree with
+  the screen that reviewed it, and no future caller can forget to ask. The Timeline is the one
+  view that keeps them — it is the record of what happened, not of what gets billed — and marks
+  them so a row absent from every total reads as a decision rather than a bug. Lost time and
+  Uncategorized need no filter: an excluded block carries a category, so it is already neither.
+  Summary cards split it out (`Excluded` card, subtracted from `Active`, still inside `Total`) so
+  the day reconciles; the card is omitted entirely when nothing is excluded. `"exclude": true` is
+  written to rules.json only when set, leaving every existing rule's shape untouched, and an
+  exclusion saved from Uncategorized may skip the category (the host names it "Excluded") because
+  deciding something is never work is a complete thought without also filing it.
 - **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
   (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
   bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains

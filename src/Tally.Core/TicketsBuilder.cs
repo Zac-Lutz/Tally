@@ -37,8 +37,11 @@ public static class TicketsBuilder
         IReadOnlyList<CallSpan>? calls = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null)
     {
+        // Excluded activity is not work to bill, so it contributes nothing here even on the rare
+        // occasion its title carries a ticket number.
         var contributions = blocks
-            .Where(b => b.EffectiveTicket is not null && b.Block.Duration > TimeSpan.Zero)
+            .Where(b => !b.Classification.Excluded
+                        && b.EffectiveTicket is not null && b.Block.Duration > TimeSpan.Zero)
             .Select(b => new Contribution(
                 b.Block.Start, b.Block.End, b.Block.ProcessName, b.Classification.Category,
                 TitleNormalizer.Normalize(b.Block.Title), b.EffectiveTicket!))

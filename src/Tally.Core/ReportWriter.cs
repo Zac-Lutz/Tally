@@ -58,7 +58,12 @@ public static class ReportWriter
         IReadOnlyList<CallSpan> calls,
         IReadOnlyList<InactivePeriod> inactivePeriods)
     {
-        var active = TimeSpan.FromTicks(blocks.Sum(b => b.Block.Duration.Ticks));
+        // Excluded time counts toward the day's total but not toward active work \u2014 the same split
+        // the live view's cards make, so the two never disagree about what a day added up to.
+        var excluded = TimeSpan.FromTicks(
+            blocks.Where(b => b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
+        var active = TimeSpan.FromTicks(
+            blocks.Where(b => !b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactivePeriods.Sum(p => p.Duration.Ticks));
         if (blocks.Count == 0 && calls.Count == 0)
@@ -66,8 +71,9 @@ public static class ReportWriter
         var first = blocks.Count > 0 ? blocks[0].Block.Start : calls[0].Start;
         var last = blocks.Count > 0 ? blocks[^1].Block.End : calls[^1].End;
 
+        var excludedPart = excluded > TimeSpan.Zero ? $" \u00b7 excluded {Fmt(excluded)}" : string.Empty;
         sb.AppendLine(
-            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 total {Fmt(active + inactiveTime)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)}");
+            $"Tracked {Clock(first)}\u2013{Clock(last)} \u00b7 total {Fmt(active + excluded + inactiveTime)} \u00b7 active {Fmt(active)} \u00b7 calls {Fmt(callTime)} \u00b7 inactive {Fmt(inactiveTime)}{excludedPart}");
         sb.AppendLine();
     }
 

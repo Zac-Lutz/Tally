@@ -226,6 +226,9 @@ public static partial class RulesFile
         parts.Add($"\"category\": {Str(rule.Category)}");
         if (rule.Client is { } client)
             parts.Add($"\"client\": {Str(client)}");
+        // Written only when set, so every rule already in the file keeps the shape it had.
+        if (rule.Exclude)
+            parts.Add("\"exclude\": true");
         return $"{{ {string.Join(", ", parts)} }}";
     }
 

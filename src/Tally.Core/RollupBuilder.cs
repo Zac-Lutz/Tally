@@ -25,8 +25,12 @@ public static class RollupBuilder
     // Grouping is by the ORIGINAL classification (category, client, auto-ticket, activity), so a
     // manual override never re-groups a row. The displayed ticket is the effective one (override
     // wins); the RowKey is built from the original ticket so it stays put once a value is entered.
+    // Excluded blocks are dropped here rather than by the caller: the Rollup is an account of the
+    // day's work, and a rule that says something isn't work must not depend on every screen
+    // remembering to ask.
     public static IReadOnlyList<RollupRow> Build(IReadOnlyList<ClassifiedBlock> blocks)
         => blocks
+            .Where(b => !b.Classification.Excluded)
             .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.TicketRef, Key: ActivityKey(b)))
             .Select(g =>
             {

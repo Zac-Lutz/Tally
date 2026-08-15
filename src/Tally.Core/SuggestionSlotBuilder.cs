@@ -112,6 +112,13 @@ public static class SuggestionSlotBuilder
         var opts = options ?? new SuggestionSlotOptions();
         var slots = new List<SuggestionSlot>();
 
+        // Excluded activity never reaches a timesheet line, and it is dropped here rather than by
+        // the callers because both the Timesheet tab and the export come through this one method —
+        // the export especially must not be able to disagree with the screen that reviewed it.
+        // It also leaves the underlay: what was on screen during a call is detail about the call,
+        // and time the user declared isn't work has no business describing one.
+        blocks = [.. blocks.Where(b => !b.Classification.Excluded)];
+
         // 1. Timers claim first — the most deliberate signal there is.
         var timerSpans = (timers ?? [])
             .Where(t => t.End > t.Start)

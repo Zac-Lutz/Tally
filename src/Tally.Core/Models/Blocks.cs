@@ -33,9 +33,11 @@ public static class InactiveReasons
 /// The classification of a block. <see cref="Subject"/> is a free-text "what/who" the block
 /// was about (a Teams chat name, a document) captured by a rule's <c>(?&lt;subject&gt;)</c> group,
 /// distinct from <see cref="Client"/> (an organization) and <see cref="TicketRef"/>.
+/// <see cref="Excluded"/> marks time the matching rule declared isn't work to account for.
 /// </summary>
 public sealed record Classification(
-    string Category, string? Client, string? TicketRef, string? Subject, string? RuleId)
+    string Category, string? Client, string? TicketRef, string? Subject, string? RuleId,
+    bool Excluded = false)
 {
     // The display value is "Uncategorized" — the app's whole vocabulary is categories — while the
     // code name stays Unclassified (renaming every identifier would churn half the codebase).
