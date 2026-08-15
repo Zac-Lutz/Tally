@@ -271,7 +271,7 @@ is a valid picture of the morning. Three triggers:
   headlessly (works while the tray instance runs; usable from a scheduled task). The optional
   format arg overrides the setting for that one run.
 - **Automatic** — at one or more times a day. Configure them on the live view's **Settings**
-  tab (the tray's Settings entry lands there): add each time with the picker, or remove
+  tab: add each time with the picker, or remove
   them; no times = auto-reports off. They're stored as `autoReportTimes` (e.g.
   `["12:00", "17:30"]`, machine-local) in `settings.json`, and applied immediately when you
   save — no restart. Each time shows a tray balloon when ready (or set
@@ -472,5 +472,18 @@ out.
 | Settings | `%USERPROFILE%\.tally\settings.json` |
 | Reports | `reportsDirectory` setting (default `%USERPROFILE%\.tally\reports\`) |
 | Logs | `%USERPROFILE%\.tally\logs\tally.log` |
+
+### Tidying browser titles
+
+Edge names a window `<page> - <profile> - Microsoft Edge` once you have more than one profile, so
+every captured browser title trails your profile name — `Mail - Zac Franklin - Outlook - Work`.
+Add your profile names to `settings.json` and Tally drops them:
+
+```json
+"browserProfiles": ["Work"]
+```
+
+It only strips the name when the browser's own name follows it, so a page genuinely called
+*Work items - Sprint 4* keeps its words. Restart Tally after changing it.
 
 Design and slice plan: [DESIGN.md](DESIGN.md).

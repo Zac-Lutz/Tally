@@ -42,6 +42,7 @@ internal static class Program
             if (!File.Exists(TallyPaths.RulesPath))
                 RulesFile.WriteDefault(TallyPaths.RulesPath);
             var settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
+            TitleNormalizer.ConfigureBrowserProfiles(settings.BrowserProfiles);
 
             ApplicationConfiguration.Initialize();
             var dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
@@ -84,6 +85,7 @@ internal static class Program
             if (!File.Exists(TallyPaths.RulesPath))
                 RulesFile.WriteDefault(TallyPaths.RulesPath);
             var settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
+            TitleNormalizer.ConfigureBrowserProfiles(settings.BrowserProfiles);
 
             var date = dateArg.ToLowerInvariant() switch
             {

@@ -18,6 +18,52 @@ public class TitleNormalizerTests
         => Assert.Equal(expected, TitleNormalizer.Normalize(input));
 
     [Fact]
+    public void AConfiguredBrowserProfile_LeavesTheTitleWhenTheBrowserFollowsIt()
+    {
+        try
+        {
+            TitleNormalizer.ConfigureBrowserProfiles(["Work"]);
+
+            Assert.Equal("Mail - Zac Franklin - Outlook",
+                TitleNormalizer.Normalize($"Mail - Zac Franklin - Outlook - Work - {Edge}"));
+            Assert.Equal("Orders report",
+                TitleNormalizer.Normalize($"Orders report and 12 more pages - Work - {Edge}"));
+
+            // The same word anywhere else is ordinary title text: only the segment sitting
+            // immediately before the browser name is the profile.
+            Assert.Equal("Work items - Sprint 4",
+                TitleNormalizer.Normalize($"Work items - Sprint 4 - {Edge}"));
+            // No browser, so nothing is a profile and the title is left entirely alone.
+            Assert.Equal("Deploy - Work - Notepad",
+                TitleNormalizer.Normalize("Deploy - Work - Notepad"));
+        }
+        finally
+        {
+            TitleNormalizer.ConfigureBrowserProfiles(null);
+        }
+    }
+
+    [Fact]
+    public void WithNoProfilesConfigured_TheTitleKeepsEverythingBeforeTheBrowser()
+        => Assert.Equal("Analytics - Work", TitleNormalizer.Normalize($"Analytics - Work - {Edge}"));
+
+    [Fact]
+    public void ASpinningStatusGlyph_DoesNotSplitOneJobIntoSeveral()
+    {
+        // Straight from real capture: a console tool cycling ◐ ◑ ✳ in its title turned fourteen
+        // minutes of one job into three separate activities on the export.
+        var frames = new[]
+        {
+            "◐ Resume Tally application development",
+            "◑ Resume Tally application development",
+            "✳ Resume Tally application development",
+            "Resume Tally application development",
+        }.Select(TitleNormalizer.Normalize).Distinct().ToList();
+
+        Assert.Equal(["Resume Tally application development"], frames);
+    }
+
+    [Fact]
     public void DiffersOnlyByTabCount_NormalizeToSameKey()
     {
         var a = TitleNormalizer.Normalize($"Orders report and 12 more pages - Work - {Edge}");

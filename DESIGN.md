@@ -93,6 +93,17 @@ Everything stays on this machine. No cloud, no telemetry.
   total is summed from the rows that survived the sub-minute filter, so a header can never
   disagree with what expanding it shows. Saved reports ship the toggle script too — they are read
   offline with no app behind them.
+- **A title's decorations are noise, and one of them is configured rather than guessed.**
+  `TitleNormalizer` already collapsed the tab count and an editor's unsaved marker; it now also
+  drops a console tool's spinner frame (`◐ ◑ ✳ …`), which had been splitting one long-running job
+  into an activity per frame — fifteen minutes of one task showing as three. The browser profile
+  Edge appends (`… - Work - Microsoft Edge`) is different in kind: the segment before the browser
+  name is only a profile if it happens to be one, and stripping it blind would take the end off
+  "Ticket 495308 - Install Teams". So profile names come from the `browserProfiles` setting and
+  are matched only when a browser name follows them. They are process-wide state, set once at
+  each of the three entry points (tray, `--live`, `--report`) rather than threaded through every
+  caller of `Normalize` — which is also why the test suite runs serially: a test configuring a
+  profile was otherwise changing what a parallel rollup test saw.
 - **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
   (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
   bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains

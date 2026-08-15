@@ -41,6 +41,15 @@ public sealed record TallySettings
     public string TimerStopHotkey { get; init; } = "Ctrl+Alt+S";
 
     /// <summary>
+    /// Browser profile names to drop from window titles, e.g. <c>["Work"]</c>. Chromium titles a
+    /// window "&lt;page&gt; - &lt;profile&gt; - Microsoft Edge" once a second profile exists, so
+    /// every captured title otherwise trails the profile name. It has to be configured rather than
+    /// guessed: the segment before the browser name is only a profile if it happens to be one, and
+    /// stripping it blind would eat the end of a title like "Ticket 495308 - Install Teams".
+    /// </summary>
+    public string[]? BrowserProfiles { get; init; }
+
+    /// <summary>
     /// The distinct, sorted auto-report times. Uses <see cref="AutoReportTimes"/> when set (even
     /// empty, to allow disabling); otherwise falls back to the legacy single <see cref="AutoReportTime"/>.
     /// Unparseable entries are skipped.

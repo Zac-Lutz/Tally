@@ -42,6 +42,9 @@ public sealed class TrayAppContext : ApplicationContext
         _settings = TallySettings.LoadOrCreate(TallyPaths.SettingsPath);
         _reportsDirectory = _settings.ResolveReportsDirectory();
         Autostart.Apply(_settings.AutoStart);
+        // Titles are normalized everywhere — capture, rollup, export — so the profile names to
+        // strip are set once here rather than threaded through every caller.
+        TitleNormalizer.ConfigureBrowserProfiles(_settings.BrowserProfiles);
 
         _dbOptions = TallyDbContext.BuildOptions(TallyPaths.DatabasePath);
         using (var db = new TallyDbContext(_dbOptions))
