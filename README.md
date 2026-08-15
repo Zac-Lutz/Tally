@@ -36,7 +36,12 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 
 **Open live view** (tray menu, left-click the tray icon, or `tally.exe --live`) opens an in-app
 window showing the same rollup / timesheet / timeline / tickets / calls / timers / uncategorized as a report, for
-**today**, refreshing every ~5 seconds so you can watch it fill in without generating anything. In the **Rollup**, the
+**today**, refreshing every ~5 seconds so you can watch it fill in without generating anything.
+
+The **Rollup** is one line per category — biggest first, with that category's total on the right —
+and every category starts collapsed. Click one to see the activities inside it, longest first;
+click again to fold it away. What you've opened stays open through the refreshes, so it's the short
+answer to "where did the day go" until you ask a category to explain itself. In it, the
 **Ticket** column is editable: click any row's Ticket cell — a window activity *or a call* — and
 type a number. It's saved for that day (in `ticket-overrides.json`) and shows on the Rollup and in
 your generated reports (activity tickets also flow into the JSON export).

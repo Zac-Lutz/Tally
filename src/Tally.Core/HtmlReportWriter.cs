@@ -39,6 +39,7 @@ public static class HtmlReportWriter
 
         sb.Append("</main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
+        sb.Append("<script>").Append(RollupGroupScript).Append("</script>\n");
 
         if (embeddedJson is not null)
         {
@@ -113,6 +114,7 @@ public static class HtmlReportWriter
         sb.Append("<style>\n").Append(Css).Append("</style>\n</head>\n<body>\n");
         sb.Append("<main id=\"tally-live\"><p class=\"empty\">Loading…</p></main>\n");
         sb.Append("<script>").Append(TabScript).Append("</script>\n");
+        sb.Append("<script>").Append(RollupGroupScript).Append("</script>\n");
         sb.Append("<script>").Append(LiveUpdateScript).Append("</script>\n");
         sb.Append("<script>").Append(TicketEditScript).Append("</script>\n");
         sb.Append("<script>").Append(RuleSaveScript).Append("</script>\n");
@@ -829,24 +831,58 @@ public static class HtmlReportWriter
         IReadOnlyList<ManualTimer> timers, bool editable, IReadOnlyDictionary<string, string>? ticketOverrides,
         CategoryPalette? palette)
     {
-        var rows = RollupBuilder.Build(blocks)
+        // One line per category, biggest first, holding its own activities. A day has far more
+        // activities than categories, so the collapsed list is the answer to "where did the day
+        // go" on its own — the detail is one click away when a total needs explaining.
+        var groups = RollupBuilder.Build(blocks)
             .Concat(RollupBuilder.BuildCalls(calls, ticketOverrides))
             .Concat(RollupBuilder.BuildTimers(timers))
             .Where(r => r.Time >= RollupBuilder.MinRollupDuration)   // hide sub-minute noise
-            .OrderByDescending(r => r.Time)
-            .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(r => r.Category)
+            .Select(g => new
+            {
+                Category = g.Key,
+                // Summed from the rows that survived the sub-minute filter, so a category's total
+                // is always exactly what expanding it shows.
+                Total = TimeSpan.FromTicks(g.Sum(r => r.Time.Ticks)),
+                Rows = g.OrderByDescending(r => r.Time)
+                        .ThenBy(r => r.DetailName, StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+            })
+            .OrderByDescending(g => g.Total)
+            .ThenBy(g => g.Category, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
+        if (groups.Count == 0)
+        {
+            sb.Append("<p class=\"empty\">Nothing to roll up yet — activity under a minute doesn't earn a row.</p>\n");
+            return;
+        }
+
+        sb.Append("<p class=\"hint\">Each category is one line with its total; click it to see what made it up.</p>\n");
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n");
         sb.Append("<tr><th>Category</th><th>App</th><th>Detail</th><th>Ticket</th><th class=\"num\">Time</th></tr>\n");
         sb.Append("</thead>\n<tbody>\n");
-        foreach (var row in rows)
+        foreach (var group in groups)
         {
-            // The app always shows, categorized or not — a manual timer is the one row with no app.
-            sb.Append("<tr><td>").Append(CategoryBadge(row.Category, palette)).Append("</td>")
-              .Append("<td>").Append(row.ProcessName is { } app ? Esc(app) : "<span class=\"muted\">—</span>").Append("</td>")
-              .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
-              .Append("<td>").Append(TicketCell(row, editable)).Append("</td>")
-              .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
+            // The category travels as base64 so a name with a quote or an ampersand in it can
+            // still key its rows to their header.
+            var key = B64(group.Category);
+            sb.Append($"<tr class=\"rg\" data-cat=\"{key}\">")
+              .Append("<td colspan=\"4\"><span class=\"rg-caret\">▸</span>")
+              .Append(CategoryBadge(group.Category, palette))
+              .Append($"<span class=\"rg-n\">{group.Rows.Count}</span></td>")
+              .Append($"<td class=\"num\">{ReportFormat.Duration(group.Total)}</td></tr>\n");
+
+            foreach (var row in group.Rows)
+            {
+                // The app always shows, categorized or not — a manual timer is the one row with no app.
+                sb.Append($"<tr class=\"rgi\" data-cat=\"{key}\"><td class=\"rg-pad\"></td>")
+                  .Append("<td>").Append(row.ProcessName is { } app ? Esc(app) : "<span class=\"muted\">—</span>").Append("</td>")
+                  .Append("<td>").Append(Esc(ReportFormat.Detail(row.Client, row.DetailName))).Append("</td>")
+                  .Append("<td>").Append(TicketCell(row, editable)).Append("</td>")
+                  .Append("<td class=\"num\">").Append(ReportFormat.Duration(row.Time)).Append("</td></tr>\n");
+            }
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
@@ -1128,6 +1164,18 @@ public static class HtmlReportWriter
         .rl-ex-label input { accent-color:var(--accent); cursor:pointer; }
         .rl-actions { white-space:nowrap; }
         .rl-actions .uc-save,.rl-actions .tm-del { font-size:12px; padding:4px 10px; }
+        /* Rollup groups: a category line per row, its activities hidden until it's clicked. They
+           start collapsed, so the tab opens as a short answer rather than a long list. */
+        tr.rg { cursor:pointer; }
+        tr.rg > td { font-weight:600; }
+        tr.rg:hover > td { background:var(--btn-bg); }
+        .rg-caret { display:inline-block; width:14px; color:var(--muted); font-size:11px;
+          transition:transform .12s ease; }
+        tr.rg.open .rg-caret { transform:rotate(90deg); }
+        .rg-n { color:var(--muted); font-size:12px; font-weight:400; margin-left:8px; }
+        tr.rgi { display:none; }
+        tr.rgi.open { display:table-row; }
+        .rg-pad { width:22px; }
         /* Timeline rows an excluding rule matched: still listed, visibly set apart, so a row that
            is missing from every total reads as deliberate rather than lost. */
         tr.tl-excluded { opacity:.55; }
@@ -1259,6 +1307,29 @@ public static class HtmlReportWriter
         })();
         """;
 
+    // Expands and collapses the Rollup's category groups. Which ones are open lives on window,
+    // not in the DOM, so a live refresh that replaces the whole table doesn't slam them shut
+    // mid-read; the listener is delegated for the same reason. Everything starts collapsed —
+    // that's the CSS default, and an unopened category simply isn't in the set.
+    private const string RollupGroupScript =
+        """
+        (function(){
+        function open(){return window.__tallyRollupOpen||(window.__tallyRollupOpen={});}
+        function apply(){var o=open();
+        document.querySelectorAll('tr.rg').forEach(function(h){
+        h.classList.toggle('open',!!o[h.getAttribute('data-cat')]);});
+        document.querySelectorAll('tr.rgi').forEach(function(r){
+        r.classList.toggle('open',!!o[r.getAttribute('data-cat')]);});}
+        window.tallyApplyRollupGroups=apply;
+        document.addEventListener('click',function(e){
+        var h=e.target.closest?e.target.closest('tr.rg'):null;if(!h)return;
+        var c=h.getAttribute('data-cat');var o=open();
+        if(o[c]){delete o[c];}else{o[c]=1;}
+        apply();});
+        document.addEventListener('DOMContentLoaded',apply);
+        })();
+        """;
+
     // Swaps fresh <main> content in without a reload, keeping scroll steady and the selected tab.
     // Skips the swap whenever a field is focused (a ticket, a timer name, a triage category), a
     // rules/categories row is in edit mode, an add bar holds half-typed text, or the settings
@@ -1272,7 +1343,8 @@ public static class HtmlReportWriter
         var ab=document.querySelectorAll('.ct-new-name,.rl-addbar input[type=text],.lt-name,.tm-past-name');
         for(var i=0;i<ab.length;i++){if(ab[i].value)return;}
         var y=window.scrollY;var m=document.getElementById('tally-live');
-        if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}window.scrollTo(0,y);}};
+        if(m){m.innerHTML=h;if(window.tallyApplyActiveTab){window.tallyApplyActiveTab();}
+        if(window.tallyApplyRollupGroups){window.tallyApplyRollupGroups();}window.scrollTo(0,y);}};
         """;
 
     // Editable cells: a ticket cell (.tk) posts {type:'ticket', key, value}; a timer-name cell (.tn)

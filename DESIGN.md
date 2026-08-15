@@ -69,6 +69,16 @@ Everything stays on this machine. No cloud, no telemetry.
   have over one misspelled word. An exclusion saved from Uncategorized may skip the category (the
   host names it "Excluded") because deciding something is never work is a complete thought without
   also filing it.
+- **The Rollup is a list of categories, collapsed.** A day has a handful of categories and dozens
+  of activities, so the tab opens as one line per category — biggest first, its total on the right
+  — and expands on click to that category's activities, longest first. It answers "where did the
+  day go" before it answers "doing what", which is the order the question actually gets asked in.
+  Which categories are open lives on `window.__tallyRollupOpen` rather than in the DOM, because
+  the live view replaces the whole table every ~5 seconds and a group that slammed shut mid-read
+  would make the tab unusable; the click listener is delegated for the same reason. A category's
+  total is summed from the rows that survived the sub-minute filter, so a header can never
+  disagree with what expanding it shows. Saved reports ship the toggle script too — they are read
+  offline with no app behind them.
 - **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
   (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
   bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains
