@@ -5,35 +5,48 @@ using Xunit;
 namespace Tally.Core.Tests;
 
 /// <summary>
-/// Rules that declare an activity isn't work to account for. Excluded time leaves the Rollup, the
-/// Timesheet, and the export, and stays in the Timeline — the Timeline being the record of what
-/// actually happened rather than what gets billed.
+/// Rules that keep an activity out of an account of the day. Rollup tidies that tab while the
+/// time still bills; Timesheet keeps it off the timesheet, the export, and the Tickets tab; All
+/// does both. The Timeline never loses anything — it records what happened, not what gets billed.
 /// </summary>
 public class ExclusionRuleTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 15, 9, 0, 0, TimeSpan.FromHours(-5));
 
     private static ClassifiedBlock Block(
-        string process, string title, int minutes, bool excluded, string category = "Personal")
+        string process, string title, int minutes, ExcludeScope scope, string category = "Personal")
         => new(
             new Block(T0, T0.AddMinutes(minutes), process, title),
-            new Classification(category, null, null, null, "rule", excluded));
+            new Classification(category, null, null, null, "rule", scope));
 
     private static ClassifiedBlock Work(string title, int minutes)
         => new(
             new Block(T0.AddHours(2), T0.AddHours(2).AddMinutes(minutes), "msedge", title),
-            new Classification("Halo", null, null, null, "halo"));
+            new Classification("Halo", null, "495308", null, "halo"));
+
+    private static string Page(params ClassifiedBlock[] blocks)
+        => HtmlReportWriter.BuildMainInner(new DateOnly(2026, 8, 15), blocks, [], []);
 
     // ---- the rule reaching the classification ----
 
-    [Fact]
-    public void ARuleMarkedExclude_MarksWhatItMatches()
+    [Theory]
+    [InlineData(ExcludeScope.None, false, false)]
+    [InlineData(ExcludeScope.Rollup, true, false)]
+    [InlineData(ExcludeScope.Timesheet, false, true)]
+    [InlineData(ExcludeScope.All, true, true)]
+    public void AScope_DecidesWhichAccountsLeaveTheTimeOut(
+        ExcludeScope scope, bool fromRollup, bool fromTimesheet)
     {
         var classifier = new Classifier([
-            new ClassificationRule { Id = "yt", ProcessPattern = "^chrome$", Category = "Personal", Exclude = true },
+            new ClassificationRule
+            {
+                Id = "yt", ProcessPattern = "^chrome$", Category = "Personal", ExcludeFrom = scope,
+            },
         ]);
 
-        Assert.True(classifier.Classify("chrome", "Some video - YouTube").Excluded);
+        var classification = classifier.Classify("chrome", "Some video - YouTube");
+        Assert.Equal(fromRollup, classification.ExcludedFromRollup);
+        Assert.Equal(fromTimesheet, classification.ExcludedFromTimesheet);
     }
 
     [Fact]
@@ -43,102 +56,93 @@ public class ExclusionRuleTests
             new ClassificationRule { Id = "halo", ProcessPattern = "^msedge$", Category = "Halo" },
         ]);
 
-        Assert.False(classifier.Classify("msedge", "Ticket 495308").Excluded);
+        Assert.Equal(ExcludeScope.None, classifier.Classify("msedge", "Ticket 495308").ExcludeFrom);
     }
 
     [Fact]
     public void ActivityMatchingNoRule_ExcludesNothing()
     {
         // Uncategorized is a question still to answer, not a decision to leave time out.
-        Assert.False(new Classifier([]).Classify("notepad", "untitled").Excluded);
+        Assert.Equal(ExcludeScope.None, new Classifier([]).Classify("notepad", "untitled").ExcludeFrom);
     }
 
-    // ---- where excluded time must not appear ----
+    // ---- Rollup scope ----
 
-    [Fact]
-    public void ExcludedActivity_NeverReachesTheRollup()
+    [Theory]
+    [InlineData(ExcludeScope.Rollup)]
+    [InlineData(ExcludeScope.All)]
+    public void ExcludingFromTheRollup_TakesTheRowOutOfIt(ExcludeScope scope)
     {
         var rows = RollupBuilder.Build([
-            Block("chrome", "Some video - YouTube", 40, excluded: true),
+            Block("chrome", "Some video - YouTube", 40, scope),
             Work("Ticket 495308", 25),
         ]);
 
-        var row = Assert.Single(rows);
-        Assert.Equal("Halo", row.Category);
+        Assert.Equal("Halo", Assert.Single(rows).Category);
     }
 
     [Fact]
-    public void ExcludedActivity_NeverEarnsATimesheetLine()
+    public void ExcludingFromTheTimesheetOnly_LeavesTheRollupRowInPlace()
     {
-        var slots = SuggestionSlotBuilder.Build([
-            Block("chrome", "Some video - YouTube", 40, excluded: true),
+        // The Rollup is where the day went; only the timesheet was told not to bill it.
+        var rows = RollupBuilder.Build([
+            Block("chrome", "Some video - YouTube", 40, ExcludeScope.Timesheet),
             Work("Ticket 495308", 25),
         ]);
 
-        Assert.DoesNotContain(slots, s => s.Category == "Personal");
-        Assert.Contains(slots, s => s.Category == "Halo");
+        Assert.Contains(rows, r => r.Category == "Personal");
     }
 
-    [Fact]
-    public void ExcludedActivity_NeverReachesTheExport()
+    // ---- Timesheet scope ----
+
+    [Theory]
+    [InlineData(ExcludeScope.Timesheet)]
+    [InlineData(ExcludeScope.All)]
+    public void ExcludingFromTheTimesheet_EarnsNoLineAndNoExportEntry(ExcludeScope scope)
     {
+        ClassifiedBlock[] blocks = [Block("chrome", "Some video - YouTube", 40, scope), Work("Ticket 495308", 25)];
+
+        Assert.DoesNotContain(SuggestionSlotBuilder.Build(blocks), s => s.Category == "Personal");
         // The export shares the Timesheet's builder precisely so it cannot disagree with the
         // screen that reviewed it — this is the assertion that keeps that true.
-        var entries = JsonExportWriter.BuildEntries(
-            [Block("chrome", "Some video - YouTube", 40, excluded: true), Work("Ticket 495308", 25)],
-            []);
-
-        Assert.DoesNotContain(entries, e => e.Slot.Category == "Personal");
-        Assert.Contains(entries, e => e.Slot.Category == "Halo");
+        Assert.DoesNotContain(JsonExportWriter.BuildEntries(blocks, []), e => e.Slot.Category == "Personal");
     }
 
     [Fact]
-    public void ExcludedActivity_ContributesNoTicketRow()
+    public void ExcludingFromTheRollupOnly_StillEarnsItsTimesheetLine()
     {
-        // Even when the excluded window's title happens to carry a ticket number.
+        var slots = SuggestionSlotBuilder.Build([Block("chrome", "Long personal call", 40, ExcludeScope.Rollup)]);
+
+        Assert.Contains(slots, s => s.Category == "Personal");
+    }
+
+    [Theory]
+    [InlineData(ExcludeScope.Timesheet)]
+    [InlineData(ExcludeScope.All)]
+    public void ExcludingFromTheTimesheet_ContributesNoTicketRow(ExcludeScope scope)
+    {
+        // Even when the excluded window's title happens to carry a ticket number: the Tickets tab
+        // is the "what do I bill" list, so it follows the timesheet.
         var excludedWithTicket = new ClassifiedBlock(
             new Block(T0, T0.AddMinutes(30), "msedge", "Ticket 495308 (Personal)"),
-            new Classification("Personal", null, "495308", null, "rule", Excluded: true));
+            new Classification("Personal", null, "495308", null, "rule", scope));
 
         Assert.Empty(TicketsBuilder.Build([excludedWithTicket]));
     }
 
     [Fact]
-    public void ExcludedActivity_IsNotCountedAsLostTime()
-    {
-        // It carries a category, so it is accounted for — "lost" means nobody said what it was.
-        var html = HtmlReportWriter.BuildMainInner(
-            new DateOnly(2026, 8, 15),
-            [Block("chrome", "Some video - YouTube", 40, excluded: true)],
-            [],
-            []);
+    public void ExcludingFromTheRollupOnly_KeepsItsTicketRow()
+        => Assert.Single(TicketsBuilder.Build([
+            new ClassifiedBlock(
+                new Block(T0, T0.AddMinutes(30), "msedge", "Ticket 495308"),
+                new Classification("Halo", null, "495308", null, "rule", ExcludeScope.Rollup))]));
 
-        Assert.Contains("Nothing unaccounted for", html);
-    }
-
-    // ---- where it must still appear ----
+    // ---- the summary cards ----
 
     [Fact]
-    public void ExcludedActivity_StillShowsInTheTimeline_AndSaysWhyItIsMissingElsewhere()
+    public void TimesheetExclusions_LeaveActiveAndShowInTheExcludedCard()
     {
-        var html = HtmlReportWriter.BuildMainInner(
-            new DateOnly(2026, 8, 15),
-            [Block("chrome", "Some video - YouTube", 40, excluded: true), Work("Ticket 495308", 25)],
-            [],
-            []);
-
-        Assert.Contains("Some video - YouTube", html);   // the day's record keeps it
-        Assert.Contains("tl-excluded", html);            // and marks it as deliberately left out
-    }
-
-    [Fact]
-    public void ExcludedTime_LeavesActiveButKeepsTheDayTotalHonest()
-    {
-        var html = HtmlReportWriter.BuildMainInner(
-            new DateOnly(2026, 8, 15),
-            [Block("chrome", "Some video - YouTube", 40, excluded: true), Work("Ticket 495308", 20)],
-            [],
-            []);
+        var html = Page(Block("chrome", "Some video - YouTube", 40, ExcludeScope.Timesheet), Work("Ticket", 20));
 
         // Active is the 20 minutes of work; Total is all 60 minutes recorded; the Excluded card
         // accounts for the difference rather than letting 40 minutes silently vanish.
@@ -148,25 +152,60 @@ public class ExclusionRuleTests
     }
 
     [Fact]
-    public void ADayWithNothingExcluded_ShowsNoExcludedCard()
+    public void ARollupOnlyExclusion_IsStillActiveTime()
     {
-        var html = HtmlReportWriter.BuildMainInner(
-            new DateOnly(2026, 8, 15), [Work("Ticket 495308", 20)], [], []);
+        // It stays on the timesheet, so calling it anything but active would contradict the file.
+        var html = Page(Block("chrome", "Long personal call", 40, ExcludeScope.Rollup), Work("Ticket", 20));
 
+        Assert.Contains("<div class=\"v\">1h 00m</div><div class=\"l\">Active</div>", html);
         Assert.DoesNotContain(">Excluded</div>", html);
+    }
+
+    [Fact]
+    public void ADayWithNothingExcluded_ShowsNoExcludedCard()
+        => Assert.DoesNotContain(">Excluded</div>", Page(Work("Ticket 495308", 20)));
+
+    // ---- what the Timeline keeps ----
+
+    [Theory]
+    [InlineData(ExcludeScope.Rollup, "not in rollup")]
+    [InlineData(ExcludeScope.Timesheet, "not on timesheet")]
+    [InlineData(ExcludeScope.All, "excluded")]
+    public void TheTimeline_KeepsExcludedActivity_AndNamesWhatItIsMissingFrom(
+        ExcludeScope scope, string tag)
+    {
+        var html = Page(Block("chrome", "Some video - YouTube", 40, scope));
+
+        Assert.Contains("Some video - YouTube", html);   // the day's record keeps it
+        Assert.Contains("tl-excluded", html);
+        Assert.Contains($"<span class=\"tl-ex-tag\">{tag}</span>", html);
+    }
+
+    [Fact]
+    public void ExcludedActivity_IsNotCountedAsLostTime()
+    {
+        // It carries a category, so it is accounted for — "lost" means nobody said what it was.
+        Assert.Contains("Nothing unaccounted for",
+            Page(Block("chrome", "Some video - YouTube", 40, ExcludeScope.All)));
     }
 
     // ---- the rules file ----
 
-    [Fact]
-    public void AnExcludingRule_RoundTripsThroughTheRulesFile()
+    [Theory]
+    [InlineData(ExcludeScope.Rollup, "rollup")]
+    [InlineData(ExcludeScope.Timesheet, "timesheet")]
+    [InlineData(ExcludeScope.All, "all")]
+    public void AnExcludingRule_RoundTripsThroughTheRulesFile(ExcludeScope scope, string written)
     {
         var json = RulesFile.WithRule(
             """{ "rules": [] }""",
-            new ClassificationRule { Id = "yt", ProcessPattern = "^chrome$", Category = "Personal", Exclude = true });
+            new ClassificationRule
+            {
+                Id = "yt", ProcessPattern = "^chrome$", Category = "Personal", ExcludeFrom = scope,
+            });
 
-        Assert.Contains("\"exclude\": true", json);
-        Assert.True(Assert.Single(RulesFile.Parse(json)).Exclude);
+        Assert.Contains($"\"excludeFrom\": \"{written}\"", json);
+        Assert.Equal(scope, Assert.Single(RulesFile.Parse(json)).ExcludeFrom);
     }
 
     [Fact]
@@ -178,19 +217,38 @@ public class ExclusionRuleTests
             new ClassificationRule { Id = "halo", ProcessPattern = "^msedge$", Category = "Halo" });
 
         Assert.DoesNotContain("exclude", json);
-        Assert.False(Assert.Single(RulesFile.Parse(json)).Exclude);
+        Assert.Equal(ExcludeScope.None, Assert.Single(RulesFile.Parse(json)).ExcludeFrom);
     }
 
     [Fact]
-    public void ARuleDraftedFromTheUncategorizedTab_CarriesTheExcludeItWasSavedWith()
+    public void AMisspelledScope_CostsThatRuleItsExclusion_NotTheFileItsRules()
     {
-        var rule = RuleDraft.Create(
-            "chrome", "Some video - YouTube", RuleMatch.App, "Personal", null, exclude: true);
+        // rules.json is hand-editable; a strict enum would throw, and a failed load reads as no
+        // rules at all — losing every rule the user has over one typo.
+        var rules = RulesFile.Parse(
+            """
+            {
+              "rules": [
+                { "id": "a", "processPattern": "^chrome$", "category": "Personal", "excludeFrom": "rollupp" },
+                { "id": "b", "processPattern": "^msedge$", "category": "Halo" }
+              ]
+            }
+            """);
 
-        Assert.True(rule.Exclude);
+        Assert.Equal(["a", "b"], rules.Select(r => r.Id));
+        Assert.Equal(ExcludeScope.None, rules[0].ExcludeFrom);
     }
+
+    [Fact]
+    public void ARuleDraftedFromTheUncategorizedTab_CarriesTheScopeItWasSavedWith()
+        => Assert.Equal(
+            ExcludeScope.Timesheet,
+            RuleDraft.Create("chrome", "Some video - YouTube", RuleMatch.App, "Personal", null, ExcludeScope.Timesheet)
+                .ExcludeFrom);
 
     [Fact]
     public void ARuleDraftedWithoutExcluding_StaysCounted()
-        => Assert.False(RuleDraft.Create("msedge", "Ticket 495308", RuleMatch.Window, "Halo").Exclude);
+        => Assert.Equal(
+            ExcludeScope.None,
+            RuleDraft.Create("msedge", "Ticket 495308", RuleMatch.Window, "Halo").ExcludeFrom);
 }

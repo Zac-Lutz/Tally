@@ -30,7 +30,7 @@ public static class RollupBuilder
     // remembering to ask.
     public static IReadOnlyList<RollupRow> Build(IReadOnlyList<ClassifiedBlock> blocks)
         => blocks
-            .Where(b => !b.Classification.Excluded)
+            .Where(b => !b.Classification.ExcludedFromRollup)
             .GroupBy(b => (b.Classification.Category, b.Classification.Client, b.Classification.TicketRef, Key: ActivityKey(b)))
             .Select(g =>
             {

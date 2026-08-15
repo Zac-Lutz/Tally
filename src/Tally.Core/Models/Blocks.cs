@@ -33,17 +33,25 @@ public static class InactiveReasons
 /// The classification of a block. <see cref="Subject"/> is a free-text "what/who" the block
 /// was about (a Teams chat name, a document) captured by a rule's <c>(?&lt;subject&gt;)</c> group,
 /// distinct from <see cref="Client"/> (an organization) and <see cref="TicketRef"/>.
-/// <see cref="Excluded"/> marks time the matching rule declared isn't work to account for.
+/// <see cref="ExcludeFrom"/> carries which of the day's accounts the matching rule keeps this
+/// time out of.
 /// </summary>
 public sealed record Classification(
     string Category, string? Client, string? TicketRef, string? Subject, string? RuleId,
-    bool Excluded = false)
+    ExcludeScope ExcludeFrom = ExcludeScope.None)
 {
     // The display value is "Uncategorized" — the app's whole vocabulary is categories — while the
     // code name stays Unclassified (renaming every identifier would churn half the codebase).
     public const string Unclassified = "Uncategorized";
 
     public bool IsUnclassified => Category == Unclassified;
+
+    /// <summary>Left out of the Rollup.</summary>
+    public bool ExcludedFromRollup => ExcludeFrom is ExcludeScope.Rollup or ExcludeScope.All;
+
+    /// <summary>Left off the Timesheet, the export, and the Tickets tab — and, because that is
+    /// what "not time to account for" means, out of the Active total too.</summary>
+    public bool ExcludedFromTimesheet => ExcludeFrom is ExcludeScope.Timesheet or ExcludeScope.All;
 }
 
 /// <summary>

@@ -37,10 +37,10 @@ public static class TicketsBuilder
         IReadOnlyList<CallSpan>? calls = null,
         IReadOnlyDictionary<string, string>? ticketOverrides = null)
     {
-        // Excluded activity is not work to bill, so it contributes nothing here even on the rare
-        // occasion its title carries a ticket number.
+        // This tab is the "what do I bill" list, so it follows the Timesheet's exclusions — even
+        // on the rare occasion an excluded window's title carries a ticket number.
         var contributions = blocks
-            .Where(b => !b.Classification.Excluded
+            .Where(b => !b.Classification.ExcludedFromTimesheet
                         && b.EffectiveTicket is not null && b.Block.Duration > TimeSpan.Zero)
             .Select(b => new Contribution(
                 b.Block.Start, b.Block.End, b.Block.ProcessName, b.Classification.Category,

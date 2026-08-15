@@ -117,7 +117,7 @@ public static class SuggestionSlotBuilder
         // the export especially must not be able to disagree with the screen that reviewed it.
         // It also leaves the underlay: what was on screen during a call is detail about the call,
         // and time the user declared isn't work has no business describing one.
-        blocks = [.. blocks.Where(b => !b.Classification.Excluded)];
+        blocks = [.. blocks.Where(b => !b.Classification.ExcludedFromTimesheet)];
 
         // 1. Timers claim first — the most deliberate signal there is.
         var timerSpans = (timers ?? [])

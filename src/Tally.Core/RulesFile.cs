@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Tally.Core;
@@ -13,7 +14,32 @@ public static partial class RulesFile
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
+        Converters = { new TolerantExcludeScopeConverter() },
     };
+
+    /// <summary>
+    /// Reads <c>"excludeFrom"</c> as a scope, and anything it doesn't recognize as
+    /// <see cref="ExcludeScope.None"/>. The file is hand-editable and a strict enum would throw on
+    /// a typo — which, because a failed load reads as no rules at all, would cost the user every
+    /// rule they have over one misspelled word.
+    /// </summary>
+    private sealed class TolerantExcludeScopeConverter : JsonConverter<ExcludeScope>
+    {
+        public override ExcludeScope Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String
+                && Enum.TryParse<ExcludeScope>(reader.GetString(), ignoreCase: true, out var scope))
+            {
+                return scope;
+            }
+
+            reader.Skip();
+            return ExcludeScope.None;
+        }
+
+        public override void Write(Utf8JsonWriter writer, ExcludeScope value, JsonSerializerOptions options)
+            => writer.WriteStringValue(value.ToString().ToLowerInvariant());
+    }
 
     // The file is hand-editable, so keep written values as typed: the default encoder would turn a
     // regex's + and & into + / &. It's a local file, never HTML.
@@ -227,8 +253,8 @@ public static partial class RulesFile
         if (rule.Client is { } client)
             parts.Add($"\"client\": {Str(client)}");
         // Written only when set, so every rule already in the file keeps the shape it had.
-        if (rule.Exclude)
-            parts.Add("\"exclude\": true");
+        if (rule.ExcludeFrom is not ExcludeScope.None)
+            parts.Add($"\"excludeFrom\": {Str(rule.ExcludeFrom.ToString().ToLowerInvariant())}");
         return $"{{ {string.Join(", ", parts)} }}";
     }
 

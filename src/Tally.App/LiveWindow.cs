@@ -368,9 +368,10 @@ public sealed class LiveWindow : Form
         var title = Decode(msg.Title) ?? string.Empty;
         // Excluding something is a complete decision without naming it, so the category is
         // optional there and defaults to the one word that describes what was decided.
+        var excludeFrom = ScopeOf(msg);
         var category = msg.Category?.Trim() is { Length: > 0 } typed
             ? typed
-            : msg.Exclude ? ExcludedCategory : null;
+            : excludeFrom is not ExcludeScope.None ? ExcludedCategory : null;
         if (category is null || (process.Length == 0 && title.Length == 0))
             return;
 
@@ -379,10 +380,10 @@ public sealed class LiveWindow : Form
             var match = string.Equals(msg.Scope, "window", StringComparison.OrdinalIgnoreCase)
                 ? RuleMatch.Window
                 : RuleMatch.App;
-            var rule = RuleDraft.Create(process, title, match, category, ExistingRuleIds(), msg.Exclude);
+            var rule = RuleDraft.Create(process, title, match, category, ExistingRuleIds(), excludeFrom);
             RulesFile.AddRule(TallyPaths.RulesPath, rule);
-            Log.Info($"Saved classification rule '{rule.Id}' ({category}{(msg.Exclude ? ", excluded" : "")}) from the live view");
-            Note(msg.Exclude ? $"rule saved — {category}, excluded" : $"rule saved — {category}");
+            Log.Info($"Saved classification rule '{rule.Id}' ({category}{ExcludeSuffix(excludeFrom)}) from the live view");
+            Note($"rule saved — {category}{ExcludeSuffix(excludeFrom)}");
             _ = RefreshAsync();
         }
         catch (Exception ex)
@@ -394,6 +395,23 @@ public sealed class LiveWindow : Form
 
     /// <summary>The category an excluding rule takes when the user didn't name one.</summary>
     private const string ExcludedCategory = "Excluded";
+
+    // The page sends the scope as the word the dropdown carries ("rollup", "timesheet", "all");
+    // anything else — including the empty value of "Counted" — means the rule excludes nothing.
+    private static ExcludeScope ScopeOf(EditMessage msg)
+        => Enum.TryParse<ExcludeScope>(msg.ExcludeFrom, ignoreCase: true, out var scope)
+            ? scope
+            : ExcludeScope.None;
+
+    // What the status note and the log add about an exclusion, so a saved rule says out loud
+    // which account of the day it just left.
+    private static string ExcludeSuffix(ExcludeScope scope) => scope switch
+    {
+        ExcludeScope.Rollup => ", not in the Rollup",
+        ExcludeScope.Timesheet => ", not on the Timesheet",
+        ExcludeScope.All => ", excluded from both",
+        _ => string.Empty,
+    };
 
     // Existing ids, so a new rule's generated id can't collide with one already in the file.
     private static IReadOnlyList<string> ExistingRuleIds()
@@ -474,11 +492,11 @@ public sealed class LiveWindow : Form
                 ProcessPattern = process,
                 TitlePattern = title,
                 Client = NullIfEmpty(msg.Client),
-                Exclude = msg.Exclude,
+                ExcludeFrom = ScopeOf(msg),
             };
             RulesFile.ReplaceRuleAt(TallyPaths.RulesPath, index, rule);
-            Log.Info($"Updated classification rule '{rule.Id}' ({category}{(msg.Exclude ? ", excluded" : "")}) from the live view");
-            Note(msg.Exclude ? $"rule updated — {category}, excluded" : $"rule updated — {category}");
+            Log.Info($"Updated classification rule '{rule.Id}' ({category}{ExcludeSuffix(rule.ExcludeFrom)}) from the live view");
+            Note($"rule updated — {category}{ExcludeSuffix(rule.ExcludeFrom)}");
             _ = RefreshAsync();
         }
         catch (Exception ex)
@@ -567,11 +585,11 @@ public sealed class LiveWindow : Form
                 TitlePattern = title,
                 Category = category,
                 Client = NullIfEmpty(msg.Client),
-                Exclude = msg.Exclude,
+                ExcludeFrom = ScopeOf(msg),
             };
             RulesFile.AddRule(TallyPaths.RulesPath, rule);
-            Log.Info($"Added classification rule '{rule.Id}' ({category}{(msg.Exclude ? ", excluded" : "")}) from the Rules tab");
-            Note(msg.Exclude ? $"rule added — {category}, excluded" : $"rule added — {category}");
+            Log.Info($"Added classification rule '{rule.Id}' ({category}{ExcludeSuffix(rule.ExcludeFrom)}) from the Rules tab");
+            Note($"rule added — {category}{ExcludeSuffix(rule.ExcludeFrom)}");
             _ = RefreshAsync();
         }
         catch (Exception ex)
@@ -925,7 +943,7 @@ public sealed class LiveWindow : Form
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
         string? Process, string? Title, string? Scope, string? Category, string? Client,
-        string? Start, string? Stop, string? Times, string? Retention, bool Exclude = false);
+        string? Start, string? Stop, string? Times, string? Retention, string? ExcludeFrom = null);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>

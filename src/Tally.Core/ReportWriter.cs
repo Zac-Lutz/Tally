@@ -61,9 +61,9 @@ public static class ReportWriter
         // Excluded time counts toward the day's total but not toward active work \u2014 the same split
         // the live view's cards make, so the two never disagree about what a day added up to.
         var excluded = TimeSpan.FromTicks(
-            blocks.Where(b => b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
+            blocks.Where(b => b.Classification.ExcludedFromTimesheet).Sum(b => b.Block.Duration.Ticks));
         var active = TimeSpan.FromTicks(
-            blocks.Where(b => !b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
+            blocks.Where(b => !b.Classification.ExcludedFromTimesheet).Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactivePeriods.Sum(p => p.Duration.Ticks));
         if (blocks.Count == 0 && calls.Count == 0)

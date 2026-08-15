@@ -274,7 +274,7 @@ public static class HtmlReportWriter
           .Append("<input class=\"rl-new-proc\" type=\"text\" placeholder=\"App pattern (regex)\" aria-label=\"New rule app pattern\">")
           .Append("<input class=\"rl-new-title\" type=\"text\" placeholder=\"Window pattern (regex)\" aria-label=\"New rule window pattern\">")
           .Append("<input class=\"rl-new-client\" type=\"text\" placeholder=\"Client (optional)\" aria-label=\"New rule client\">")
-          .Append("<label class=\"rl-ex-label\"><input class=\"rl-new-exclude\" type=\"checkbox\"> Exclude</label>")
+          .Append(ExcludeSelect("rl-new-exclude", ExcludeScope.None, "New rule exclusion"))
           .Append("<button class=\"uc-save rl-add-btn\" type=\"button\">Add rule</button>")
           .Append("</div>\n");
 
@@ -299,10 +299,10 @@ public static class HtmlReportWriter
             AppendRuleCell(sb, rule.TitlePattern, "rl-title", "any window", "Window pattern (regex)");
             AppendRuleCell(sb, rule.Client, "rl-client", "—", "Client (optional)");
             sb.Append("<td>")
-              .Append(rule.Exclude
-                  ? "<span class=\"rl-view rl-ex-yes\">Excluded</span>"
-                  : "<span class=\"rl-view muted\">—</span>")
-              .Append($"<input class=\"rl-in rl-exclude\" type=\"checkbox\"{(rule.Exclude ? " checked" : "")} aria-label=\"Exclude from Rollup, Timesheet and export\">")
+              .Append(rule.ExcludeFrom is ExcludeScope.None
+                  ? "<span class=\"rl-view muted\">—</span>"
+                  : $"<span class=\"rl-view rl-ex-yes\">{Esc(ExcludeScopeLabel(rule.ExcludeFrom))}</span>")
+              .Append(ExcludeSelect("rl-in rl-exclude", rule.ExcludeFrom, "Exclude from"))
               .Append("</td>");
             sb.Append("<td class=\"num rl-actions\">")
               .Append("<span class=\"rl-view\"><button class=\"uc-save rl-edit\" type=\"button\">Edit</button> <button class=\"tm-del rl-del\" type=\"button\">Delete</button></span>")
@@ -311,7 +311,7 @@ public static class HtmlReportWriter
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
-        sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields. <strong>Exclude</strong> keeps matching activity out of the Rollup, the Timesheet, and the export — the Timeline still shows it, so the day's record stays honest.</p>\n");
+        sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields. <strong>Exclude</strong> chooses which account of the day leaves the activity out: <em>Rollup</em> tidies that tab while the time still bills, <em>Timesheet</em> keeps it off the timesheet, the export, and the Tickets tab, and <em>All</em> does both. The Timeline always shows it, so the day's record stays honest.</p>\n");
     }
 
     // The Settings tab — the WinForms dialog's contents, moved into the page so configuration
@@ -559,7 +559,7 @@ public static class HtmlReportWriter
         }
 
         if (editable)
-            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to today straight away, and to every day from here. Tick <strong>Exclude</strong> for anything that is never work — it drops out of the Rollup, the Timesheet, and the export, and still shows in the Timeline.</p>\n");
+            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to today straight away, and to every day from here. <strong>Exclude</strong> leaves it out of an account of the day: <em>Rollup</em> tidies that tab only, <em>Timesheet</em> keeps it off the timesheet and the export, <em>All</em> does both. The Timeline always keeps it.</p>\n");
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n<tr><th>App</th><th>Window</th><th class=\"num\">Time</th>");
         if (editable)
@@ -582,7 +582,7 @@ public static class HtmlReportWriter
                   .Append("<td><select class=\"uc-scope\" aria-label=\"Applies to\">")
                   .Append($"<option value=\"app\">Any {Esc(row.ProcessName)} window</option>")
                   .Append("<option value=\"window\">Only this window</option></select></td>")
-                  .Append("<td><label class=\"rl-ex-label\"><input class=\"uc-exclude\" type=\"checkbox\" aria-label=\"Exclude from Rollup, Timesheet and export\"> Exclude</label></td>")
+                  .Append("<td>").Append(ExcludeSelect("uc-exclude", ExcludeScope.None, "Exclude from")).Append("</td>")
                   .Append("<td class=\"num\"><button class=\"uc-save\" type=\"button\">Save rule</button></td>");
             }
 
@@ -694,11 +694,12 @@ public static class HtmlReportWriter
         int uncategorizedCount)
     {
         // Excluded time is recorded and real, so it stays in Total; it just isn't work, so it
-        // leaves Active — which is the figure the Rollup and Timesheet below now agree with.
+        // leaves Active. The test is whether it reaches the Timesheet: a Rollup-only exclusion
+        // tidies one view and still bills, so counting it as anything but Active would lie.
         var excluded = TimeSpan.FromTicks(
-            blocks.Where(b => b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
+            blocks.Where(b => b.Classification.ExcludedFromTimesheet).Sum(b => b.Block.Duration.Ticks));
         var active = TimeSpan.FromTicks(
-            blocks.Where(b => !b.Classification.Excluded).Sum(b => b.Block.Duration.Ticks));
+            blocks.Where(b => !b.Classification.ExcludedFromTimesheet).Sum(b => b.Block.Duration.Ticks));
         var callTime = TimeSpan.FromTicks(calls.Sum(c => c.Duration.Ticks));
         var inactiveTime = TimeSpan.FromTicks(inactive.Sum(p => p.Duration.Ticks));
 
@@ -935,11 +936,12 @@ public static class HtmlReportWriter
             var b = blocks[i];
             // The URL rides as a hover on the Detail cell — visible when needed, no column spent.
             var urlTip = b.Block.Url is { } url ? $" title=\"{Esc(url)}\"" : string.Empty;
-            // The Timeline keeps excluded activity — it is the record of what happened — but says
-            // so, otherwise a row here that is missing from every total looks like a bug.
-            var excludedRow = b.Classification.Excluded ? " class=\"tl-excluded\"" : string.Empty;
+            // The Timeline keeps excluded activity — it is the record of what happened — but names
+            // what it is missing from, otherwise a row absent from a total looks like a bug.
+            var scope = b.Classification.ExcludeFrom;
+            var excludedRow = scope is not ExcludeScope.None ? " class=\"tl-excluded\"" : string.Empty;
             sb.Append($"<tr{excludedRow}><td>").Append(CategoryBadge(b.Classification.Category, palette))
-              .Append(b.Classification.Excluded ? "<span class=\"tl-ex-tag\">excluded</span>" : string.Empty)
+              .Append(ExcludeTag(scope))
               .Append("</td>")
               .Append("<td>").Append(Esc(b.Block.ProcessName)).Append("</td>")
               .Append($"<td{urlTip}>").Append(Esc(b.Block.Title)).Append("</td>")
@@ -950,6 +952,40 @@ public static class HtmlReportWriter
 
         sb.Append("</tbody>\n</table>\n</div>\n");
     }
+
+    // The one control that picks an exclusion, shared by the Rules tab (add bar and each row) and
+    // the Uncategorized tab's triage, so the four places that offer the choice can't drift apart.
+    private static string ExcludeSelect(string cssClass, ExcludeScope selected, string ariaLabel)
+    {
+        var sb = new StringBuilder($"<select class=\"{cssClass}\" aria-label=\"{Esc(ariaLabel)}\">");
+        foreach (var scope in (ExcludeScope[])[ExcludeScope.None, ExcludeScope.Rollup, ExcludeScope.Timesheet, ExcludeScope.All])
+        {
+            var value = scope is ExcludeScope.None ? string.Empty : scope.ToString().ToLowerInvariant();
+            var label = scope is ExcludeScope.None ? "Counted" : ExcludeScopeLabel(scope);
+            sb.Append($"<option value=\"{value}\"{(scope == selected ? " selected" : "")}>{Esc(label)}</option>");
+        }
+
+        return sb.Append("</select>").ToString();
+    }
+
+    // What a Timeline row says about being left out, named after the account it's missing from so
+    // the row explains its own absence rather than just flagging it.
+    private static string ExcludeTag(ExcludeScope scope) => scope switch
+    {
+        ExcludeScope.Rollup => "<span class=\"tl-ex-tag\">not in rollup</span>",
+        ExcludeScope.Timesheet => "<span class=\"tl-ex-tag\">not on timesheet</span>",
+        ExcludeScope.All => "<span class=\"tl-ex-tag\">excluded</span>",
+        _ => string.Empty,
+    };
+
+    /// <summary>How a scope is named wherever the user reads or picks one.</summary>
+    internal static string ExcludeScopeLabel(ExcludeScope scope) => scope switch
+    {
+        ExcludeScope.Rollup => "Rollup",
+        ExcludeScope.Timesheet => "Timesheet",
+        ExcludeScope.All => "All",
+        _ => "—",
+    };
 
     private static void Card(StringBuilder sb, string label, string value)
         => sb.Append($"<div class=\"card\"><div class=\"v\">{value}</div><div class=\"l\">{label}</div></div>\n");
@@ -1370,7 +1406,7 @@ public static class HtmlReportWriter
         (function(){
         function post(m){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(m);}
         function val(r,c){var i=r.querySelector('input.'+c);return i?i.value:'';}
-        function chk(r,c){var i=r.querySelector('input.'+c);return !!(i&&i.checked);}
+        function sel(r,c){var i=r.querySelector('select.'+c);return i?i.value:'';}
         document.addEventListener('click',function(e){
         var t=e.target;if(!t.closest)return;
         var b=t.closest('.rl-edit');
@@ -1385,8 +1421,9 @@ public static class HtmlReportWriter
         var proc=newVal('.rl-new-proc'),ti=newVal('.rl-new-title');
         if(!proc&&!ti){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
         post({type:'ruleAdd',category:cat,process:proc,title:ti,client:newVal('.rl-new-client'),
-        exclude:chk(bar,'rl-new-exclude')});
-        bar.querySelectorAll('input').forEach(function(i){i.value='';i.checked=false;});
+        excludeFrom:sel(bar,'rl-new-exclude')});
+        bar.querySelectorAll('input').forEach(function(i){i.value='';});
+        bar.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});
         return;}
         b=t.closest('.rl-del');
         if(b){var r=b.closest('tr.rl');post({type:'ruleDelete',id:r.getAttribute('data-i'),key:r.getAttribute('data-id')});return;}
@@ -1394,7 +1431,7 @@ public static class HtmlReportWriter
         if(b){var r=b.closest('tr.rl');
         post({type:'ruleUpdate',id:r.getAttribute('data-i'),key:r.getAttribute('data-id'),
         category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),client:val(r,'rl-client'),
-        exclude:chk(r,'rl-exclude')});
+        excludeFrom:sel(r,'rl-exclude')});
         r.classList.remove('editing');}});
         document.addEventListener('keydown',function(e){
         var r=e.target.closest?e.target.closest('tr.rl.editing'):null;if(!r)return;
@@ -1498,10 +1535,10 @@ public static class HtmlReportWriter
         """;
 
     // "Save rule" in the Unclassified tab: posts {type:'rule', process, title, scope, category,
-    // exclude} to the host, which writes it into rules.json. The app + window travel as the base64
-    // the row carries, so nothing is re-derived from display text. An empty category focuses the
-    // field instead of posting — unless Exclude is ticked, which is a complete decision on its own
-    // and lets the host name the category.
+    // excludeFrom} to the host, which writes it into rules.json. The app + window travel as the
+    // base64 the row carries, so nothing is re-derived from display text. An empty category
+    // focuses the field instead of posting — unless an exclusion was chosen, which is a complete
+    // decision on its own and lets the host name the category.
     // This handler sees every .uc-save button on the page, the Rules tab's included; those rows
     // carry no .uc-cat, so they fall out here and their own script handles them.
     private const string RuleSaveScript =
@@ -1511,12 +1548,12 @@ public static class HtmlReportWriter
         var b=e.target.closest?e.target.closest('.uc-save'):null;if(!b||b.disabled)return;
         var r=b.closest('tr');if(!r)return;
         var c=r.querySelector('.uc-cat');var s=r.querySelector('.uc-scope');
-        var x=r.querySelector('.uc-exclude');var ex=!!(x&&x.checked);
+        var x=r.querySelector('.uc-exclude');var ex=x?x.value:'';
         var v=c?c.value.trim():'';
         if(!v&&!ex){if(c)c.focus();return;}
         if(!window.chrome||!window.chrome.webview)return;
         b.disabled=true;b.textContent='Saved';
-        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),scope:s?s.value:'app',category:v,exclude:ex});});
+        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),scope:s?s.value:'app',category:v,excludeFrom:ex});});
         })();
         """;
 

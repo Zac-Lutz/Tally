@@ -3,6 +3,27 @@ using Tally.Core.Models;
 
 namespace Tally.Core;
 
+/// <summary>
+/// Which accounts of the day a rule's matching activity stays out of. The Timeline is absent by
+/// design: it records what happened, so nothing is ever hidden from it.
+/// </summary>
+public enum ExcludeScope
+{
+    /// <summary>Counted everywhere — what an ordinary rule does.</summary>
+    None,
+
+    /// <summary>Kept out of the Rollup only. The time is still work: it stays on the Timesheet,
+    /// in the export, and in the Active total. This is tidying one view, not disowning time.</summary>
+    Rollup,
+
+    /// <summary>Kept off the Timesheet, out of the export, and off the Tickets tab — none of it
+    /// is time to bill — while the Rollup still shows where the day went.</summary>
+    Timesheet,
+
+    /// <summary>Both: the day's accounts leave it out entirely.</summary>
+    All,
+}
+
 public sealed record ClassificationRule
 {
     public required string Id { get; init; }
@@ -23,11 +44,11 @@ public sealed record ClassificationRule
     public string? Client { get; init; }
 
     /// <summary>
-    /// Matching activity is not work to account for: it stays out of the Rollup, the Timesheet,
-    /// and the export. The Timeline still draws it, because the Timeline is the record of what
-    /// actually happened rather than what gets billed.
+    /// Which of the day's accounts leave this activity out. The Timeline still draws it whatever
+    /// this says, because the Timeline is the record of what actually happened rather than of
+    /// what gets billed.
     /// </summary>
-    public bool Exclude { get; init; }
+    public ExcludeScope ExcludeFrom { get; init; }
 }
 
 /// <summary>Ordered, first-match-wins rule evaluation over (process, title).</summary>
@@ -67,7 +88,7 @@ public sealed class Classifier
             var ticket = GroupValue(titleMatch, "ticket");
             var client = GroupValue(titleMatch, "client") ?? rule.Client;
             var subject = GroupValue(titleMatch, "subject");
-            return new Classification(rule.Category, client, ticket, subject, rule.Id, rule.Exclude);
+            return new Classification(rule.Category, client, ticket, subject, rule.Id, rule.ExcludeFrom);
         }
 
         return new Classification(Classification.Unclassified, null, null, null, null);
