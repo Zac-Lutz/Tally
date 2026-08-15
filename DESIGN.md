@@ -104,6 +104,18 @@ Everything stays on this machine. No cloud, no telemetry.
   each of the three entry points (tray, `--live`, `--report`) rather than threaded through every
   caller of `Normalize` — which is also why the test suite runs serially: a test configuring a
   profile was otherwise changing what a parallel rollup test saw.
+- **An export entry says each thing once.** The title is the slot's category and the note is one
+  activity per line, longest first — because the entry already carries its category, ticket and
+  hours as fields, and a note reading "Development - Agent memory" spent its whole length
+  restating two of them. Whatever a person can only learn from the note is what the note is for:
+  what the time was actually spent on. Activity under `RollupBuilder.MinRollupDuration` is left
+  out — the same threshold that keeps the Rollup a glance rather than a list — but never all of
+  it: when every activity is that brief the largest still stands for the slot, since an entry
+  described by nothing is worse than one described thinly. A call or timer names itself first
+  (the meeting *is* the time; the windows underneath only describe it). Notes are capped by
+  dropping whole lines, not by truncating, so a note too long for the importer loses its least
+  important line rather than ending mid-word. Editing one field no longer rewrites another: the
+  fields stopped being derived from each other the moment they stopped repeating each other.
 - **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
   (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
   bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains

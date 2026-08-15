@@ -31,7 +31,6 @@ public sealed class ExportRangeDialog : Form
     private static readonly Color WarnFg = Color.FromArgb(0xd6, 0x9e, 0x2e);
 
     private readonly List<ExportEntry> _all;
-    private readonly HashSet<SuggestionSlot> _noteEdited = [];
     private readonly CheckBox _wholeDay = new();
     private readonly DateTimePicker _from = new();
     private readonly DateTimePicker _to = new();
@@ -118,7 +117,7 @@ public sealed class ExportRangeDialog : Form
 
         Controls.Add(new Label
         {
-            Text = "This is exactly what the file will carry — edit hours, ticket, title, or description in place. Editing the title or ticket rewrites the description for you until you've edited the description yourself. An entry belongs to the window it started in, so two exports never count the same meeting twice.",
+            Text = "This is exactly what the file will carry — edit hours, ticket, title, or description in place; each stands on its own, so changing one never rewrites another. The description is one line per activity the time went to, longest first. An entry belongs to the window it started in, so two exports never count the same meeting twice.",
             ForeColor = MutedFg,
             AutoSize = false,
             Location = new Point(20, 466),
@@ -189,12 +188,26 @@ public sealed class ExportRangeDialog : Form
         _grid.Columns.Add(ReadOnlyColumn("Time", 130));
         _grid.Columns.Add(EditColumn("Hours", 56));
         _grid.Columns.Add(EditColumn("Ticket", 70));
-        _grid.Columns.Add(EditColumn("Title", 240));
+        _grid.Columns.Add(EditColumn("Title", 140));
         var note = EditColumn("Description", 380);
         note.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        // The description is one activity per line, so the cell has to show every line rather
+        // than the first — and rows grow to fit, since the whole point of this dialog is reading
+        // what is about to be sent.
+        note.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
         _grid.Columns.Add(note);
+        _grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
         _grid.CellValueChanged += OnCellValueChanged;
+        _grid.EditingControlShowing += OnEditingControlShowing;
+    }
+
+    // A cell holding several lines needs an editor that can hold several lines; the default
+    // text-box editing control is single-line and would flatten the note on the first keystroke.
+    private void OnEditingControlShowing(object? sender, DataGridViewEditingControlShowingEventArgs e)
+    {
+        if (e.Control is TextBox box)
+            box.Multiline = _grid.CurrentCell?.ColumnIndex == ColNote;
     }
 
     private static DataGridViewTextBoxColumn ReadOnlyColumn(string header, int width)
@@ -272,17 +285,16 @@ public sealed class ExportRangeDialog : Form
                 if (double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out var hours) && hours > 0)
                     _all[index] = entry with { Hours = Math.Round(hours, 2) };
                 break;
+            // The note describes what was done, and the ticket and title are separate facts about
+            // the same time — so neither rewrites it. Only the note's own cell changes the note.
             case ColTicket:
                 var ticket = value.Trim().TrimStart('#');
-                entry = entry with { Ticket = ticket.Length > 0 ? ticket : null };
-                _all[index] = _noteEdited.Contains(entry.Slot) ? entry : entry.WithComposedNote();
+                _all[index] = entry with { Ticket = ticket.Length > 0 ? ticket : null };
                 break;
             case ColTitle:
-                entry = entry with { Title = value.Trim() };
-                _all[index] = _noteEdited.Contains(entry.Slot) ? entry : entry.WithComposedNote();
+                _all[index] = entry with { Title = value.Trim() };
                 break;
             case ColNote:
-                _noteEdited.Add(entry.Slot);
                 _all[index] = entry with { Note = value.Trim() };
                 break;
             default:

@@ -95,7 +95,10 @@ public class JsonExportWriterTests
 
         Assert.Equal("123", entry.Ticket);
         Assert.Equal(1.0, entry.Hours);
-        Assert.StartsWith("Ticket #123 - ", entry.Note);
+        // The ticket is its own field, so the note spends itself on what was done, not on
+        // repeating it — here, the one window the hour was spent in.
+        Assert.Equal("Halo", entry.Title);
+        Assert.Equal("Ticket #123 - VPN", entry.Note);
     }
 
     [Fact]

@@ -66,10 +66,16 @@ window: the range choice up top (**Everything so far** by default; untick it to 
 To — file the morning at lunch, the afternoon at close), and below it **every entry the file
 will carry** — its times, hours, ticket, title, and description. All of it is editable in place:
 fix a title, rewrite a description, correct the hours, point an entry at a different ticket —
-so what arrives in att is ready to review and log, not something to clean up there. Editing the
-title or ticket rewrites the description for you until you've edited the description yourself,
-and the entry count and hours track your edits live. The chosen window lands in the filename
-(`tally-2026-08-13-0800-1200.json`).
+so what arrives in att is ready to review and log, not something to clean up there. Each field
+stands on its own, so changing one never rewrites another, and the entry count and hours track
+your edits live. The chosen window lands in the filename (`tally-2026-08-13-0800-1200.json`).
+
+**What an entry says.** The **title** is the category — *Development*, *Halo*, *Admin*. The
+**description** is what the time actually went on: one line per activity, longest first, with
+anything under a minute left out (if everything was that brief, the biggest one still stands for
+the entry). Nothing repeats what the entry already carries in its own fields — no category, no
+ticket number, no hours — so the description is free to say the one thing only it can. A call or
+a manual timer names itself on the first line, then lists what was on screen during it.
 
 An entry belongs to the window it *started* in, so two slices never double-count a meeting that
 ran through the cut-off. One thing to know: importing into att **replaces that day's suggestions**,

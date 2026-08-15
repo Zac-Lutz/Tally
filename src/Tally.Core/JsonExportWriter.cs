@@ -108,7 +108,7 @@ public static class JsonExportWriter
         var end = slot.End.ToLocalTime();
         var bucket = Bucket(slot.Category);
         var items = BuildItems(entry);
-        var note = Cap(entry.Note, MaxNoteLength);
+        var note = CapLines(entry.Note, MaxNoteLength);
 
         return new JsonSlot(
             Id: UniqueId(start, bucket, takenIds),
@@ -128,7 +128,7 @@ public static class JsonExportWriter
             // screen underneath it must not outrank the meeting in the note.
             Summary: items.Count > 0 && slot.Kind == SuggestionSlotKind.Activity
                 ? null
-                : Cap(note, MaxSummaryLength),
+                : CapLines(note, MaxSummaryLength),
             Items: items,
             WindowTitles: BuildWindowTitles(slot),
             Browser: [],     // URLs are captured but not exported yet (phase 3 of URL capture)
@@ -262,6 +262,31 @@ public static class JsonExportWriter
 
     private static string Cap(string value, int maxLength)
         => value.Length <= maxLength ? value : value[..maxLength].TrimEnd();
+
+    /// <summary>
+    /// Caps a note that is one activity per line by dropping whole lines from the end, so a note
+    /// too long for the contract loses its least-important line rather than ending mid-word. A
+    /// single line longer than the bound is still truncated — there is nothing else to give up.
+    /// </summary>
+    private static string CapLines(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+            return value;
+
+        var lines = value.Split('\n');
+        var kept = new List<string>();
+        var length = 0;
+        foreach (var line in lines)
+        {
+            var cost = kept.Count == 0 ? line.Length : line.Length + 1;
+            if (length + cost > maxLength)
+                break;
+            kept.Add(line);
+            length += cost;
+        }
+
+        return kept.Count > 0 ? string.Join('\n', kept) : Cap(lines[0], maxLength);
+    }
 
     private static string Iso(DateTimeOffset t) => t.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
 

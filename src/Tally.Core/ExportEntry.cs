@@ -27,32 +27,63 @@ public sealed record ExportEntry
         => new ExportEntry
         {
             Slot = slot,
-            Title = slot.Label,
+            // The category is the entry's name. What it was *specifically* is the note's job, and
+            // saying it twice only left the reader deciding which half to read.
+            Title = slot.Category,
             Note = string.Empty,
             Ticket = slot.TicketRef,
             Hours = Math.Round(slot.Reported.TotalHours, 2),
         }.WithComposedNote();
 
     /// <summary>
-    /// The entry with its note recomposed from the current title and ticket — the default text an
-    /// unedited entry exports with, and what an edited title falls back to until the note itself
-    /// is hand-edited.
+    /// The entry with its note recomposed from the slot — the default text an unedited entry
+    /// exports with, and what an edit falls back to until the note itself is hand-edited.
     /// </summary>
     public ExportEntry WithComposedNote() => this with { Note = Compose() };
 
-    private string Compose() => Slot.Kind switch
+    /// <summary>
+    /// The note: what the time was actually spent on, one activity per line, longest first.
+    /// It carries no category, ticket or hours — every one of those is already its own field on
+    /// the entry, and repeating them here just buried the only thing this field can say.
+    /// </summary>
+    private string Compose()
     {
-        SuggestionSlotKind.OddsAndEnds =>
-            $"Odds and ends — {DistinctActivities()} short activities, none long enough to stand alone",
-        SuggestionSlotKind.Call => $"Call - {Title}",
-        SuggestionSlotKind.Timer => $"Timer - {Title}",
-        _ when Ticket is { } ticket => $"Ticket #{ticket} - {Title}",
-        _ => $"{Slot.Category} - {Title}",
-    };
+        var lines = new List<string>();
 
-    private int DistinctActivities()
-        => Slot.Blocks
-            .Select(b => TitleNormalizer.Normalize(b.Block.Title))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
+        // A call or a timer names itself — the meeting or the declared task IS what the time was,
+        // and the windows underneath only describe what was on screen during it.
+        if (Slot.Kind is SuggestionSlotKind.Call or SuggestionSlotKind.Timer)
+            lines.Add(Slot.Label);
+
+        lines.AddRange(Activities());
+
+        // A slot whose windows were all untitled still has to say something.
+        if (lines.Count == 0)
+            lines.Add(Slot.Label);
+
+        return string.Join('\n', lines.Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The distinct activities the slot's time went to, longest first. Anything under a minute is
+    /// left out — the same threshold the Rollup uses to keep a glance from becoming a list — but
+    /// never all of them: when every activity is that brief, the largest still stands for the slot
+    /// rather than leaving it described by nothing.
+    /// </summary>
+    private IEnumerable<string> Activities()
+    {
+        var activities = Slot.Blocks
+            .Select(b => (Title: TitleNormalizer.Normalize(b.Block.Title), b.Block.Duration))
+            .Where(a => !string.IsNullOrWhiteSpace(a.Title))
+            .GroupBy(a => a.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (Title: g.Key, Time: TimeSpan.FromTicks(g.Sum(a => a.Duration.Ticks))))
+            .OrderByDescending(a => a.Time)
+            .ToList();
+
+        var worthNaming = activities.Where(a => a.Time >= RollupBuilder.MinRollupDuration).ToList();
+        if (worthNaming.Count == 0)
+            worthNaming = [.. activities.Take(1)];
+
+        return worthNaming.Select(a => a.Title);
+    }
 }
