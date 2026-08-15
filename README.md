@@ -27,10 +27,12 @@ The app lives in the system tray as a tally-marks icon that shows its state at a
 - **Open live view** — a dashboard window that shows the current day and refreshes in place
 - **Pause/Resume tracking**
 - **Generate today's / yesterday's report** — writes and opens a snapshot
-- **Settings** — opens the live view's Settings tab: hotkeys, auto-report times, raw-history retention
 - **Check for updates** — pull and apply the newest version right now (see Auto-update below)
 - **Open reports / data folder**
 - **Exit**
+
+Settings aren't in that menu: they're a tab in the live view alongside Rules, Categories and the
+rest, so open the live view and pick **Settings** there.
 
 ## Live view
 

@@ -78,6 +78,11 @@ Everything stays on this machine. No cloud, no telemetry.
   under Exclude. The page renders the pair already agreeing, so `ExcludeModeScript` only handles
   the user changing their mind, and it finds the scope select by walking forward from the mode
   select rather than by container — the same pair sits in a `div`, a `span`, and a `td`.
+- **Settings is not in the tray menu.** It was the one tab the menu singled out, from back when it
+  was a WinForms dialog rather than a tab. Now that the live view holds Rules, Categories, Tickets
+  and the rest, a shortcut to exactly one of them only invites the question of why the others
+  aren't there; the menu keeps what has no home in the live view (pause, reports, updates, folders,
+  exit).
 - **The Rollup is a list of categories, collapsed.** A day has a handful of categories and dozens
   of activities, so the tab opens as one line per category — biggest first, its total on the right
   — and expands on click to that category's activities, longest first. It answers "where did the
