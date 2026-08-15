@@ -1327,6 +1327,9 @@ public static class HtmlReportWriter
     // with the typed values plain (they ride the JSON message, not an attribute). Delete posts
     // {type:'ruleDelete', id, key} and the host asks for confirmation before touching the file. The
     // index says which rule, the id proves the table wasn't stale — the host checks both.
+    // The branches share one click handler, so a `var` in any of them is hoisted across all of
+    // them: the add-rule branch's field reader is `newVal` because naming it `val` shadowed the
+    // row reader above and left Save throwing before it could post anything.
     private const string RulesEditScript =
         """
         (function(){
@@ -1340,12 +1343,12 @@ public static class HtmlReportWriter
         if(b){b.closest('tr.rl').classList.remove('editing');return;}
         b=t.closest('.rl-add-btn');
         if(b){var bar=b.closest('.rl-addbar');if(!bar)return;
-        var val=function(c){var i=bar.querySelector(c);return i?i.value.trim():'';};
-        var cat=val('.rl-new-cat');
+        var newVal=function(c){var i=bar.querySelector(c);return i?i.value.trim():'';};
+        var cat=newVal('.rl-new-cat');
         if(!cat){var f=bar.querySelector('.rl-new-cat');if(f)f.focus();return;}
-        var proc=val('.rl-new-proc'),ti=val('.rl-new-title');
+        var proc=newVal('.rl-new-proc'),ti=newVal('.rl-new-title');
         if(!proc&&!ti){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
-        post({type:'ruleAdd',category:cat,process:proc,title:ti,client:val('.rl-new-client')});
+        post({type:'ruleAdd',category:cat,process:proc,title:ti,client:newVal('.rl-new-client')});
         bar.querySelectorAll('input').forEach(function(i){i.value='';});
         return;}
         b=t.closest('.rl-del');
