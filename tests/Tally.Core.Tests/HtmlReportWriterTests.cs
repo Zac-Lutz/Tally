@@ -38,6 +38,33 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void RulesTable_DeclaresItsColumns_SoEditingARowCannotWidenIt()
+    {
+        var rules = new ClassificationRule[]
+        {
+            new() { Id = "first", TitlePattern = "Alpha", Category = "A" },
+        };
+
+        var inner = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], [], rules: rules);
+        var shell = HtmlReportWriter.BuildLiveShell();
+
+        // A colgroup plus table-layout:fixed is what stops a row full of inputs from growing the
+        // table past the window and putting a horizontal scrollbar under the tab.
+        Assert.Contains("<colgroup><col class=\"rl-c-num\">", inner);
+        foreach (var col in new[] { "rl-c-cat", "rl-c-proc", "rl-c-title", "rl-c-url", "rl-c-client", "rl-c-ex", "rl-c-act" })
+        {
+            Assert.Contains($"<col class=\"{col}\">", inner);
+            Assert.Contains($"col.{col} {{ width:", shell);
+        }
+
+        Assert.Contains(".rules { table-layout:fixed; }", shell);
+        // The inputs fill their column rather than setting a width of their own; a fixed width
+        // here is what the columns would have had to grow to accommodate.
+        Assert.Contains(".rl input.rl-in", shell);
+        Assert.Contains("width:100%;", shell);
+    }
+
+    [Fact]
     public void RulesTab_AbsentWhenNoRulesArePassed_AndFromSavedReports()
     {
         var withoutRules = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "A", "Alpha")], [], []);

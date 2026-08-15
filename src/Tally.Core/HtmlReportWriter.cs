@@ -288,7 +288,16 @@ public static class HtmlReportWriter
             return;
         }
 
-        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Page matches</th><th>Client</th><th>Exclude</th><th></th></tr>\n</thead>\n<tbody>\n");
+        // The columns are declared up front because the table lays out to these widths rather than
+        // to its contents (table-layout:fixed in the CSS). A row switching into edit mode swaps
+        // short read-only text for six inputs; left to size itself the table would grow past the
+        // window and put a horizontal scrollbar under the whole tab, which is what editing a rule
+        // used to do. Fixed columns also mean the headings stay put as rows open and close.
+        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n")
+          .Append("<colgroup><col class=\"rl-c-num\"><col class=\"rl-c-cat\"><col class=\"rl-c-proc\">")
+          .Append("<col class=\"rl-c-title\"><col class=\"rl-c-url\"><col class=\"rl-c-client\">")
+          .Append("<col class=\"rl-c-ex\"><col class=\"rl-c-act\"></colgroup>\n")
+          .Append("<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Page matches</th><th>Client</th><th>Exclude</th><th></th></tr>\n</thead>\n<tbody>\n");
 
         for (var i = 0; i < rules.Count; i++)
         {
@@ -1186,23 +1195,37 @@ public static class HtmlReportWriter
         .uc-url { font-size:12px; word-break:break-all; }
         /* Rules tab: each row carries both its read view and its edit inputs; the row's
            "editing" class decides which shows. Patterns wrap so a long regex can't blow out
-           the table. */
+           the table.
+           The table is given its column widths rather than taking them from its contents, so a
+           row opening for edit can't widen it into a horizontal scrollbar. Everything inside a
+           cell is then sized in percentages or trimmed to fit, which is why the edit controls
+           run a shade smaller than the ones on the other tabs. */
+        .rules { table-layout:fixed; }
+        .rules th,.rules td { padding-left:8px; padding-right:8px; }
         .rules code { font-size:12px; word-break:break-all; }
+        col.rl-c-num { width:34px; }
+        col.rl-c-cat { width:13%; }
+        col.rl-c-proc { width:13%; }
+        col.rl-c-title { width:17.5%; }
+        col.rl-c-url { width:17.5%; }
+        col.rl-c-client { width:9%; }
+        /* The last two hold controls of a known size, so they take pixels and leave the rest of
+           the width to the patterns, which are the part worth reading. The exclude column is
+           sized for its longest pair — Exclude + Timesheet — not for the shorter "Counted" a
+           row shows when it is included. */
+        col.rl-c-ex { width:168px; }
+        col.rl-c-act { width:100px; }
         .rl .rl-in { display:none; }
         tr.rl.editing .rl-view { display:none; }
         tr.rl.editing .rl-in { display:inline-block; }
         .rl input.rl-in { background:var(--bg); border:1px solid var(--border); border-radius:6px;
-          color:var(--fg); font:inherit; font-size:12px; padding:3px 6px; max-width:100%; }
+          color:var(--fg); font:inherit; font-size:12px; padding:3px 6px; width:100%; }
         .rl input.rl-in:focus { outline:none; border-color:var(--accent); }
-        .rl-cat { width:130px; }
-        .rl-proc { width:130px; }
-        .rl-title { width:200px; }
-        .rl-url { width:180px; }
-        .rl-client { width:100px; }
         .rl-ex-yes { color:var(--accent); font-weight:600; }
-        .rl .ex-mode,.rl .ex-scope { font-size:12px; padding:3px 5px; }
+        .rl .ex-mode,.rl .ex-scope { font-size:11px; padding:2px 3px; }
+        .rl .ex-mode { margin-right:3px; }
         .rl-actions { white-space:nowrap; }
-        .rl-actions .uc-save,.rl-actions .tm-del { font-size:12px; padding:4px 10px; }
+        .rl-actions .uc-save,.rl-actions .tm-del { font-size:11px; padding:3px 7px; }
         /* Rollup groups: a category line per row, its activities hidden until it's clicked. They
            start collapsed, so the tab opens as a short answer rather than a long list. */
         tr.rg { cursor:pointer; }
