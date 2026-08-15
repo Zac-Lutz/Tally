@@ -19,6 +19,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly IdleWatcher _idle;
     private readonly SessionWatcher _session;
     private readonly MicWatcher _mic;
+    private readonly CallWindowWatcher _callWindows;
     private readonly System.Windows.Forms.Timer _autoReportTimer;
     private IReadOnlyList<TimeOnly> _autoReportTimes;
     private HashSet<TimeOnly> _firedTimes = [];
@@ -66,10 +67,12 @@ public sealed class TrayAppContext : ApplicationContext
         _idle = new IdleWatcher();
         _session = new SessionWatcher();
         _mic = new MicWatcher();
+        _callWindows = new CallWindowWatcher();
         _foreground.EventCaptured += _recorder.Record;
         _idle.EventCaptured += _recorder.Record;
         _session.EventCaptured += _recorder.Record;
         _mic.EventCaptured += _recorder.Record;
+        _callWindows.EventCaptured += _recorder.Record;
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Open live view", null, (_, _) => OpenLiveView()));
@@ -127,6 +130,7 @@ public sealed class TrayAppContext : ApplicationContext
         _idle.Start();
         _session.Start();
         _mic.Start();
+        _callWindows.Start();
 
         // First auto-update check ~8s after startup (once the message loop is running, so the
         // async continuation resumes on the UI thread), then every 4 hours.
@@ -337,6 +341,7 @@ public sealed class TrayAppContext : ApplicationContext
         _idle.Dispose();
         _session.Dispose();
         _mic.Dispose();
+        _callWindows.Dispose();
 
         // Watchers are stopped, so the channel drains and completes quickly; the writer runs on
         // the thread pool with no UI synchronization context to deadlock against.

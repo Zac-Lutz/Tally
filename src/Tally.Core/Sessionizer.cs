@@ -157,52 +157,25 @@ public static class Sessionizer
         return result;
     }
 
+    /// <summary>
+    /// A call span before merging, and whether its title came from the call window itself. A window
+    /// span knows the meeting's name for certain; a mic span only has whatever the app's window
+    /// happened to be showing, which is often a chat that was open at the time.
+    /// </summary>
+    private readonly record struct RawCall(CallSpan Span, bool TitleIsCertain);
+
     private static List<CallSpan> BuildCallSpans(List<TrackedEvent> ordered, DateTimeOffset endOfData, TimeSpan gapMerge)
     {
-        var open = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
-        var raw = new List<CallSpan>();
+        // Two independent witnesses that a call is running, unioned per app: the microphone being
+        // held, and a call window being open. Either one is enough. The mic alone missed every
+        // muted minute — most of a meeting you are only listening to — and the window alone would
+        // miss an app that runs a call without one.
+        var micSpans = SpansFrom(ordered, endOfData, EventKind.MicStart, EventKind.MicEnd)
+            .Select(c => new RawCall(c with { Title = FindCallTitle(ordered, c) ?? string.Empty }, false));
+        var windowSpans = SpansFrom(ordered, endOfData, EventKind.CallWindowOpen, EventKind.CallWindowClose)
+            .Select(c => new RawCall(c, true));
 
-        foreach (var e in ordered)
-        {
-            if (e.Kind == EventKind.MicStart)
-            {
-                // A repeat for an already-open process is a restart's first poll re-reporting a
-                // call that's still running; the span it belongs to is already open.
-                open.TryAdd(e.ProcessName, e.Timestamp);
-            }
-            else if (e.Kind == EventKind.MicEnd
-                && open.Remove(e.ProcessName, out var start)
-                && e.Timestamp > start)
-            {
-                raw.Add(new CallSpan(start, e.Timestamp, e.ProcessName, string.Empty));
-            }
-            else if (e.Kind == EventKind.Startup)
-            {
-                // Tally restarted. If a call ended while it was down, no MicEnd was ever recorded,
-                // so an open span would otherwise run to the end of the day and swallow every
-                // meeting after it. Close them here instead: a call that really was still running
-                // gets a fresh MicStart seconds later, and the title-matching merge rejoins it.
-                foreach (var (openProcess, openedAt) in open)
-                {
-                    if (e.Timestamp > openedAt)
-                        raw.Add(new CallSpan(openedAt, e.Timestamp, openProcess, string.Empty));
-                }
-
-                open.Clear();
-            }
-        }
-
-        foreach (var (openProcess, start) in open)
-        {
-            if (endOfData > start)
-                raw.Add(new CallSpan(start, endOfData, openProcess, string.Empty));
-        }
-
-        // Title each span BEFORE merging: the title is what tells one call from the next, so it has
-        // to be resolved while the spans are still separate.
-        var titled = raw
-            .Select(c => c with { Title = FindCallTitle(ordered, c) ?? string.Empty })
-            .ToList();
+        var titled = Union([.. micSpans, .. windowSpans]);
 
         var merged = new List<CallSpan>();
         foreach (var group in titled.GroupBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
@@ -233,6 +206,102 @@ public static class Sessionizer
         }
 
         return merged.OrderBy(c => c.Start).ToList();
+    }
+
+    /// <summary>
+    /// Open/close spans for one pair of event kinds, keyed by process. Shared by both call
+    /// witnesses because the bookkeeping is identical — an open span, a close that ends it, and a
+    /// restart that can't vouch for anything it thought was still running.
+    /// </summary>
+    private static List<CallSpan> SpansFrom(
+        List<TrackedEvent> ordered, DateTimeOffset endOfData, EventKind startKind, EventKind endKind)
+    {
+        var open = new Dictionary<string, (DateTimeOffset At, string Title)>(StringComparer.OrdinalIgnoreCase);
+        var spans = new List<CallSpan>();
+
+        foreach (var e in ordered)
+        {
+            if (e.Kind == startKind)
+            {
+                // A repeat for an already-open process is a restart's first poll re-reporting a
+                // call that's still running; the span it belongs to is already open.
+                open.TryAdd(e.ProcessName, (e.Timestamp, e.WindowTitle));
+            }
+            else if (e.Kind == endKind
+                && open.Remove(e.ProcessName, out var started)
+                && e.Timestamp > started.At)
+            {
+                spans.Add(new CallSpan(started.At, e.Timestamp, e.ProcessName, started.Title));
+            }
+            else if (e.Kind == EventKind.Startup)
+            {
+                // Tally restarted. If a call ended while it was down, no close was ever recorded,
+                // so an open span would otherwise run to the end of the day and swallow every
+                // meeting after it. Close them here instead: a call that really was still running
+                // is reported again seconds later, and the title-matching merge rejoins it.
+                foreach (var (openProcess, started2) in open)
+                {
+                    if (e.Timestamp > started2.At)
+                        spans.Add(new CallSpan(started2.At, e.Timestamp, openProcess, started2.Title));
+                }
+
+                open.Clear();
+            }
+        }
+
+        foreach (var (openProcess, started) in open)
+        {
+            if (endOfData > started.At)
+                spans.Add(new CallSpan(started.At, endOfData, openProcess, started.Title));
+        }
+
+        return spans;
+    }
+
+    /// <summary>
+    /// Folds overlapping spans of the same app into one. Two witnesses to the same call produce two
+    /// spans covering much the same time, and a call is one thing however many ways it was noticed.
+    /// The window's name for it wins, because it is the meeting's own name rather than a guess made
+    /// from whatever window happened to be open.
+    /// </summary>
+    private static List<CallSpan> Union(List<RawCall> raw)
+    {
+        var result = new List<CallSpan>();
+
+        foreach (var group in raw.GroupBy(c => c.Span.ProcessName, StringComparer.OrdinalIgnoreCase))
+        {
+            RawCall? current = null;
+            foreach (var next in group.OrderBy(c => c.Span.Start))
+            {
+                if (current is not { } open)
+                {
+                    current = next;
+                    continue;
+                }
+
+                // Only genuine overlap merges here. Spans that merely sit close together are left
+                // for the title-matching gap merge, which knows the difference between a dropout
+                // and leaving one meeting for the next.
+                if (next.Span.Start > open.Span.End)
+                {
+                    result.Add(open.Span);
+                    current = next;
+                    continue;
+                }
+
+                var end = next.Span.End > open.Span.End ? next.Span.End : open.Span.End;
+                var certain = open.TitleIsCertain || next.TitleIsCertain;
+                var title = open.TitleIsCertain ? open.Span.Title
+                    : next.TitleIsCertain ? next.Span.Title
+                    : open.Span.Title;
+                current = new RawCall(open.Span with { End = end, Title = title }, certain);
+            }
+
+            if (current is { } last)
+                result.Add(last.Span);
+        }
+
+        return result;
     }
 
     private static string? FindCallTitle(List<TrackedEvent> ordered, CallSpan call)

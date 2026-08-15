@@ -38,6 +38,74 @@ public static class CallApps
         };
     }
 
+    /// Sections of the Teams app that title the main window the same shape a meeting does. Without
+    /// these, opening the calendar would read as an hour-long meeting called "Calendar".
+    private static readonly string[] TeamsSections =
+        ["Activity", "Chat", "Teams", "Calendar", "Calls", "Files", "Apps", "Help", "Store", "Settings"];
+
+    // Teams renames the meeting window as the meeting proceeds — joining, then the meeting itself,
+    // then the small floating window when you look at something else. All three are the same
+    // meeting, so the prefixes come off and the name underneath is what identifies it.
+    private static readonly string[] TeamsMeetingPrefixes =
+        ["Meeting join | ", "Meeting compact view | ", "Meeting | "];
+
+    private const string TeamsSuffix = " | Microsoft Teams";
+
+    /// <summary>
+    /// The meeting a window's title names, or null when the window isn't a call window at all.
+    /// <para>
+    /// This is what lets Tally know a call is running without asking the microphone. The mic was
+    /// the only signal once, and it answers the wrong question: it says whether you are
+    /// <em>talking</em>, not whether you are <em>in a meeting</em>. Mute yourself and Teams hands
+    /// the microphone back, so an hour of listening recorded as nothing at all.
+    /// </para>
+    /// <para>
+    /// Teams is the only app read this way for now. Discord is deliberately excluded — see
+    /// <see cref="OutranksWindowActivity"/> for why its calls don't get to claim time — and
+    /// RingCentral needs a real call observed before its windows can be named with any confidence.
+    /// </para>
+    /// </summary>
+    public static string? MeetingName(string processName, string title)
+    {
+        if (CategoryFor(processName) != TeamsCallCategory)
+            return null;
+
+        var trimmed = title.Trim();
+
+        // The bare shell window ("Microsoft Teams") has no suffix to strip and names no meeting.
+        if (!trimmed.EndsWith(TeamsSuffix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var name = trimmed[..^TeamsSuffix.Length].Trim();
+        if (name.Length == 0)
+            return null;
+
+        foreach (var prefix in TeamsMeetingPrefixes)
+        {
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                name = name[prefix.Length..].Trim();
+                break;
+            }
+        }
+
+        if (name.Length == 0)
+            return null;
+
+        // "Chat | Service Family" is the conversation about the meeting, not the meeting. Whatever
+        // is left still carrying a section name in front of it is the main window, not a call.
+        foreach (var section in TeamsSections)
+        {
+            if (name.StartsWith(section + " |", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, section, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+        }
+
+        return name;
+    }
+
     /// <summary>
     /// Whether a call in this app should outrank the window activity underneath it on a timesheet.
     /// <para>

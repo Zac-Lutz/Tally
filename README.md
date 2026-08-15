@@ -2,7 +2,8 @@
 
 Local-only Windows activity tracker for end-of-day time entry. Runs in the system tray,
 records foreground windows (including browser tab switches via title changes), calls
-(mic-in-use detection), and idle/lock time — then generates a markdown report of your day.
+(a Teams meeting window being open, or any app holding the microphone), and idle/lock time —
+then generates a markdown report of your day.
 
 All data stays in `%USERPROFILE%\.tally\`. Nothing leaves the machine.
 
@@ -123,6 +124,14 @@ work happened, not one card smeared across the day.
    ticket through it — otherwise meetings dissolve into whatever happened to be on screen. What
    *was* on screen is kept as the entry's detail.
 3. **Then window activity**, for whatever's left.
+
+**A Teams meeting counts while its window is open**, wherever that window is — minimised, behind
+everything else, on another monitor. Muting yourself doesn't end it, and neither does working in
+other windows for the rest of the hour. (The microphone is still watched as a second signal, and
+either one is enough; a call seen both ways is still one call. The mic alone used to be the only
+signal, which meant a meeting you sat and listened to recorded as nothing at all.) The meeting is
+named from its own window, so it reads as "THEE Service Meeting" rather than whichever chat
+happened to be open when it started.
 
 **Discord is the exception.** People sit in a voice channel for hours while working, so a live
 Discord mic says nothing about what the time was for — it never takes time from the window you

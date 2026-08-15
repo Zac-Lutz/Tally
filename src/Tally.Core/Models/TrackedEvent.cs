@@ -30,6 +30,19 @@ public enum EventKind
     MicEnd,
 
     /// <summary>
+    /// A call window appeared — a Teams meeting window, wherever it sits and whether or not it is
+    /// the window being looked at. <see cref="TrackedEvent.WindowTitle"/> carries the meeting name.
+    /// <para>
+    /// This exists because the microphone answers the wrong question: it says whether you are
+    /// talking, not whether you are in a meeting. Muted time is still meeting time.
+    /// </para>
+    /// </summary>
+    CallWindowOpen,
+
+    /// <summary>A call window went away — the meeting was left, or Tally stopped being able to see it.</summary>
+    CallWindowClose,
+
+    /// <summary>
     /// Tally started recording. Marks where the watchers' knowledge begins again after a restart:
     /// anything they believed was in progress before it (a live mic span) can no longer be vouched
     /// for, because whatever happened while the app was down went unobserved.

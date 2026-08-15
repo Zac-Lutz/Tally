@@ -339,6 +339,27 @@ Everything stays on this machine. No cloud, no telemetry.
   later and the title-matching merge rejoins it, so a mid-meeting restart still reads as one call.
 - **An active mic suppresses idle.** Sitting hands-off on a meeting is working time.
   Lock is *not* suppressed by a call — the foreground lane stops, the call lane continues.
+- **A call has two witnesses, and the window is the better one.** The microphone answers whether
+  you are *talking*; a meeting answers whether you are *in a meeting*, and those differ for most
+  of most meetings. Mute yourself to listen and Teams hands the microphone back, so an hour of
+  meeting recorded as fifteen minutes and the rest was filed as whatever window got glanced at
+  next. `CallWindowWatcher` therefore enumerates **every** visible top-level window every five
+  seconds — not the foreground one, since the whole point of a meeting is that you look at other
+  things during it — and `CallApps.MeetingName` decides which titles are meetings. Verified live:
+  Teams gives a meeting its own top-level window while the main window keeps its own title, so
+  both are visible at once and only the meeting one matches.
+  <br>
+  `Sessionizer` unions the two witnesses per app: either alone opens a call, overlapping spans
+  fold into one, and the window's name wins because it is the meeting's own name rather than a
+  guess made from whichever Teams window was focused when the mic went live. That guess is why a
+  real hour-long meeting was recorded as "Chat | Service Family | Microsoft Teams".
+  <br>
+  The title needs normalising before it can be a key: Teams renames the window as you join and
+  again when it shrinks to the compact view, and treating a rename as a new meeting would cut one
+  call into three. Known section names (Chat, Calendar, Activity…) are excluded, because the main
+  window titles itself the same shape and "Calendar | Microsoft Teams" is not an hour of meeting.
+  Discord is deliberately not read this way — its calls don't claim time at all — and RingCentral
+  waits until a real call has been observed, since a guessed window pattern is worse than none.
 - **UI stack (slice 2+):** WinForms shell + BlazorWebView + Radzen (Blazor Hybrid without
   MAUI). v1 is tray-menu only.
 
@@ -435,10 +456,16 @@ Authenticode cert for wider distribution.
 
 ## Known week-one risks
 
-- **New Teams title fidelity** — Teams is WebView2; call/meeting window titles vary by call
-  type. If titles are weak, the mic span still nails the *duration*; only the label suffers.
+- ~~**New Teams title fidelity**~~ — settled the other way round: the meeting window's title is
+  now the *most* reliable thing about a call, and carries the meeting's real name. It is the mic
+  that turned out to be weak. Titles observed in practice are `<name> | Microsoft Teams`,
+  `Meeting join | <name> | …` and `Meeting compact view | <name> | …`.
 - **ScreenConnect title → client mapping** — the starter regex assumes
   `Client - ... - ScreenConnect`-shaped titles; tune `rules.json` to the real session names.
-- **Mic session behavior** — if Teams holds an *active* capture session outside calls (mute
-  ≠ inactive in some configs), calls will over-count; validate against a real day and fall
-  back to the `CapabilityAccessManager\ConsentStore\microphone` registry approach if needed.
+- ~~**Mic session behavior**~~ — resolved, and the risk was backwards. The worry was that Teams
+  might hold an active capture session outside calls and *over*-count. What actually happens is
+  the opposite: muting releases the microphone, so calls were badly *under*-counted. The window
+  watcher is the fix; the registry approach was never needed.
+- **RingCentral calls are still mic-only.** No RingCentral window has ever been observed in a
+  capture, so there is no title pattern to key on and a guessed one would be worse than none —
+  its calls end when its microphone does. Needs one real call watched before it can be fixed.
