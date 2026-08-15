@@ -30,6 +30,25 @@ Everything stays on this machine. No cloud, no telemetry.
   (COMReference needs Framework MSBuild; the self-contained publish ships WPF anyway). Events
   gained an additive `Url` column (ALTER TABLE, duplicate-column swallowed). Phase 2 (site-based
   rules, ticket-from-URL) and phase 3 (the export's `browser` field) build on this.
+- **A browser focus event waits half a second for the window title to settle.** Clicking back
+  into a browser lands on whatever tab was last open there, and the address bar updates
+  immediately while the window title lags — so reading the title at the focus event named the
+  *previous* tab and stored it against the new tab's URL. It showed up once URLs gave the title
+  something to be checked against: a third of browser focus events (288 of 801) disagreed with
+  themselves, each one owning about a second of time filed under the wrong app, and each one a
+  bad example for the phase-2 rules to be built from. The captured events put that lag within
+  100ms about seven times in ten and never past 500ms, so `ForegroundWatcher` settles for
+  `TitleSettleMs` before reading title and URL together — one read, one moment, no disagreement.
+  Only focus changes wait; a title change already served the 1s debounce. Delivery is delayed,
+  never the event: the timestamp is stamped when focus actually changed. The follow-up title
+  change usually then dedupes away, so the near-duplicate pair this used to emit collapses into
+  one correct row. Non-browser windows report their title accurately on arrival and still record
+  synchronously.
+- **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
+  (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
+  bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains
+  the source for them; ticket-from-URL is worth having only where the path carries it (GitHub's
+  `/issues/2719`, IT Glue's org and record ids).
 - **No input-activity counting.** An earlier version counted key-downs/clicks per block as an
   "intensity" signal (counts only, never key identity). It was removed: the signal was weak and
   redundant with idle detection (reading, calls, and reviewing are low-input but real work), and
