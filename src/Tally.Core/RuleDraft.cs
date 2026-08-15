@@ -10,6 +10,9 @@ public enum RuleMatch
 
     /// <summary>Only that app showing that window title.</summary>
     Window,
+
+    /// <summary>Every page on that website, in any browser.</summary>
+    Site,
 }
 
 /// <summary>
@@ -25,11 +28,30 @@ public static class RuleDraft
         RuleMatch match,
         string category,
         IEnumerable<string>? existingIds = null,
-        ExcludeScope excludeFrom = ExcludeScope.None)
+        ExcludeScope excludeFrom = ExcludeScope.None,
+        string? url = null)
     {
         var trimmedCategory = category.Trim();
         if (trimmedCategory.Length == 0)
             throw new ArgumentException("A rule needs a category.", nameof(category));
+
+        // A site rule is about the website, not the browser that happened to be open on it, so it
+        // carries no app or title pattern at all — the same page in a second browser is the same
+        // work. Only the host is kept: "any page on this site" is the whole point.
+        if (match == RuleMatch.Site)
+        {
+            var host = HostOf(url);
+            if (host is null)
+                throw new ArgumentException("A site rule needs the page's address.", nameof(url));
+
+            return new ClassificationRule
+            {
+                Id = UniqueId(trimmedCategory, host, existingIds),
+                UrlPattern = $"^{EscapeLiteral(host)}(?:/|$)",
+                Category = trimmedCategory,
+                ExcludeFrom = excludeFrom,
+            };
+        }
 
         var process = processName.Trim() is { Length: > 0 } p ? $"^{EscapeLiteral(p)}$" : null;
         var activity = TitleNormalizer.Normalize(title).Trim();
@@ -48,6 +70,20 @@ public static class RuleDraft
             Category = trimmedCategory,
             ExcludeFrom = excludeFrom,
         };
+    }
+
+    /// <summary>
+    /// The host part of a stored page (host + path, no scheme), or null if there isn't one.
+    /// </summary>
+    public static string? HostOf(string? url)
+    {
+        var trimmed = url?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+
+        var slash = trimmed.IndexOf('/');
+        var host = slash < 0 ? trimmed : trimmed[..slash];
+        return host.Length > 0 ? host : null;
     }
 
     /// <summary>

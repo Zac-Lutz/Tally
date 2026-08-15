@@ -171,7 +171,9 @@ day needing attention says so from any tab). This is the place to teach Tally, i
 hand-editing `rules.json`:
 
 1. Type a **Category** (the box suggests the ones you already use — any text is fine).
-2. Pick what it **applies to** — *any window of that app*, or *only this window*.
+2. Pick what it **applies to** — *any window of that app*, *only this window*, or, for a browser
+   tab, *any page on that site*. The site is usually the truer answer for a browser: a tab's title
+   changes every time you click something, while its address stays put.
 3. Set **Exclude** if this shouldn't count somewhere — *Rollup*, *Timesheet*, or *All* (see below).
    You can leave the category blank when you do.
 4. Click **Save rule**.
@@ -330,9 +332,26 @@ Uncategorized, where they can be taught a better rule. Edits rewrite just that o
 in the live app; saved reports don't carry it.
 
 **Rules can also be written by hand, in the tab.** The bar at the top of the Rules tab takes a
-category, an app pattern and/or a window pattern (regexes), and an optional client — **Add rule**
+category, any of an app / window / page pattern (regexes), and an optional client — **Add rule**
 places it by specificity, exactly as a saved rule would land: one naming a window goes to the
-top, an app-wide one to the bottom.
+top, one naming a site after those, an app-wide one to the bottom.
+
+**Matching the page, not the title.** A rule can carry a **page pattern** matched against the
+website address as Tally stores it — host and path, nothing after the `?`. So
+`^halo\.lutz\.us` is any Halo page and `^github\.com/[^/]+/[^/]+/issues/(?<ticket>\d+)` files
+GitHub issues under their number. This is usually the sturdier way to recognise a web app: a
+tab's title changes with every click, its address doesn't.
+
+A rule may have any combination of the three patterns and **every one it has must match** — so
+`processPattern: "^msedge$"` plus a page pattern means "that site, in Edge". A rule with a page
+pattern can only ever match a browser tab, because nothing else has a page. Named groups work in
+a page pattern exactly as in a window pattern; when a rule has both, the window's captures win
+and the page fills in whatever the title didn't name.
+
+One thing the page can't tell you: **Halo ticket numbers**. Halo keeps the ticket in the query
+string (`/ticket?id=…`), which is stripped before storage, so every Halo ticket page looks like
+`halo.lutz.us/ticket`. The breadcrumb-title rule stays the source of those numbers — page rules
+earn their keep where the path carries the number, as GitHub's does.
 
 **Categories are yours to define.** The live view's **Categories** tab lists every category in
 play — your own, the ones rules file under, and the app's built-ins — each with a colour swatch.
@@ -343,9 +362,10 @@ the Timesheet calendar, and saved reports); **Rename** refiles every rule using 
 the name keep it. Stored in `%USERPROFILE%\.tally\categories.json`.
 
 To write a rule by hand instead, edit `%USERPROFILE%\.tally\rules.json` (created with starter
-rules on first run; comments allowed). Ordered, first match wins; `processPattern`/`titlePattern` are case-insensitive
-regexes; named groups `(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those
-fields. Rules are re-read on every report generation, so edits apply immediately.
+rules on first run; comments allowed). Ordered, first match wins;
+`processPattern`/`titlePattern`/`urlPattern` are case-insensitive regexes; named groups
+`(?<ticket>...)`, `(?<client>...)`, and `(?<subject>...)` extract those fields. Rules are re-read
+on every report generation, so edits apply immediately.
 
 **The starter rules know the web apps by their titles.** A Halo tab is recognized by its
 breadcrumb-shaped title (`Tickets > Management > …` — a trailing number is captured as the

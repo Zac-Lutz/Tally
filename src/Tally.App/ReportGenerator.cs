@@ -50,7 +50,7 @@ public static class ReportGenerator
         var classified = sessions.Blocks
             .Select(b =>
             {
-                var classification = classifier.Classify(b.ProcessName, b.Title);
+                var classification = classifier.Classify(b.ProcessName, b.Title, b.Url);
                 var key = TicketOverrideKey.ForBlock(
                     classification.Category, classification.TicketRef, classification.Subject, b.Title);
                 var overrideTicket = overrides.TryGetValue(key, out var t) ? t : null;

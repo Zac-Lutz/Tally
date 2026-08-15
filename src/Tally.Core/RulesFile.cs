@@ -72,10 +72,16 @@ public static partial class RulesFile
     /// The rules document with one rule added to its <c>rules</c> array, as a text edit — so
     /// comments, spacing, and every other rule survive untouched.
     /// <para>
-    /// Position is earned by specificity, because the first matching rule wins: a rule with a title
-    /// pattern goes <b>first</b> (it names one window, so it should beat anything generic), while an
-    /// app-only rule goes <b>last</b> (it covers every window of an app, so it must not shadow the
-    /// specific rules already there).
+    /// Position is earned by specificity, because the first matching rule wins, and there are three
+    /// tiers: a rule with a title pattern goes <b>first</b> (it names one window), a page rule goes
+    /// <b>after the title rules</b> (it names one site — broader than a window, narrower than an
+    /// app), and an app-only rule goes <b>last</b> (it covers everything that app does, so it must
+    /// not shadow the specific rules already there).
+    /// <para>
+    /// The middle tier is why a page rule isn't simply put on top: a site rule for halo.lutz.us
+    /// would otherwise outrank the title rule that pulls the ticket number out of a Halo window,
+    /// and the tickets would quietly stop being extracted.
+    /// </para>
     /// </para>
     /// </summary>
     public static string WithRule(string json, ClassificationRule rule)
@@ -87,12 +93,32 @@ public static partial class RulesFile
         if (rule.TitlePattern is not null)
             return json.Insert(open + 1, $"\n    {literal},");
 
+        if (rule.UrlPattern is not null && LastTitleRuleEnd(json, open, close) is { } afterTitles)
+            return json.Insert(afterTitles + 1, $"{(json[afterTitles] == ',' ? "" : ",")}\n    {literal}");
+
         // Appending: land right after the last rule, not after the array's closing indentation,
         // so the separating comma stays on that rule's line instead of stranded on its own.
         var last = LastMeaningfulIndex(json, open + 1, close);
         return last < 0
             ? json.Insert(close, $"\n    {literal}\n  ")
             : json.Insert(last + 1, $"{(json[last] == ',' ? "" : ",")}\n    {literal}");
+    }
+
+    // The character index the last title-pattern rule ends on, or null when there are none (in
+    // which case a page rule simply appends like an app rule would). Read from the parsed rules so
+    // "has a title pattern" means the same thing here as it does to the classifier.
+    private static int? LastTitleRuleEnd(string json, int open, int close)
+    {
+        var spans = RuleSpans(json, open, close);
+        var rules = Parse(json);
+        if (spans.Count != rules.Count)
+            return null;   // the file didn't parse the way it scanned; fall back to appending
+
+        for (var i = rules.Count - 1; i >= 0; i--)
+            if (rules[i].TitlePattern is not null)
+                return spans[i].End;
+
+        return null;
     }
 
     /// <summary>
@@ -249,6 +275,8 @@ public static partial class RulesFile
             parts.Add($"\"processPattern\": {Str(process)}");
         if (rule.TitlePattern is { } title)
             parts.Add($"\"titlePattern\": {Str(title)}");
+        if (rule.UrlPattern is { } url)
+            parts.Add($"\"urlPattern\": {Str(url)}");
         parts.Add($"\"category\": {Str(rule.Category)}");
         if (rule.Client is { } client)
             parts.Add($"\"client\": {Str(client)}");

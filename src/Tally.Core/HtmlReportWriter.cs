@@ -276,6 +276,7 @@ public static class HtmlReportWriter
           .Append("<input class=\"rl-new-cat\" type=\"text\" list=\"uc-cats\" placeholder=\"Category\" aria-label=\"New rule category\">")
           .Append("<input class=\"rl-new-proc\" type=\"text\" placeholder=\"App pattern (regex)\" aria-label=\"New rule app pattern\">")
           .Append("<input class=\"rl-new-title\" type=\"text\" placeholder=\"Window pattern (regex)\" aria-label=\"New rule window pattern\">")
+          .Append("<input class=\"rl-new-url\" type=\"text\" placeholder=\"Page pattern (regex)\" aria-label=\"New rule page pattern\">")
           .Append("<input class=\"rl-new-client\" type=\"text\" placeholder=\"Client (optional)\" aria-label=\"New rule client\">")
           .Append(ExcludeControls("rl-new-exclude", ExcludeScope.None, "New rule"))
           .Append("<button class=\"uc-save rl-add-btn\" type=\"button\">Add rule</button>")
@@ -287,7 +288,7 @@ public static class HtmlReportWriter
             return;
         }
 
-        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Client</th><th>Exclude</th><th></th></tr>\n</thead>\n<tbody>\n");
+        sb.Append("<div class=\"scroll\">\n<table class=\"rules\">\n<thead>\n<tr><th class=\"num\">#</th><th>Category</th><th>App matches</th><th>Window matches</th><th>Page matches</th><th>Client</th><th>Exclude</th><th></th></tr>\n</thead>\n<tbody>\n");
 
         for (var i = 0; i < rules.Count; i++)
         {
@@ -300,6 +301,7 @@ public static class HtmlReportWriter
               .Append("</td>");
             AppendRuleCell(sb, rule.ProcessPattern, "rl-proc", "any app", "App pattern (regex)");
             AppendRuleCell(sb, rule.TitlePattern, "rl-title", "any window", "Window pattern (regex)");
+            AppendRuleCell(sb, rule.UrlPattern, "rl-url", "any page", "Page pattern (regex)");
             AppendRuleCell(sb, rule.Client, "rl-client", "—", "Client (optional)");
             sb.Append("<td>")
               .Append(rule.ExcludeFrom is ExcludeScope.None
@@ -316,7 +318,7 @@ public static class HtmlReportWriter
         }
 
         sb.Append("</tbody>\n</table>\n</div>\n");
-        sb.Append("<p class=\"hint\">A blank app or window pattern means “any”; a rule needs at least one of the two. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> in a window pattern extract those fields. <strong>Exclude</strong> chooses which account of the day leaves the activity out: <em>Rollup</em> tidies that tab while the time still bills, <em>Timesheet</em> keeps it off the timesheet, the export, and the Tickets tab, and <em>All</em> does both. The Timeline always shows it, so the day's record stays honest.</p>\n");
+        sb.Append("<p class=\"hint\">A blank app, window or page pattern means “any”; a rule needs at least one of the three, and every one it has must match. <strong>Page</strong> matches the website address as Tally stores it — host and path, no <code>?</code> query — so <code>^halo\\.lutz\\.us</code> is any Halo page. The named groups <code>(?&lt;ticket&gt;…)</code>, <code>(?&lt;client&gt;…)</code>, and <code>(?&lt;subject&gt;…)</code> work in a window <em>or</em> page pattern; the window's win when a rule has both. <strong>Exclude</strong> chooses which account of the day leaves the activity out: <em>Rollup</em> tidies that tab while the time still bills, <em>Timesheet</em> keeps it off the timesheet, the export, and the Tickets tab, and <em>All</em> does both. The Timeline always shows it, so the day's record stays honest.</p>\n");
     }
 
     // The Settings tab — the WinForms dialog's contents, moved into the page so configuration
@@ -573,7 +575,10 @@ public static class HtmlReportWriter
 
         foreach (var row in rows)
         {
-            sb.Append($"<tr data-p=\"{B64(row.ProcessName)}\" data-t=\"{B64(row.Title)}\">")
+            var host = RuleDraft.HostOf(row.Url);
+            sb.Append($"<tr data-p=\"{B64(row.ProcessName)}\" data-t=\"{B64(row.Title)}\"")
+              .Append(row.Url is { } address ? $" data-u=\"{B64(address)}\"" : string.Empty)
+              .Append('>')
               .Append("<td>").Append(Esc(row.ProcessName)).Append("</td>")
               .Append("<td>").Append(Esc(row.Title));
             // The page behind a mystery tab — often the clue the title withheld.
@@ -586,7 +591,11 @@ public static class HtmlReportWriter
                 sb.Append("<td><input class=\"uc-cat\" type=\"text\" list=\"uc-cats\" placeholder=\"Category\" aria-label=\"Category\"></td>")
                   .Append("<td><select class=\"uc-scope\" aria-label=\"Applies to\">")
                   .Append($"<option value=\"app\">Any {Esc(row.ProcessName)} window</option>")
-                  .Append("<option value=\"window\">Only this window</option></select></td>")
+                  .Append("<option value=\"window\">Only this window</option>")
+                  // Offered only where there's a page to key on — the site is usually the truer
+                  // answer for a browser tab, whose title changes far more often than its address.
+                  .Append(host is not null ? $"<option value=\"site\">Any page on {Esc(host)}</option>" : string.Empty)
+                  .Append("</select></td>")
                   .Append("<td class=\"ex-pair\">").Append(ExcludeControls("uc-exclude", ExcludeScope.None, "Counted or excluded")).Append("</td>")
                   .Append("<td class=\"num\"><button class=\"uc-save\" type=\"button\">Save rule</button></td>");
             }
@@ -1187,7 +1196,8 @@ public static class HtmlReportWriter
         .rl input.rl-in:focus { outline:none; border-color:var(--accent); }
         .rl-cat { width:130px; }
         .rl-proc { width:130px; }
-        .rl-title { width:230px; }
+        .rl-title { width:200px; }
+        .rl-url { width:180px; }
         .rl-client { width:100px; }
         .rl-ex-yes { color:var(--accent); font-weight:600; }
         .rl .ex-mode,.rl .ex-scope { font-size:12px; padding:3px 5px; }
@@ -1544,10 +1554,10 @@ public static class HtmlReportWriter
         var newVal=function(c){var i=bar.querySelector(c);return i?i.value.trim():'';};
         var cat=newVal('.rl-new-cat');
         if(!cat){var f=bar.querySelector('.rl-new-cat');if(f)f.focus();return;}
-        var proc=newVal('.rl-new-proc'),ti=newVal('.rl-new-title');
-        if(!proc&&!ti){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
-        post({type:'ruleAdd',category:cat,process:proc,title:ti,client:newVal('.rl-new-client'),
-        excludeFrom:sel(bar,'rl-new-exclude')});
+        var proc=newVal('.rl-new-proc'),ti=newVal('.rl-new-title'),ur=newVal('.rl-new-url');
+        if(!proc&&!ti&&!ur){var f2=bar.querySelector('.rl-new-proc');if(f2)f2.focus();return;}
+        post({type:'ruleAdd',category:cat,process:proc,title:ti,url:ur,
+        client:newVal('.rl-new-client'),excludeFrom:sel(bar,'rl-new-exclude')});
         bar.querySelectorAll('input').forEach(function(i){i.value='';});
         bar.querySelectorAll('select').forEach(function(s){s.selectedIndex=0;});
         // Resetting the mode select back to Include leaves the scope beside it still listing
@@ -1560,8 +1570,8 @@ public static class HtmlReportWriter
         b=t.closest('.rl-ok');
         if(b){var r=b.closest('tr.rl');
         post({type:'ruleUpdate',id:r.getAttribute('data-i'),key:r.getAttribute('data-id'),
-        category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),client:val(r,'rl-client'),
-        excludeFrom:sel(r,'rl-exclude')});
+        category:val(r,'rl-cat'),process:val(r,'rl-proc'),title:val(r,'rl-title'),url:val(r,'rl-url'),
+        client:val(r,'rl-client'),excludeFrom:sel(r,'rl-exclude')});
         r.classList.remove('editing');}});
         document.addEventListener('keydown',function(e){
         var r=e.target.closest?e.target.closest('tr.rl.editing'):null;if(!r)return;
@@ -1683,7 +1693,7 @@ public static class HtmlReportWriter
         if(!v&&!ex){if(c)c.focus();return;}
         if(!window.chrome||!window.chrome.webview)return;
         b.disabled=true;b.textContent='Saved';
-        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),scope:s?s.value:'app',category:v,excludeFrom:ex});});
+        window.chrome.webview.postMessage({type:'rule',process:r.getAttribute('data-p'),title:r.getAttribute('data-t'),url:r.getAttribute('data-u'),scope:s?s.value:'app',category:v,excludeFrom:ex});});
         })();
         """;
 

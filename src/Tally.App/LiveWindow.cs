@@ -372,15 +372,22 @@ public sealed class LiveWindow : Form
         var category = msg.Category?.Trim() is { Length: > 0 } typed
             ? typed
             : excludeFrom is not ExcludeScope.None ? ExcludedCategory : null;
-        if (category is null || (process.Length == 0 && title.Length == 0))
+        // A site rule keys on the page alone, so it needs one but needs neither of the other two.
+        var url = Decode(msg.Url);
+        var forSite = string.Equals(msg.Scope, "site", StringComparison.OrdinalIgnoreCase);
+        if (category is null || (forSite ? url is null : process.Length == 0 && title.Length == 0))
             return;
 
         try
         {
-            var match = string.Equals(msg.Scope, "window", StringComparison.OrdinalIgnoreCase)
-                ? RuleMatch.Window
-                : RuleMatch.App;
-            var rule = RuleDraft.Create(process, title, match, category, ExistingRuleIds(), excludeFrom);
+            var match = msg.Scope?.ToLowerInvariant() switch
+            {
+                "window" => RuleMatch.Window,
+                "site" => RuleMatch.Site,
+                _ => RuleMatch.App,
+            };
+            var rule = RuleDraft.Create(
+                process, title, match, category, ExistingRuleIds(), excludeFrom, url);
             RulesFile.AddRule(TallyPaths.RulesPath, rule);
             Log.Info($"Saved classification rule '{rule.Id}' ({category}{ExcludeSuffix(excludeFrom)}) from the live view");
             Note($"rule saved — {category}{ExcludeSuffix(excludeFrom)}");
@@ -469,19 +476,20 @@ public sealed class LiveWindow : Form
             var category = msg.Category?.Trim();
             var process = NullIfEmpty(msg.Process);
             var title = NullIfEmpty(msg.Title);
+            var url = NullIfEmpty(msg.Url);
             if (string.IsNullOrEmpty(category))
             {
                 Note("a rule needs a category — nothing saved");
                 return;
             }
 
-            if (process is null && title is null)
+            if (process is null && title is null && url is null)
             {
-                Note("a rule needs an app or window pattern — nothing saved");
+                Note("a rule needs an app, window or page pattern — nothing saved");
                 return;
             }
 
-            if (BadPattern(process) is not null || BadPattern(title) is not null)
+            if (BadPattern(process) is not null || BadPattern(title) is not null || BadPattern(url) is not null)
             {
                 Note("that pattern isn't a valid regex — nothing saved");
                 return;
@@ -492,6 +500,7 @@ public sealed class LiveWindow : Form
                 Category = category,
                 ProcessPattern = process,
                 TitlePattern = title,
+                UrlPattern = url,
                 Client = NullIfEmpty(msg.Client),
                 ExcludeFrom = ScopeOf(msg),
             };
@@ -553,7 +562,7 @@ public sealed class LiveWindow : Form
 
     // "Add rule" from the Rules tab: a hand-written rule, validated like an edit (category, at
     // least one pattern, patterns compile), placed by the same specificity logic Save-rule uses —
-    // a window pattern to the top, an app-only rule to the bottom.
+    // a window pattern to the top, a page rule after those, an app-only rule to the bottom.
     private void AddRule(EditMessage msg)
     {
         try
@@ -561,19 +570,20 @@ public sealed class LiveWindow : Form
             var category = msg.Category?.Trim();
             var process = NullIfEmpty(msg.Process);
             var title = NullIfEmpty(msg.Title);
+            var url = NullIfEmpty(msg.Url);
             if (string.IsNullOrEmpty(category))
             {
                 Note("a rule needs a category — nothing added");
                 return;
             }
 
-            if (process is null && title is null)
+            if (process is null && title is null && url is null)
             {
-                Note("a rule needs an app or window pattern — nothing added");
+                Note("a rule needs an app, window or page pattern — nothing added");
                 return;
             }
 
-            if (BadPattern(process) is not null || BadPattern(title) is not null)
+            if (BadPattern(process) is not null || BadPattern(title) is not null || BadPattern(url) is not null)
             {
                 Note("that pattern isn't a valid regex — nothing added");
                 return;
@@ -584,6 +594,7 @@ public sealed class LiveWindow : Form
                 Id = RuleDraft.ManualId(category, ExistingRuleIds()),
                 ProcessPattern = process,
                 TitlePattern = title,
+                UrlPattern = url,
                 Category = category,
                 Client = NullIfEmpty(msg.Client),
                 ExcludeFrom = ScopeOf(msg),
@@ -944,7 +955,8 @@ public sealed class LiveWindow : Form
     private sealed record EditMessage(
         string? Type, string? Key, string? Id, string? Value,
         string? Process, string? Title, string? Scope, string? Category, string? Client,
-        string? Start, string? Stop, string? Times, string? Retention, string? ExcludeFrom = null);
+        string? Start, string? Stop, string? Times, string? Retention, string? ExcludeFrom = null,
+        string? Url = null);
 
     /// <summary>Shows a short-lived note beside the live status, so a saved edit is visibly
     /// acknowledged instead of being erased by the next refresh a moment later.</summary>

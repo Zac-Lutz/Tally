@@ -126,6 +126,26 @@ Everything stays on this machine. No cloud, no telemetry.
   dropping whole lines, not by truncating, so a note too long for the importer loses its least
   important line rather than ending mid-word. Editing one field no longer rewrites another: the
   fields stopped being derived from each other the moment they stopped repeating each other.
+- **A rule can match the page, and specificity gained a middle tier because of it.** `urlPattern`
+  joins `processPattern` and `titlePattern` as a third conjunct — every pattern a rule carries
+  must match — and it reads the address as stored, host and path with no query string. It is the
+  sturdier way to recognise a web app: a tab's title changes with every click while its address
+  holds still, which is exactly why the triage tab now offers "any page on this site" as a third
+  scope and drafts it with no app or title pattern at all (the same page in a second browser is
+  the same work). A rule naming a page can never match a non-browser block, because a null page
+  isn't something a pattern can be true of.
+  <br>
+  Placement is the subtle part. Rules were sorted into two tiers — title rules on top, app rules
+  at the bottom — and a site rule belongs between them: broader than one window, narrower than a
+  whole app. Dropping it on top instead would have been quietly destructive, because a
+  `^halo\.lutz\.us` rule would outrank the breadcrumb-title rule that reads the ticket number out
+  of a Halo window, and the tickets would stop being extracted with nothing to show that anything
+  had changed. `WithRule` therefore inserts a page rule after the last title rule, falling back to
+  appending when there are none.
+  <br>
+  When a rule reads both a title and a page, the title's captures win and the page fills the gaps:
+  the title is the more specific evidence, and a rule usually carries a page pattern to say
+  *where* while the title says *what*.
 - **Halo ticket numbers do not come from URLs.** Halo carries the ticket in the query string
   (`/ticket?id=…`), which `UrlSanitizer` strips by design, so every Halo ticket page stores as
   bare `halo.lutz.us/ticket`. Breadcrumb-title capture already reads those numbers and remains
