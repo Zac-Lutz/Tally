@@ -104,6 +104,16 @@ Everything stays on this machine. No cloud, no telemetry.
   each of the three entry points (tray, `--live`, `--report`) rather than threaded through every
   caller of `Normalize` — which is also why the test suite runs serially: a test configuring a
   profile was otherwise changing what a parallel rollup test saw.
+- **A line can be dropped from the export, and dropping it is permanent within the review.** Some
+  of what a day honestly records — a sign-in page, a stray tray window — is real time with no
+  business on a timesheet, so **Remove** (and the Delete key) takes the entry out. It is removed
+  from the backing list rather than flagged, because the window's whole promise is that it shows
+  exactly what the file will carry, and a struck-through row that still sits in the list quietly
+  breaks that promise. The grid is rebuilt rather than patched after a removal: rows are keyed by
+  position in the backing list, so every row after the removed one would otherwise point at the
+  wrong entry. There is no undo — Cancel discards the whole review — and Export disables itself
+  once nothing is left, with the summary saying which of the two empties it is (removed
+  everything, or narrowed the range past everything).
 - **An export entry says each thing once.** The title is the slot's category and the note is one
   activity per line, longest first — because the entry already carries its category, ticket and
   hours as fields, and a note reading "Development - Agent memory" spent its whole length

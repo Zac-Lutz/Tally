@@ -9,13 +9,12 @@ public sealed record ExportSelection(IReadOnlyList<ExportEntry> Entries, TimeOnl
 
 /// <summary>
 /// The export window: choose which slice of the day to file, see exactly the entries the file
-/// will carry — times, hours, ticket, title, description — and edit any of them before anything
-/// is written, so what arrives in att is ready to review and log.
+/// will carry — times, hours, ticket, title, description — and edit or drop any of them before
+/// anything is written, so what arrives in att is ready to review and log.
 /// <para>
-/// The grid always shows the current range's entries; edits live on the entries themselves, so
-/// narrowing or widening the range never loses them. A title or ticket edit recomposes the
-/// description automatically until the description itself is hand-edited — then the reviewer's
-/// text wins.
+/// The grid always shows the current range's entries; edits and removals live on the entries
+/// themselves, so narrowing or widening the range neither loses an edit nor resurrects a removed
+/// line. Each field stands alone — changing one never rewrites another.
 /// </para>
 /// </summary>
 public sealed class ExportRangeDialog : Form
@@ -39,6 +38,7 @@ public sealed class ExportRangeDialog : Form
     private readonly Label _summary;
     private readonly Label _replaceNote;
     private readonly DataGridView _grid = new();
+    private Button _export = null!;
     private bool _rebinding;
 
     private const int ColTime = 0;
@@ -46,6 +46,7 @@ public sealed class ExportRangeDialog : Form
     private const int ColTicket = 2;
     private const int ColTitle = 3;
     private const int ColNote = 4;
+    private const int ColRemove = 5;
 
     /// <summary>The chosen slice — both null when the whole day is selected.</summary>
     public TimeOnly? From => _wholeDay.Checked ? null : Snap(_from.Value);
@@ -117,7 +118,7 @@ public sealed class ExportRangeDialog : Form
 
         Controls.Add(new Label
         {
-            Text = "This is exactly what the file will carry — edit hours, ticket, title, or description in place; each stands on its own, so changing one never rewrites another. The description is one line per activity the time went to, longest first. An entry belongs to the window it started in, so two exports never count the same meeting twice.",
+            Text = "This is exactly what the file will carry — edit hours, ticket, title, or description in place; each stands on its own, so changing one never rewrites another. Remove (or the Delete key) drops a line from the export entirely. The description is one line per activity the time went to, longest first. An entry belongs to the window it started in, so two exports never count the same meeting twice.",
             ForeColor = MutedFg,
             AutoSize = false,
             Location = new Point(20, 466),
@@ -136,17 +137,17 @@ public sealed class ExportRangeDialog : Form
         };
         Controls.Add(_replaceNote);
 
-        var export = MakeButton("Export…");
-        export.SetBounds(756, 518, 92, 30);
-        export.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        export.DialogResult = DialogResult.OK;
+        _export = MakeButton("Export…");
+        _export.SetBounds(756, 518, 92, 30);
+        _export.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+        _export.DialogResult = DialogResult.OK;
         var cancel = MakeButton("Cancel");
         cancel.SetBounds(856, 518, 64, 30);
         cancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         cancel.DialogResult = DialogResult.Cancel;
-        Controls.Add(export);
+        Controls.Add(_export);
         Controls.Add(cancel);
-        AcceptButton = export;
+        AcceptButton = _export;
         CancelButton = cancel;
 
         Sync();
@@ -196,10 +197,74 @@ public sealed class ExportRangeDialog : Form
         // what is about to be sent.
         note.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
         _grid.Columns.Add(note);
+
+        // Dropping a line is part of reviewing it: some of what a day records — a sign-in page, a
+        // stray tray window — is real time that still has no business on a timesheet.
+        var remove = new DataGridViewButtonColumn
+        {
+            HeaderText = string.Empty,
+            Text = "Remove",
+            UseColumnTextForButtonValue = true,
+            Width = 78,
+            FlatStyle = FlatStyle.Flat,
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            Resizable = DataGridViewTriState.False,
+        };
+        remove.DefaultCellStyle.BackColor = InputBg;
+        remove.DefaultCellStyle.ForeColor = Fg;
+        remove.DefaultCellStyle.SelectionBackColor = InputBg;
+        remove.DefaultCellStyle.SelectionForeColor = Fg;
+        // Left to itself the button fills a cell, and a six-line description makes a tall one.
+        remove.DefaultCellStyle.Padding = new Padding(4, 4, 4, 4);
+        _grid.Columns.Add(remove);
+
         _grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
         _grid.CellValueChanged += OnCellValueChanged;
         _grid.EditingControlShowing += OnEditingControlShowing;
+        _grid.CellClick += OnCellClick;
+        _grid.KeyDown += OnGridKeyDown;
+    }
+
+    private void OnCellClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex >= 0 && e.ColumnIndex == ColRemove)
+            RemoveRow(e.RowIndex);
+    }
+
+    // Delete removes the current row too — the same thing the button does, for anyone clearing
+    // several lines in a row.
+    private void OnGridKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Delete || _grid.IsCurrentCellInEditMode || _grid.CurrentCell is null)
+            return;
+
+        e.Handled = true;
+        RemoveRow(_grid.CurrentCell.RowIndex);
+    }
+
+    /// <summary>
+    /// Takes a line out of the export for good. The row's entry is dropped from the backing list
+    /// rather than hidden, so it stays gone when the range changes — and because every other row
+    /// is keyed by its position in that list, the grid is rebuilt rather than patched.
+    /// </summary>
+    private void RemoveRow(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= _grid.Rows.Count)
+            return;
+
+        if (_grid.Rows[rowIndex].Tag is not int index || index < 0 || index >= _all.Count)
+            return;
+
+        _all.RemoveAt(index);
+        Sync();
+
+        // Keep the keyboard where the list continues, so Delete can be pressed again.
+        if (_grid.Rows.Count > 0)
+        {
+            var next = Math.Min(rowIndex, _grid.Rows.Count - 1);
+            _grid.CurrentCell = _grid.Rows[next].Cells[ColTitle];
+        }
     }
 
     // A cell holding several lines needs an editor that can hold several lines; the default
@@ -233,13 +298,21 @@ public sealed class ExportRangeDialog : Form
         _replaceNote.Visible = custom;
 
         var entries = Selected;
-        _summary.Text = entries.Count == 0
-            ? "Nothing starts inside that window."
-            : $"{entries.Count} {(entries.Count == 1 ? "entry" : "entries")} · {entries.Sum(e => e.Hours):0.00} h";
+        _summary.Text = SummaryText(entries);
         _summary.ForeColor = entries.Count == 0 ? WarnFg : Accent;
+        _export.Enabled = entries.Count > 0;
 
         Rebind(entries);
     }
+
+    // An empty list means one of two different things, and saying which saves the reader working
+    // out whether they narrowed the range too far or removed the last line.
+    private string SummaryText(IReadOnlyList<ExportEntry> entries)
+        => entries.Count > 0
+            ? $"{entries.Count} {(entries.Count == 1 ? "entry" : "entries")} · {entries.Sum(e => e.Hours):0.00} h"
+            : _all.Count == 0
+                ? "Nothing left to export — every line was removed."
+                : "Nothing starts inside that window.";
 
     private void Rebind(IReadOnlyList<ExportEntry> entries)
     {
@@ -326,9 +399,8 @@ public sealed class ExportRangeDialog : Form
     private void Sync2()
     {
         var entries = Selected;
-        _summary.Text = entries.Count == 0
-            ? "Nothing starts inside that window."
-            : $"{entries.Count} {(entries.Count == 1 ? "entry" : "entries")} · {entries.Sum(e => e.Hours):0.00} h";
+        _summary.Text = SummaryText(entries);
+        _export.Enabled = entries.Count > 0;
     }
 
     protected override void OnHandleCreated(EventArgs e)

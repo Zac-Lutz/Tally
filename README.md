@@ -70,6 +70,11 @@ so what arrives in att is ready to review and log, not something to clean up the
 stands on its own, so changing one never rewrites another, and the entry count and hours track
 your edits live. The chosen window lands in the filename (`tally-2026-08-13-0800-1200.json`).
 
+**Drop what doesn't belong.** **Remove** on any row — or the **Delete** key — takes that line out
+of the export entirely. Some of what a day records is real time that still has no business on a
+timesheet, and the count and hours at the top update as you go. A removed line stays removed even
+if you change the range afterwards; **Cancel** throws the whole review away and starts over.
+
 **What an entry says.** The **title** is the category — *Development*, *Halo*, *Admin*. The
 **description** is what the time actually went on: one line per activity, longest first, with
 anything under a minute left out (if everything was that brief, the biggest one still stands for
