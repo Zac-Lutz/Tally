@@ -40,12 +40,14 @@ public sealed class LiveWindow : Form
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
     private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 5, 4, 0) };
     private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9f), Margin = new Padding(0, 13, 18, 0) };
-    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(12, 11, 0, 0) };
+    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 11, 0, 0) };
     private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 4, 14, 0) };
     private readonly Button _prevDay = ArrowButton("❮", "Previous day");
     private readonly Button _dateButton = ChromeButton("Today", "Pick a day");
     private readonly Button _nextDay = ArrowButton("❯", "Next day");
     private readonly Button _todayButton = ChromeButton("Today", "Back to today");
+    /// <summary>Breathing room between the day picker and the buttons that act on the day.</summary>
+    private readonly Label _navGap = new() { AutoSize = false, Size = new Size(10, 1), Margin = Padding.Empty };
     private bool _ready;
     private bool _refreshing;
     private string? _note;
@@ -111,18 +113,32 @@ public sealed class LiveWindow : Form
         Load += (_, _) => InitializeWebViewAsync();
     }
 
-    // One top bar: "Tally", the day picker, and the live-updated status on the LEFT; the running
-    // timer's elapsed time, then export/snapshot on the RIGHT. Starting and naming a timer lives in
-    // the Timers tab; only the elapsed figure stays up here, so a running timer is visible from
-    // whichever tab you're on. The day picker sits in the chrome rather than in a tab because it
-    // re-frames the whole window, tabs included — every tab below is about the day named up here.
+    // One top bar: "Tally", the version, and the live-updated status on the LEFT; the running
+    // timer's elapsed time, the day picker, then export/snapshot on the RIGHT. Starting and naming
+    // a timer lives in the Timers tab; only the elapsed figure stays up here, so a running timer is
+    // visible from whichever tab you're on.
+    //
+    // The day picker sits in the chrome rather than in a tab because it re-frames the whole window,
+    // tabs included — every tab below is about the day named up here. It sits beside Export and
+    // Snapshot because those two act on exactly that day, so the three read as one cluster: choose
+    // the day, then do the thing to it.
     private Panel BuildTopBar()
     {
         _prevDay.Click += (_, _) => StepDay(-1);
         _nextDay.Click += (_, _) => StepDay(+1);
         _dateButton.Click += (_, _) => ShowDatePicker();
         _todayButton.Click += (_, _) => GoTo(null);
-        _todayButton.Visible = false;   // nothing to return to until the day is moved
+        // Today stays visible and greys out instead of disappearing. The group is right-docked, so
+        // it grows leftwards — a button that came and went would shift the arrows and the date
+        // roughly ninety pixels under the cursor mid-click, exactly when you are stepping back
+        // several days in a row.
+        _todayButton.Enabled = false;
+
+        // Fixed width for the same reason, and sized for the longest label it can hold
+        // ("Wednesday · 08-12-2026"): left to size itself, the group would still breathe by the
+        // difference between "Today" and a weekday name every time the day changed.
+        _dateButton.AutoSize = false;
+        _dateButton.Size = new Size(172, 27);
 
         var snapshot = new Button { Text = "Generate snapshot", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
         StyleButton(snapshot);
@@ -147,10 +163,6 @@ public sealed class LiveWindow : Form
         };
         left.Controls.Add(_titleLabel);
         left.Controls.Add(_versionLabel);
-        left.Controls.Add(_prevDay);
-        left.Controls.Add(_dateButton);
-        left.Controls.Add(_nextDay);
-        left.Controls.Add(_todayButton);
         left.Controls.Add(_statusLabel);
 
         var right = new FlowLayoutPanel
@@ -163,6 +175,11 @@ public sealed class LiveWindow : Form
             Padding = new Padding(0, 10, 14, 0),
         };
         right.Controls.Add(_timerElapsed);
+        right.Controls.Add(_prevDay);
+        right.Controls.Add(_dateButton);
+        right.Controls.Add(_nextDay);
+        right.Controls.Add(_todayButton);
+        right.Controls.Add(_navGap);
         right.Controls.Add(export);
         right.Controls.Add(snapshot);
 
@@ -272,7 +289,7 @@ public sealed class LiveWindow : Form
         _dateButton.Text = DayNavigation.Label(date, today);
         _prevDay.Enabled = DayNavigation.CanGoBack(date, _earliest, today);
         _nextDay.Enabled = DayNavigation.CanGoForward(date, today);
-        _todayButton.Visible = !_followToday;
+        _todayButton.Enabled = !_followToday;
         Text = _followToday ? "Tally — Live" : $"Tally — {DayNavigation.Label(date, today)}";
     }
 

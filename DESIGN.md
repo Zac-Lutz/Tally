@@ -294,7 +294,14 @@ Everything stays on this machine. No cloud, no telemetry.
   arrows, a date, and a Today button, and every tab, edit, export and snapshot below reads that one
   date. Putting the picker in the chrome rather than in a tab is the whole point — it re-frames the
   entire window, so a tab-local control would leave the other ten tabs quietly showing a different
-  day. Following today is kept as a *rule* (`_followToday`) rather than a stored date, so a window
+  day. It sits at the **right**, beside Export timesheet and Generate snapshot, because those two
+  act on exactly the day it names: choose the day, then do the thing to it, reading as one cluster.
+  That placement costs two constraints, both about a group that is right-docked and therefore grows
+  *leftwards*: the Today button stays visible and greys out rather than appearing and disappearing
+  (which shifted the arrows ~90px under the cursor, precisely when stepping back several days in a
+  row), and the date button is fixed-width, sized for its longest label, so the group does not
+  breathe by the difference between "Today" and "Wednesday" as the day changes.
+  Following today is kept as a *rule* (`_followToday`) rather than a stored date, so a window
   left open overnight still rolls over on its own, exactly as it did when today was the only
   option; re-opening the window returns to today, because the tray icon means "how is today
   going", not "resume where I was last week".

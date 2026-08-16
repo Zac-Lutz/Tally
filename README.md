@@ -43,8 +43,8 @@ window showing the same rollup / timesheet / timeline / tickets / calls / timers
 
 ### Looking at an earlier day
 
-The top bar has a day picker: **❮** and **❯** step a day at a time, the date between them opens a
-calendar, and **Today** brings you back. Everything below follows — every tab, the ticket cells you
+The top bar has a day picker, next to **Export timesheet**: **❮** and **❯** step a day at a time,
+the date between them opens a calendar, and **Today** brings you back. Everything below follows — every tab, the ticket cells you
 can type in, **Export timesheet**, and **Generate snapshot** — so filing yesterday's time is the
 same job as filing today's. In the calendar, days outside what's still recorded are greyed out, so
 it also shows how far back your data goes (see [How long data is kept](#how-long-data-is-kept)).
