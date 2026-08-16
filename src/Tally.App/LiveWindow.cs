@@ -134,12 +134,6 @@ public sealed class LiveWindow : Form
         // several days in a row.
         _todayButton.Enabled = false;
 
-        // Fixed width for the same reason, and sized for the longest label it can hold
-        // ("Wednesday · 08-12-2026"): left to size itself, the group would still breathe by the
-        // difference between "Today" and a weekday name every time the day changed.
-        _dateButton.AutoSize = false;
-        _dateButton.Size = new Size(172, 27);
-
         var snapshot = new Button { Text = "Generate snapshot", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
         StyleButton(snapshot);
         snapshot.Click += (_, _) => GenerateSnapshot();
@@ -147,6 +141,22 @@ public sealed class LiveWindow : Form
         var export = new Button { Text = "Export timesheet", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
         StyleButton(export);
         export.Click += (_, _) => ExportTimesheet();
+
+        // The picker's three controls are sized by hand — an auto-sized button never goes below the
+        // stock 75px, which would leave a chevron adrift in a button five times its width, and the
+        // date needs a fixed width so the right-docked group does not breathe by the difference
+        // between "Today" and a weekday name as the day changes (it is sized for the longest label
+        // it can hold, "Wednesday · 08-12-2026").
+        //
+        // Their HEIGHT is taken from the auto-sized buttons beside them rather than written down,
+        // so the row lines up along the bottom as well as the top — and still does at a different
+        // font size or display scaling, where a hard-coded height would quietly fall short.
+        // PreferredSize is what the flow panel goes on to use, so it is the same number.
+        var buttonHeight = export.PreferredSize.Height;
+        _prevDay.Height = buttonHeight;
+        _nextDay.Height = buttonHeight;
+        _dateButton.AutoSize = false;
+        _dateButton.Size = new Size(DateWidth, buttonHeight);
 
         // "Tally" (in the accent color) with the running version to its right, so the current
         // version is always visible at a glance (e.g. "v1.2.3", or "dev" for a from-source build).
@@ -222,10 +232,13 @@ public sealed class LiveWindow : Form
         return b;
     }
 
+    /// <summary>The day picker's fixed widths; the height comes from its neighbours in BuildTopBar.</summary>
+    private const int ArrowWidth = 32;
+    private const int DateWidth = 172;
+
     /// <summary>
-    /// A day arrow. Sized explicitly because an auto-sized WinForms button never goes below the
-    /// stock 75px, which would leave a chevron floating in a button five times its width; the
-    /// description is the accessible name, since a glyph has no word in it for a screen reader.
+    /// A day arrow. The description is the accessible name, since a glyph has no word in it for a
+    /// screen reader — and it is what the UI-automation checks press the button by.
     /// </summary>
     private static Button ArrowButton(string glyph, string description)
     {
@@ -233,7 +246,7 @@ public sealed class LiveWindow : Form
         {
             Text = glyph,
             AutoSize = false,
-            Size = new Size(32, 27),
+            Size = new Size(ArrowWidth, 27),   // height replaced in BuildTopBar
             Font = new Font("Segoe UI", 10f),
             Margin = new Padding(0, 1, 4, 0),
             Cursor = Cursors.Hand,
