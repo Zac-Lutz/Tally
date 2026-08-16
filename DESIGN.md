@@ -483,6 +483,97 @@ correctly; rendered in local time.
    did I do on Thursday" — and needs its own answers for what the Timeline, the Timers tab and
    the export mean across several days before it is worth building.
 
+## Shelf — considered, not built
+
+Candidates from a survey of what other trackers do (ManicTime, Toggl, Harvest, Clockify,
+RescueTime, Timing, Memtime), measured against this app's one goal: accurate, nearly effortless
+end-of-day time entry. Recorded 2026-08-16 so the findings and the traps below are not
+rediscovered. Nothing here is committed work.
+
+### Knowing what has already been logged
+
+The largest gap. Tally writes an export and forgets it, so it cannot say "Friday is still
+unfiled", nor "Halo holds 6.5h for Tuesday and I saw 8h". The day picker's calendar is the
+obvious place to show it — days marked filed / partly filed / untouched — which is why this
+became worth investigating the moment that calendar existed.
+
+**The read is already solved, just not here.** In the att repo (as of 2026-08-16)
+`HaloPsaApi`'s `HaloTimesheetRepository.GetTimesheetEventsAsync(agentId, start, end)` calls
+Halo's `TimesheetEvent?start_date=…&end_date=…&agent_id=…`, and `GetWeeklySubmissionStatusAsync`
+answers whether a week was submitted. So the question is not whether the data can be had; it is
+how a deliberately local-only app should reach it. Three routes, cheapest first:
+
+1. **Remember our own exports.** No integration at all: record each export (day, entry count,
+   hours, file, timestamp) and mark the calendar from it. Today an export leaves only a line in
+   `tally.log`, which nothing can query. Zero credentials, no network, no new dependency — and
+   it stands on its own whatever happens to 2 and 3. Its honest limit is that it proves a file
+   was written, not that the time reached Halo, so the calendar must say "exported", never
+   "logged".
+2. **Ask att.** Att.Api's `ITimeTrackingProvider` is write-only today (create bucket, ensure the
+   agent's month task, log time), so this needs a new read endpoint there. It reuses the existing
+   delegated sign-in and keeps Halo credentials off this machine.
+3. **Ask Halo directly.** Least work, worst shape: a PSA credential living in a personal local
+   app, and a second place that has to track Halo's API. Rejected unless 2 proves impossible.
+
+Route 1 first, on its own merits; 2 is a separate decision to take afterwards, with the
+local-only principle as the thing being traded.
+
+### Changing what a stretch was, without writing a rule
+
+Today the only way to move an activity into another category is a **rule**, which applies to
+every day from here — and that answers a different question from "that particular hour was
+actually something else". Every other tracker has the one-off; this one does not.
+
+The Timeline is a **table** (one row per block: category, app, detail, start, end, time), not a
+graphical bar, so the drag-a-range gesture other tools use has nothing to grab. The shape that
+fits what is already here is an **editable Category cell**, exactly like the Rollup's Ticket
+cell: one-off, that day only. The whole path already exists and works — an input in the page, a
+message to the host, a per-day JSON file, and a stable key that survives the five-second
+recompute.
+
+**The trap.** `TicketOverrideKey.Compose` puts the category first, so a block whose category is
+overridden gets a *different* key and silently orphans any ticket typed on that row. The fix is
+the rule that file already states for tickets — build the key from the ORIGINAL automatic
+classification, never from an override — but it has to be applied deliberately, because the
+category override is the first thing that could move a key that tickets assume is fixed.
+
+The larger version — dragging on the Timesheet calendar, splitting and merging blocks — needs
+classified blocks persisted, which is the still-open half of slice 5.
+
+### The rest, one line each
+
+- **Week or month view + trends** — see slice 7; the day picker built the loading path for it.
+- **Read the Outlook/Teams calendar** — meetings are the hardest thing to name at 5pm, and the
+  calendar already holds the title, the client and the attendees. Tally sees that a call
+  happened and has to guess what it was. Needs Microsoft Graph from a local app.
+- **Prompt on return from idle** — "you were away 40 minutes; what was that?", caught while it
+  is still remembered rather than at the end of the day.
+- **Search across days** — "when did I last touch ticket 495308?". Everything is per-day today.
+- **Suggest a rule** — after the same window is hand-corrected N times, offer the rule instead
+  of waiting to be asked. Pairs naturally with the one-off category override above.
+- **Billable vs internal** — categories do not separate what bills from what does not; a
+  utilisation figure falls out of the distinction, and `excludeFrom` is not it (that is about
+  which account of the day a thing appears in, not whether it earns).
+- **A daily nudge** — the scheduled report writes a file nobody is told about; three lines and
+  an unfiled count sent to Teams would be read.
+- **Resume a recent timer** in one click, rather than retyping its name.
+- **Periodic screenshots as a memory aid** — local, deletable, never uploaded. What ManicTime is
+  actually loved for: "what was on screen at 2pm".
+- **CSV / whole-history export, and a restorable backup** — the JSON export is per-day and
+  shaped for the att importer; there is no way to get everything out, or to put it back.
+- **Expected hours and non-working days** — so a holiday does not present as twenty-four hours
+  of lost time.
+- **Merging a second machine** — the export carries a `machines` field but only ever this one;
+  a laptop day and a desktop day cannot currently be added together.
+
+### Deliberately not
+
+- **Productivity scores, focus ratings, distraction alerts.** Activity counting was removed on
+  purpose (commit `58c8497`) because it was a weak signal that invited judgement; scoring is the
+  same mistake with a bigger interface. This app reports what happened.
+- **Anything that reports on the user to someone else.** No team dashboards, no manager view.
+- **Cloud sync.** Local-only is a decision, not an unfinished feature.
+
 ## Packaging
 
 `Package-Tally.ps1` builds a Velopack `Setup.exe` (self-contained, per-user, no admin) for
