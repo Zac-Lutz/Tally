@@ -1,4 +1,4 @@
-using Tally.Core;
+﻿using Tally.Core;
 using Tally.Core.Models;
 using Xunit;
 
@@ -214,7 +214,7 @@ public class HtmlReportWriterTests
 
     [Fact]
     public void TicketsTab_SaysSoWhenNoTicketWasSeen()
-        => Assert.Contains("No tickets seen today",
+        => Assert.Contains("No tickets seen on this day",
             HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "A", "T")], [], []));
 
     [Fact]
@@ -667,12 +667,41 @@ public class HtmlReportWriterTests
     }
 
     [Fact]
+    public void TimersTab_OffersTheBackfillBarWithoutTheStopwatch_OnADayThatIsNotToday()
+    {
+        // How a past day renders: no running-timer panel (starting one would record against today),
+        // but the backfill bar stays — claiming an hour Tally missed yesterday is the whole reason
+        // to open yesterday.
+        var past = HtmlReportWriter.BuildMainInner(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], [], timerPanel: null);
+
+        Assert.Contains("tm-past-add", past);
+        Assert.DoesNotContain("class=\"tmbar\"", past);
+
+        // Today still gets both.
+        var today = HtmlReportWriter.BuildMainInner(
+            Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], [],
+            timerPanel: new TimerPanelState("Standup", null));
+
+        Assert.Contains("tm-past-add", today);
+        Assert.Contains("class=\"tmbar\"", today);
+    }
+
+    [Fact]
+    public void TimersTab_KeepsTheBackfillBarOutOfASavedReport()
+    {
+        // A file report is a record, not a working surface: nothing in it can be edited or claimed.
+        var file = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
+
+        Assert.DoesNotContain("tm-past-add", file);
+    }
+
+    [Fact]
     public void TimersTab_ShowsEmptyState_WhenNoTimers()
     {
         var md = HtmlReportWriter.BuildHtml(Date, [CB(0, 30, "Email", "Inbox - Outlook")], [], []);
 
         Assert.Contains("data-tab=\"timers\"", md);
-        Assert.Contains("No timers recorded today.", md);
+        Assert.Contains("No timers recorded on this day.", md);
     }
 
     [Fact]
@@ -682,7 +711,7 @@ public class HtmlReportWriterTests
 
         // The Calls tab still exists; its panel shows an empty state rather than being omitted.
         Assert.Contains("data-tab=\"calls\"", md);
-        Assert.Contains("No calls recorded today.", md);
+        Assert.Contains("No calls recorded on this day.", md);
     }
 
     [Fact]

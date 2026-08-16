@@ -38,16 +38,36 @@ public sealed class LiveWindow : Form
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = ChromeBg };
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = (int)RefreshInterval.TotalMilliseconds };
     private readonly System.Windows.Forms.Timer _timerTick = new() { Interval = 1000 };
-    private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 0, 4, 0) };
-    private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9f), Margin = new Padding(0, 8, 18, 0) };
-    private readonly Label _dateLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 10.5f), Margin = new Padding(0, 5, 12, 0) };
-    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(0, 6, 0, 0) };
+    private readonly Label _titleLabel = new() { Text = "Tally", AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 13f, FontStyle.Bold), Margin = new Padding(0, 5, 4, 0) };
+    private readonly Label _versionLabel = new() { Text = "", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9f), Margin = new Padding(0, 13, 18, 0) };
+    private readonly Label _statusLabel = new() { Text = "Starting…", AutoSize = true, ForeColor = MutedFg, Font = new Font("Segoe UI", 9.5f), Margin = new Padding(12, 11, 0, 0) };
     private readonly Label _timerElapsed = new() { AutoSize = true, ForeColor = Accent, Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold), Margin = new Padding(0, 4, 14, 0) };
+    private readonly Button _prevDay = ArrowButton("❮", "Previous day");
+    private readonly Button _dateButton = ChromeButton("Today", "Pick a day");
+    private readonly Button _nextDay = ArrowButton("❯", "Next day");
+    private readonly Button _todayButton = ChromeButton("Today", "Back to today");
     private bool _ready;
     private bool _refreshing;
     private string? _note;
     private DateTime _noteUntil;
     private string? _pendingTab;
+
+    /// <summary>
+    /// Whether the window is tracking the current day rather than a day the user picked. Tracking
+    /// is a rule, not a stored date, so a window left open past midnight rolls over on its own —
+    /// which is what it always did before there was anywhere else to go.
+    /// </summary>
+    private bool _followToday = true;
+    private DateOnly _pinnedDate = DateOnly.FromDateTime(DateTime.Now);
+
+    /// <summary>The first day still on record, so the back arrow stops where the data does. Read
+    /// from the database on the first refresh and after each move, since retention purges the
+    /// oldest days as the app runs.</summary>
+    private DateOnly _earliest = DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly _earliestReadOn = DateOnly.MinValue;
+
+    /// <summary>The day every tab, edit, export and snapshot in this window is about.</summary>
+    private DateOnly ViewDate => _followToday ? DateOnly.FromDateTime(DateTime.Now) : _pinnedDate;
 
     /// <summary>How long a saved-edit note stays beside the live status before it fades out.</summary>
     private const int NoteDuration = 8;
@@ -91,12 +111,19 @@ public sealed class LiveWindow : Form
         Load += (_, _) => InitializeWebViewAsync();
     }
 
-    // One top bar: "Tally", the date, and the live-updated status on the LEFT; the running timer's
-    // elapsed time, then export/snapshot/settings on the RIGHT. Starting and naming a timer lives in
+    // One top bar: "Tally", the day picker, and the live-updated status on the LEFT; the running
+    // timer's elapsed time, then export/snapshot on the RIGHT. Starting and naming a timer lives in
     // the Timers tab; only the elapsed figure stays up here, so a running timer is visible from
-    // whichever tab you're on.
+    // whichever tab you're on. The day picker sits in the chrome rather than in a tab because it
+    // re-frames the whole window, tabs included — every tab below is about the day named up here.
     private Panel BuildTopBar()
     {
+        _prevDay.Click += (_, _) => StepDay(-1);
+        _nextDay.Click += (_, _) => StepDay(+1);
+        _dateButton.Click += (_, _) => ShowDatePicker();
+        _todayButton.Click += (_, _) => GoTo(null);
+        _todayButton.Visible = false;   // nothing to return to until the day is moved
+
         var snapshot = new Button { Text = "Generate snapshot", AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 1, 8, 0), Cursor = Cursors.Hand };
         StyleButton(snapshot);
         snapshot.Click += (_, _) => GenerateSnapshot();
@@ -116,11 +143,14 @@ public sealed class LiveWindow : Form
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
             BackColor = ChromeBg,
-            Padding = new Padding(14, 15, 0, 0),
+            Padding = new Padding(14, 10, 0, 0),
         };
         left.Controls.Add(_titleLabel);
         left.Controls.Add(_versionLabel);
-        left.Controls.Add(_dateLabel);
+        left.Controls.Add(_prevDay);
+        left.Controls.Add(_dateButton);
+        left.Controls.Add(_nextDay);
+        left.Controls.Add(_todayButton);
         left.Controls.Add(_statusLabel);
 
         var right = new FlowLayoutPanel
@@ -157,6 +187,137 @@ public sealed class LiveWindow : Form
         b.FlatAppearance.MouseDownBackColor = Accent;
         b.MouseEnter += (_, _) => b.ForeColor = AccentFg;
         b.MouseLeave += (_, _) => b.ForeColor = b.Tag is Color c ? c : Fg;
+    }
+
+    /// <summary>A top-bar button in the window's own styling.</summary>
+    private static Button ChromeButton(string text, string description)
+    {
+        var b = new Button
+        {
+            Text = text,
+            AutoSize = true,
+            Padding = new Padding(8, 3, 8, 3),
+            Margin = new Padding(0, 1, 6, 0),
+            Cursor = Cursors.Hand,
+            AccessibleName = description,
+        };
+        StyleButton(b);
+        return b;
+    }
+
+    /// <summary>
+    /// A day arrow. Sized explicitly because an auto-sized WinForms button never goes below the
+    /// stock 75px, which would leave a chevron floating in a button five times its width; the
+    /// description is the accessible name, since a glyph has no word in it for a screen reader.
+    /// </summary>
+    private static Button ArrowButton(string glyph, string description)
+    {
+        var b = new Button
+        {
+            Text = glyph,
+            AutoSize = false,
+            Size = new Size(32, 27),
+            Font = new Font("Segoe UI", 10f),
+            Margin = new Padding(0, 1, 4, 0),
+            Cursor = Cursors.Hand,
+            AccessibleName = description,
+            TextAlign = ContentAlignment.MiddleCenter,
+        };
+        StyleButton(b);
+        return b;
+    }
+
+    // ---- Which day the window is showing ----------------------------------------------------
+
+    /// <summary>Steps a day at a time, stopping at today and at the first day still on record.</summary>
+    private void StepDay(int days) => GoTo(DayNavigation.Step(ViewDate, days, _earliest, DateOnly.FromDateTime(DateTime.Now)));
+
+    /// <summary>
+    /// Shows <paramref name="date"/> — or returns to following the current day when it is null,
+    /// which is what the Today button and a fresh window do. Everything the window can act on
+    /// (edits, export, snapshot) reads <see cref="ViewDate"/>, so this one call moves all of it.
+    /// </summary>
+    private void GoTo(DateOnly? date)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        if (date is { } picked && picked != today)
+        {
+            _followToday = false;
+            _pinnedDate = DayNavigation.Clamp(picked, _earliest, today);
+        }
+        else
+        {
+            _followToday = true;
+        }
+
+        // Moving is the moment to re-check how far back the data goes.
+        _earliestReadOn = DateOnly.MinValue;
+
+        // A finished day can't change, so the periodic refresh is switched off while one is shown:
+        // the only thing that moves it is an edit, and every edit already asks for a refresh.
+        if (_followToday)
+            _refreshTimer.Start();
+        else
+            _refreshTimer.Stop();
+
+        UpdateNavChrome();
+        _ = RefreshAsync();
+    }
+
+    /// <summary>The arrows, the date, and the window title, brought in line with the day shown.</summary>
+    private void UpdateNavChrome()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var date = ViewDate;
+        _dateButton.Text = DayNavigation.Label(date, today);
+        _prevDay.Enabled = DayNavigation.CanGoBack(date, _earliest, today);
+        _nextDay.Enabled = DayNavigation.CanGoForward(date, today);
+        _todayButton.Visible = !_followToday;
+        Text = _followToday ? "Tally — Live" : $"Tally — {DayNavigation.Label(date, today)}";
+    }
+
+    /// <summary>The calendar behind the date button, in the window's own colours.</summary>
+    private void ShowDatePicker()
+        => DayPicker.Show(
+            _dateButton, ViewDate, _earliest, DateOnly.FromDateTime(DateTime.Now),
+            new DayPickerTheme(ChromeBg, InputBg, Fg, MutedFg, Accent, AccentFg),
+            date => GoTo(date));
+
+    /// <summary>
+    /// The first day the database can still rebuild — the earliest recorded event or timer. Both
+    /// columns are indexed, so this is a seek rather than a scan; it is re-read on each move so a
+    /// retention purge that runs while the window is open shortens the range rather than offering
+    /// days whose events have gone.
+    /// </summary>
+    private async Task<DateOnly> EarliestRecordedDayAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        try
+        {
+            await using var db = new TallyDbContext(_dbOptions);
+            TallyDbContext.EnsureSchema(db);
+            var firstEvent = await db.Events.AsNoTracking()
+                .OrderBy(e => e.Timestamp).Select(e => (DateTimeOffset?)e.Timestamp).FirstOrDefaultAsync();
+            var firstTimer = await db.ManualTimers.AsNoTracking()
+                .OrderBy(t => t.Start).Select(t => (DateTimeOffset?)t.Start).FirstOrDefaultAsync();
+
+            var first = (firstEvent, firstTimer) switch
+            {
+                ({ } e, { } t) => e < t ? e : t,
+                ({ } e, null) => e,
+                (null, { } t) => t,
+                _ => (DateTimeOffset?)null,
+            };
+            // Nothing recorded yet reads as today: a range of one day, and both arrows off.
+            return first is { } start ? DateOnly.FromDateTime(start.ToLocalTime().DateTime) : today;
+        }
+        catch (Exception ex)
+        {
+            // Unknown rather than empty: opening the range wide shows some empty days, where
+            // closing it would hide real ones.
+            Log.Error("Couldn't read the first recorded day — allowing the last five years", ex);
+            return today.AddYears(-5);
+        }
     }
 
     // The timer changed — from the Timers tab, a hotkey, the tray, or the bubble. The top bar's
@@ -238,7 +399,18 @@ public sealed class LiveWindow : Form
         _refreshing = true;
         try
         {
-            var data = await ReportGenerator.ComputeAsync(_dbOptions, DateOnly.FromDateTime(DateTime.Now));
+            // How far back the arrows may go moves as days are recorded and as retention purges the
+            // oldest — but not between two ticks five seconds apart. Re-read once a day, and
+            // whenever the user moves, rather than on every refresh.
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            if (_earliestReadOn != today)
+            {
+                _earliest = await EarliestRecordedDayAsync();
+                _earliestReadOn = today;
+            }
+
+            var date = ViewDate;
+            var data = await ReportGenerator.ComputeAsync(_dbOptions, date);
             var categories = ReportGenerator.LoadCategoriesSafe();
 
             // Settings are re-read per refresh so the tab always shows the file's truth (a save
@@ -249,8 +421,12 @@ public sealed class LiveWindow : Form
                 current.ResolveAutoReportTimes().Select(t => t.ToString("HH:mm")).ToList(),
                 current.ResolveEventRetentionDays());
 
+            // The stopwatch belongs to now, so it is only offered on today: a Start button on a
+            // finished day would record against a different day than the one being read. Claiming
+            // past time, which does land on the day shown, stays available either way.
             var inner = HtmlReportWriter.BuildMainInner(data.Date, data.Blocks, data.Calls, data.Inactive,
-                timers: data.Timers, ticketOverrides: data.TicketOverrides, timerPanel: TimerPanel(),
+                timers: data.Timers, ticketOverrides: data.TicketOverrides,
+                timerPanel: date == today ? TimerPanel() : null,
                 rules: LoadRulesSafe(), categories: categories, palette: new CategoryPalette(categories),
                 settings: settingsPanel);
             await _webView.CoreWebView2.ExecuteScriptAsync($"window.tallyUpdate({JsonSerializer.Serialize(inner)})");
@@ -261,9 +437,13 @@ public sealed class LiveWindow : Form
                 await _webView.CoreWebView2.ExecuteScriptAsync(
                     $"window.tallyShowTab && window.tallyShowTab({JsonSerializer.Serialize(tab)})");
             }
-            _dateLabel.Text = $"{data.Date:MM-dd-yyyy} · {data.Date.DayOfWeek}";
+            UpdateNavChrome();
             var note = DateTime.Now < _noteUntil ? $" · {_note}" : null;
-            _statusLabel.Text = $"Live · updated {DateTime.Now:h:mm:ss tt}{note}";
+            // A finished day says so instead of claiming to be live: nothing new can arrive in it,
+            // and a clock ticking beside it would suggest otherwise.
+            _statusLabel.Text = date == today
+                ? $"Live · updated {DateTime.Now:h:mm:ss tt}{note}"
+                : $"Not live · a finished day{note}";
         }
         catch (Exception ex)
         {
@@ -288,7 +468,7 @@ public sealed class LiveWindow : Form
             if (msg.Type == "ticket" && !string.IsNullOrEmpty(msg.Key))
             {
                 var rowKey = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(msg.Key));
-                TicketOverrideStore.Set(DateOnly.FromDateTime(DateTime.Now), rowKey, msg.Value);
+                TicketOverrideStore.Set(ViewDate, rowKey, msg.Value);
                 _ = RefreshAsync();
             }
             else if (msg.Type == "timerName" && long.TryParse(msg.Id, out var timerId))
@@ -818,10 +998,10 @@ public sealed class LiveWindow : Form
     }
 
     /// <summary>
-    /// Records a timer over a past stretch of today — a claimed idle/locked period from the Lost
-    /// time tab, or a hand-entered one from the Timers tab for time Tally never saw. Recorded
-    /// timers must never overlap each other (or the one currently running): a timer claims its
-    /// whole span on the timesheet, so overlap would bill the same minute twice.
+    /// Records a timer over a past stretch of the day being shown — a claimed idle/locked period
+    /// from the Lost time tab, or a hand-entered one from the Timers tab for time Tally never saw.
+    /// Recorded timers must never overlap each other (or the one currently running): a timer claims
+    /// its whole span on the timesheet, so overlap would bill the same minute twice.
     /// </summary>
     private async Task AddPastTimerAsync(EditMessage msg)
     {
@@ -839,16 +1019,20 @@ public sealed class LiveWindow : Form
                 return;
             }
 
-            var today = DateOnly.FromDateTime(DateTime.Now);
-            var start = new DateTimeOffset(today.ToDateTime(from));
-            var end = new DateTimeOffset(today.ToDateTime(to));
+            // The claim lands on the day on screen, not on today — coming back to yesterday to
+            // account for an hour it missed is the reason the day picker exists.
+            var day = ViewDate;
+            var start = new DateTimeOffset(day.ToDateTime(from));
+            var end = new DateTimeOffset(day.ToDateTime(to));
             if (start >= DateTimeOffset.Now)
             {
                 Note("that timer hasn't happened yet — nothing added");
                 return;
             }
 
-            if (_timer.Active is { } running && start < DateTimeOffset.Now && end > running.StartedAt)
+            // A claim that ends before the running timer began cannot overlap it — which is every
+            // claim on an earlier day, so this check costs a past day nothing.
+            if (_timer.Active is { } running && end > running.StartedAt)
             {
                 Note("that overlaps the timer that's running right now — nothing added");
                 return;
@@ -869,7 +1053,7 @@ public sealed class LiveWindow : Form
                 await db.SaveChangesAsync();
             }
 
-            Log.Info($"Recorded past timer '{name}' {from:HH\\:mm}–{to:HH\\:mm} from the live view");
+            Log.Info($"Recorded past timer '{name}' {day:yyyy-MM-dd} {from:HH\\:mm}–{to:HH\\:mm} from the live view");
             Note($"claimed — {name}");
             await RefreshAsync();
         }
@@ -985,7 +1169,7 @@ public sealed class LiveWindow : Form
             if (_ready)
                 await _webView.CoreWebView2.ExecuteScriptAsync("window.tallyShowTab && window.tallyShowTab('timesheet')");
 
-            var date = DateOnly.FromDateTime(DateTime.Now);
+            var date = ViewDate;
             var data = await ReportGenerator.ComputeAsync(_dbOptions, date);
             var entries = JsonExportWriter.BuildEntries(data.Blocks, data.Calls, data.Timers);
             if (entries.Count == 0)
@@ -1039,8 +1223,7 @@ public sealed class LiveWindow : Form
     {
         try
         {
-            var date = DateOnly.FromDateTime(DateTime.Now);
-            var path = await ReportGenerator.GenerateAsync(_dbOptions, date, _reportsDirectory, _settings.ResolveReportFormat());
+            var path = await ReportGenerator.GenerateAsync(_dbOptions, ViewDate, _reportsDirectory, _settings.ResolveReportFormat());
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Exception ex)
@@ -1064,17 +1247,18 @@ public sealed class LiveWindow : Form
         base.OnFormClosing(e);
     }
 
-    /// <summary>Shows the window (creating nothing) and resumes live refresh.</summary>
+    /// <summary>
+    /// Shows the window (creating nothing) and resumes live refresh. Re-opening always lands on
+    /// today: the window is the current day's dashboard first, and a day picked last week is not
+    /// what you meant by clicking the tray icon this morning.
+    /// </summary>
     public void ShowLive()
     {
         Show();
         WindowState = FormWindowState.Normal;
         Activate();
         if (_ready)
-        {
-            _refreshTimer.Start();
-            _ = RefreshAsync();
-        }
+            GoTo(null);
     }
 
     /// <summary>

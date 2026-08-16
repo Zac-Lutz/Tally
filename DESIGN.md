@@ -289,6 +289,30 @@ Everything stays on this machine. No cloud, no telemetry.
   where it helps: omitted for a ticketed activity
   slot so the consumer default-checks the work item, always supplied for a call/timer so the
   meeting's own name isn't outranked in the note by a ticket that happened to be on screen.
+- **The live view shows one chosen day, and it is the window's frame rather than a tab.** Time
+  entry slips, so the day being worked on is not always today; the top bar therefore carries
+  arrows, a date, and a Today button, and every tab, edit, export and snapshot below reads that one
+  date. Putting the picker in the chrome rather than in a tab is the whole point — it re-frames the
+  entire window, so a tab-local control would leave the other ten tabs quietly showing a different
+  day. Following today is kept as a *rule* (`_followToday`) rather than a stored date, so a window
+  left open overnight still rolls over on its own, exactly as it did when today was the only
+  option; re-opening the window returns to today, because the tray icon means "how is today
+  going", not "resume where I was last week".
+  Three consequences are deliberate: (1) a finished day switches the five-second refresh **off** and
+  says **Not live · a finished day**, since nothing can arrive in it and a ticking clock beside it
+  would claim otherwise; (2) the running-timer panel is offered only on today, because a timer
+  started now would record against today and not the day on screen — while claiming *past* time
+  (the Lost time tab, Add past timer) stays available and lands on the day shown, which is the
+  main reason to open yesterday at all; (3) the back arrow stops at the first day still on record
+  rather than walking into empty months, re-read from the database on each move so a retention
+  purge shortens the range while the window is open.
+- **The day picker is drawn, not themed.** Windows' `MonthCalendar` ignores `BackColor`,
+  `TitleBackColor` and the rest on a modern desktop — it renders white, which is unreadable
+  dropping out of a dark window — and `SetWindowTheme(…, "DarkMode_Explorer")` is not dependable
+  across builds. So `DayPicker` lays flat buttons over `MonthGrid` (six weeks of seven, always,
+  so paging a month never changes the popup's height under the cursor) in the window's own
+  palette. Days outside what is still recorded are drawn but dead, which answers "how far back
+  does this go" without anyone clicking to find out.
 - **An export window partitions by slot START, never by overlap.** Splitting a day (file the
   morning at lunch, the afternoon at close) has to cover the day exactly once; a meeting running
   through the cut-off would otherwise be billed in both halves. Start-membership makes the slices
@@ -443,6 +467,14 @@ correctly; rendered in local time.
    blocks + manual block edits: still open.
 6. Polish: HKCU Run autostart (done — self-registered), settings, real tray icon (done),
    Velopack installer (done — `Package-Tally.ps1`).
+7. Look back a day (done): the live view's day picker — `DayNavigation` + `MonthGrid` (Core,
+   unit-tested) behind arrows, a drawn `DayPicker` calendar, and a Today button, with every tab,
+   edit, export and snapshot reading the chosen day. See the two decisions above.
+   **Still open: a week or month view.** This slice deliberately stopped at one day at a time,
+   because that is what filing a missed day needs and it is the loading path a range view would
+   build on anyway. A week view is a different question — "where is the month going", not "what
+   did I do on Thursday" — and needs its own answers for what the Timeline, the Timers tab and
+   the export mean across several days before it is worth building.
 
 ## Packaging
 

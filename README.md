@@ -41,6 +41,20 @@ rest, so open the live view and pick **Settings** there.
 window showing the same rollup / timesheet / timeline / tickets / calls / timers / uncategorized as a report, for
 **today**, refreshing every ~5 seconds so you can watch it fill in without generating anything.
 
+### Looking at an earlier day
+
+The top bar has a day picker: **❮** and **❯** step a day at a time, the date between them opens a
+calendar, and **Today** brings you back. Everything below follows — every tab, the ticket cells you
+can type in, **Export timesheet**, and **Generate snapshot** — so filing yesterday's time is the
+same job as filing today's. In the calendar, days outside what's still recorded are greyed out, so
+it also shows how far back your data goes (see [How long data is kept](#how-long-data-is-kept)).
+
+Two things change on an earlier day. The status reads **Not live · a finished day** and the
+five-second refresh stops, because nothing new can arrive in a day that's over. And the Timers tab
+loses its Start button — a timer started now would belong to today — while **Add past timer**, and
+**Claim** on the Lost time tab, stay and land on the day you're looking at. Re-opening the window
+always starts on today.
+
 The **Rollup** is one line per category — biggest first, with that category's total on the right —
 and every category starts collapsed. Click one to see the activities inside it, longest first;
 click again to fold it away. What you've opened stays open through the refreshes, so it's the short

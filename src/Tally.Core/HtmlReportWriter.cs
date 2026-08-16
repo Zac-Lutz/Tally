@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Tally.Core.Models;
 
@@ -268,7 +268,7 @@ public static class HtmlReportWriter
     // the table shows is always what rules.json actually says.
     private static void AppendRules(StringBuilder sb, IReadOnlyList<ClassificationRule> rules, CategoryPalette? palette)
     {
-        sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts today within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Uncategorized.</p>\n");
+        sb.Append("<p class=\"hint\">Every rule Tally classifies with, tried top to bottom — the <strong>first match wins</strong>. Patterns are case-insensitive regexes; an edit re-sorts the day you're looking at within seconds and applies to every report generated from now on. Deleting a rule sends its activities back to Uncategorized.</p>\n");
 
         // Hand-writing a rule, without leaving the tab. Placement is decided by the same
         // specificity logic Save-rule uses: a window pattern earns the top, app-only the bottom.
@@ -569,12 +569,12 @@ public static class HtmlReportWriter
     {
         if (rows.Count == 0)
         {
-            sb.Append("<p class=\"empty\">Nothing uncategorized — every activity today matched a rule.</p>\n");
+            sb.Append("<p class=\"empty\">Nothing uncategorized — every activity on this day matched a rule.</p>\n");
             return;
         }
 
         if (editable)
-            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to today straight away, and to every day from here. <strong>Exclude</strong> leaves it out of an account of the day: <em>Rollup</em> tidies that tab only, <em>Timesheet</em> keeps it off the timesheet and the export, <em>All</em> does both. The Timeline always keeps it.</p>\n");
+            sb.Append("<p class=\"hint\">Give an activity a category and save it as a rule. It applies to the day you're looking at straight away, and to every day from here. <strong>Exclude</strong> leaves it out of an account of the day: <em>Rollup</em> tidies that tab only, <em>Timesheet</em> keeps it off the timesheet and the export, <em>All</em> does both. The Timeline always keeps it.</p>\n");
 
         sb.Append("<div class=\"scroll\">\n<table>\n<thead>\n<tr><th>App</th><th>Window</th><th class=\"num\">Time</th>");
         if (editable)
@@ -645,7 +645,7 @@ public static class HtmlReportWriter
     {
         if (timers.Count == 0)
         {
-            sb.Append("<p class=\"empty\">No timers recorded today.</p>\n");
+            sb.Append("<p class=\"empty\">No timers recorded on this day.</p>\n");
         }
         else
         {
@@ -671,8 +671,13 @@ public static class HtmlReportWriter
             sb.Append("</tbody>\n</table>\n</div>\n");
         }
 
+        // The stopwatch only exists where a timer could be started — the live view on today. The
+        // backfill bar below it is offered on any editable day: claiming time Tally never saw is
+        // exactly what you come back to yesterday to do.
         if (editable && panel is not null)
             AppendTimerControl(sb, panel);
+        if (editable)
+            AppendPastTimerBar(sb);
     }
 
     private static void AppendTimerControl(StringBuilder sb, TimerPanelState panel)
@@ -695,16 +700,20 @@ public static class HtmlReportWriter
         sb.Append(panel.StartedAt is not null
             ? "<p class=\"hint\">Renaming while it runs renames the timer; stopping files it above.</p>\n"
             : "<p class=\"hint\">Name it and press Start — or use the hotkeys, which work from anywhere.</p>\n");
+    }
 
-        // Backfill: a timer for time Tally never saw at all — the machine off, an onsite visit.
-        // Claiming from the Lost time tab covers idle/locked stretches; this covers the rest.
+    // Backfill: a timer for time Tally never saw at all — the machine off, an onsite visit.
+    // Claiming from the Lost time tab covers idle/locked stretches; this covers the rest. It lands
+    // on the day being shown, so it is also how a forgotten hour gets onto yesterday.
+    private static void AppendPastTimerBar(StringBuilder sb)
+    {
         sb.Append("<div class=\"tm-pastbar\">")
           .Append("<input type=\"time\" class=\"tm-past-from\" aria-label=\"Past timer from\"> ")
           .Append("<input type=\"time\" class=\"tm-past-to\" aria-label=\"Past timer to\"> ")
           .Append("<input class=\"tm-past-name\" type=\"text\" placeholder=\"Add a past timer — e.g. Onsite at Acme\" aria-label=\"Past timer name\"> ")
           .Append("<button class=\"uc-save tm-past-add\" type=\"button\">Add past timer</button>")
           .Append("</div>\n");
-        sb.Append("<p class=\"hint\">For time today that Tally never saw — the laptop closed, a site visit. It files above once added, and bills like any timer.</p>\n");
+        sb.Append("<p class=\"hint\">For time on this day that Tally never saw — the laptop closed, a site visit. It files above once added, and bills like any timer.</p>\n");
     }
 
     private static void AppendSummary(
@@ -930,7 +939,7 @@ public static class HtmlReportWriter
     {
         if (tickets.Count == 0)
         {
-            sb.Append("<p class=\"empty\">No tickets seen today. A window title carrying a ticket number files here automatically — typing a ticket on a Rollup row counts too.</p>\n");
+            sb.Append("<p class=\"empty\">No tickets seen on this day. A window title carrying a ticket number files here automatically — typing a ticket on a Rollup row counts too.</p>\n");
             return;
         }
 
@@ -959,7 +968,7 @@ public static class HtmlReportWriter
     {
         if (calls.Count == 0)
         {
-            sb.Append("<p class=\"empty\">No calls recorded today.</p>\n");
+            sb.Append("<p class=\"empty\">No calls recorded on this day.</p>\n");
             return;
         }
 
